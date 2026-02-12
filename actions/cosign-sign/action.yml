@@ -1,0 +1,29 @@
+name: "Cosign Sign"
+description: "Install cosign and sign container images"
+
+inputs:
+  images:
+    description: "Newline-separated list of image references to sign"
+    required: true
+  cosign-version:
+    description: "Cosign version to install (leave empty for default)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install cosign
+      uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+      with:
+        cosign-release: ${{ inputs.cosign-version }}
+
+    - name: Sign images
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "${{ inputs.images }}" | while IFS= read -r image; do
+          [ -z "$image" ] && continue
+          echo "Signing: $image"
+          cosign sign --yes --recursive "$image"
+        done

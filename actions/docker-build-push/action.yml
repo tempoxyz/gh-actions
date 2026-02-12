@@ -1,0 +1,73 @@
+name: "Docker Build & Push"
+description: "Build and push a Docker image to a container registry"
+
+inputs:
+  context:
+    description: "Docker build context"
+    required: true
+  file:
+    description: "Dockerfile path (relative to context)"
+    required: false
+    default: ""
+  image:
+    description: "Full image name (e.g. ghcr.io/tempoxyz/myapp)"
+    required: true
+  tags:
+    description: "Additional tags (newline-separated). sha-<short> is added automatically."
+    required: false
+    default: ""
+  platforms:
+    description: "Target platforms (e.g. linux/amd64,linux/arm64)"
+    required: false
+    default: "linux/amd64"
+  push:
+    description: "Push the image"
+    required: false
+    default: "true"
+  build-args:
+    description: "Build arguments (newline-separated KEY=VALUE)"
+    required: false
+    default: ""
+  target:
+    description: "Docker build target"
+    required: false
+    default: ""
+  cache-from:
+    description: "Cache sources"
+    required: false
+    default: ""
+  cache-to:
+    description: "Cache destinations"
+    required: false
+    default: ""
+
+outputs:
+  short-sha:
+    description: "7-char short SHA of the commit"
+    value: ${{ steps.shortsha.outputs.shortsha }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Compute short SHA
+      id: shortsha
+      shell: bash
+      run: echo "shortsha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+    - name: Build and push
+      uses: docker/build-push-action@263435318d21b8e681c14492fe198a989b4c8cf0 # v6.18.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        push: ${{ inputs.push }}
+        platforms: ${{ inputs.platforms }}
+        tags: |
+          ${{ inputs.image }}:sha-${{ steps.shortsha.outputs.shortsha }}
+          ${{ inputs.tags }}
+        build-args: ${{ inputs.build-args }}
+        target: ${{ inputs.target }}
+        cache-from: ${{ inputs.cache-from }}
+        cache-to: ${{ inputs.cache-to }}

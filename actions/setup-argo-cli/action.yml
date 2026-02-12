@@ -1,0 +1,33 @@
+name: "Setup Argo CLI"
+description: "Install Argo Workflows CLI"
+
+inputs:
+  version:
+    description: "Argo CLI version (e.g., v3.6.2). Defaults to latest."
+    required: false
+    default: "v3.6.4"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Argo CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          URL="https://github.com/argoproj/argo-workflows/releases/latest/download/argo-linux-amd64.gz"
+        else
+          URL="https://github.com/argoproj/argo-workflows/releases/download/${VERSION}/argo-linux-amd64.gz"
+        fi
+        INSTALL_DIR="${RUNNER_TEMP:-/tmp}/argo-bin"
+        mkdir -p "$INSTALL_DIR"
+        curl -fsSL -o "$INSTALL_DIR/argo-linux-amd64.gz" "$URL"
+        gunzip "$INSTALL_DIR/argo-linux-amd64.gz"
+        chmod +x "$INSTALL_DIR/argo-linux-amd64"
+        mv "$INSTALL_DIR/argo-linux-amd64" "$INSTALL_DIR/argo"
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Show Argo CLI version
+      shell: bash
+      run: argo version --short 2>/dev/null || argo version

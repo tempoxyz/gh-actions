@@ -1,0 +1,70 @@
+name: "Publish Event"
+description: "POST a webhook event to notify downstream systems"
+
+inputs:
+  url:
+    description: "Webhook URL (can include auth args via secrets)"
+    required: true
+  event-type:
+    description: "Event type identifier"
+    required: true
+    default: "registry_package"
+  tag:
+    description: "Image tag or version to include in payload"
+    required: true
+  repository:
+    description: "Repository name (defaults to github.repository)"
+    required: false
+    default: ""
+  extra-data:
+    description: "Additional JSON data to merge into the data object"
+    required: false
+    default: ""
+  retries:
+    description: "Number of retries on failure"
+    required: false
+    default: "3"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Publish event
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        EVENT_TYPE: ${{ inputs.event-type }}
+        TAG: ${{ inputs.tag }}
+        REPOSITORY_IN: ${{ inputs.repository }}
+        EXTRA_DATA: ${{ inputs.extra-data }}
+        RETRIES: ${{ inputs.retries }}
+        DEFAULT_REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+
+        command -v jq >/dev/null || { echo "jq is required"; exit 1; }
+        [[ "$RETRIES" =~ ^[0-9]+$ ]] || { echo "retries must be an integer"; exit 1; }
+
+        REPO="$REPOSITORY_IN"
+        if [ -z "$REPO" ]; then REPO="$DEFAULT_REPO"; fi
+
+        DATA="$(jq -n --arg tag "$TAG" '{tag:$tag}')"
+
+        if [ -n "${EXTRA_DATA:-}" ]; then
+          echo "$EXTRA_DATA" | jq -e . >/dev/null || { echo "extra-data must be valid JSON"; exit 1; }
+          DATA="$(jq -s '.[0] * .[1]' <(echo "$DATA") <(echo "$EXTRA_DATA"))"
+        fi
+
+        PAYLOAD="$(jq -n --arg repo "$REPO" --arg event "$EVENT_TYPE" --argjson data "$DATA" \
+          '{repository:$repo,event:$event,data:$data}')"
+
+        for i in $(seq 1 "$RETRIES"); do
+          if curl -fsS -o /dev/null -X POST "$URL" -H "Content-Type: application/json" -d "$PAYLOAD"; then
+            echo "Event published successfully"
+            exit 0
+          fi
+          echo "Attempt $i failed, retrying..."
+          sleep $((i * 2))
+        done
+
+        echo "Failed to publish event after $RETRIES attempts"
+        exit 1

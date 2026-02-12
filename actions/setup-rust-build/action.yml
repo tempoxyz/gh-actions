@@ -1,0 +1,42 @@
+name: "Setup Rust Build"
+description: "Install Rust toolchain, mold linker, and sccache"
+
+inputs:
+  toolchain:
+    description: "Rust toolchain (stable, nightly, or specific version)"
+    required: false
+    default: "stable"
+  components:
+    description: "Comma-separated Rust components (e.g., clippy,rustfmt)"
+    required: false
+    default: ""
+  targets:
+    description: "Comma-separated Rust targets"
+    required: false
+    default: ""
+  mold:
+    description: "Install mold linker"
+    required: false
+    default: "true"
+  sccache:
+    description: "Enable sccache"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+        targets: ${{ inputs.targets }}
+
+    - name: Install mold linker
+      if: inputs.mold == 'true'
+      uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
+
+    - name: Enable sccache
+      if: inputs.sccache == 'true'
+      uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
