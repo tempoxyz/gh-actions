@@ -40,3 +40,26 @@ steps:
 ## Versioning
 
 Pin to `@main` for latest, or tag releases (`@v1`, `@v1.0.0`) for stability.
+
+## Reusable Workflows
+
+### `pr-audit`
+
+Publishes a `pr_audit` event when a pull request receives a configured label.
+
+```yaml
+name: PR Audit
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  pr-audit:
+    uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
+    secrets: inherit
+```
+
+Optional input:
+
+- `required-label` (default: `agentic-audit`)
