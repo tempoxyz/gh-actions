@@ -62,4 +62,4 @@ jobs:
 
 Optional input:
 
-- `required-label` (default: `agentic-audit`)
+- `required-label` (default: `cyclops`)

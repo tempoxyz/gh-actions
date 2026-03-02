@@ -7,7 +7,7 @@ on:
         description: Label required to trigger audit event publishing.
         required: false
         type: string
-        default: agentic-audit
+        default: cyclops
     secrets:
       EVENTS_KEY:
         required: true
