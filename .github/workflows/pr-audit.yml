@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: cyclops
+      review-command:
+        description: Comment command to trigger audit (e.g. "cyclops review").
+        required: false
+        type: string
+        default: cyclops review
     secrets:
       EVENTS_KEY:
         required: true
@@ -17,7 +22,7 @@ on:
         required: true
 
 jobs:
-  publish:
+  publish-on-label:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == inputs.required-label
     steps:
@@ -28,7 +33,6 @@ jobs:
           echo "${{ secrets.EVENTS_KEY }}" > "${{ runner.temp }}/key"
           echo "${{ secrets.EVENTS_CERT }}" > "${{ runner.temp }}/cert"
 
-          # EVENTS_ARGS may contain additional curl arguments, not just a URL.
           curl -sf -o /dev/null -X POST ${{ secrets.EVENTS_ARGS }} \
             -H "Content-Type: application/json" \
             --key "${{ runner.temp }}/key" \
@@ -39,5 +43,44 @@ jobs:
               "data": {
                 "pr_number": ${{ github.event.pull_request.number }},
                 "sha": "${{ github.event.pull_request.head.sha }}"
+              }
+            }'
+
+  publish-on-comment:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'issue_comment'
+      && github.event.action == 'created'
+      && github.event.issue.pull_request
+      && contains(github.event.comment.body, inputs.review-command)
+    steps:
+      - name: Resolve PR head SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER=${{ github.event.issue.number }}
+          SHA=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json headRefOid -q .headRefOid)
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Publish event
+        run: |
+          set -euo pipefail
+
+          echo "${{ secrets.EVENTS_KEY }}" > "${{ runner.temp }}/key"
+          echo "${{ secrets.EVENTS_CERT }}" > "${{ runner.temp }}/cert"
+
+          curl -sf -o /dev/null -X POST ${{ secrets.EVENTS_ARGS }} \
+            -H "Content-Type: application/json" \
+            --key "${{ runner.temp }}/key" \
+            --cert "${{ runner.temp }}/cert" \
+            -d '{
+              "repository": "${{ github.repository }}",
+              "event": "pr_audit",
+              "data": {
+                "pr_number": ${{ steps.pr.outputs.number }},
+                "sha": "${{ steps.pr.outputs.sha }}"
               }
             }'
