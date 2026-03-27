@@ -25,46 +25,9 @@ on:
         required: true
 
 jobs:
-  publish-pr:
+  publish:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == inputs.required-label
     steps:
-      - name: Publish event
-        run: |
-          set -euo pipefail
-
-          echo "${{ secrets.EVENTS_KEY }}" > "${{ runner.temp }}/key"
-          echo "${{ secrets.EVENTS_CERT }}" > "${{ runner.temp }}/cert"
-
-          # EVENTS_ARGS may contain additional curl arguments, not just a URL.
-          curl -sf -o /dev/null -X POST ${{ secrets.EVENTS_ARGS }} \
-            -H "Content-Type: application/json" \
-            --key "${{ runner.temp }}/key" \
-            --cert "${{ runner.temp }}/cert" \
-            -d '{
-              "repository": "${{ github.repository }}",
-              "event": "pr_audit",
-              "data": {
-                "pr_number": ${{ github.event.pull_request.number }},
-                "sha": "${{ github.event.pull_request.head.sha }}"
-              }
-            }'
-
-  publish-manual:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && (inputs.branch != '' || inputs.pr-number != 0)
-    steps:
-      - name: Check admin permission
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          PERM=$(gh api repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission --jq '.permission')
-          if [[ "$PERM" != "admin" ]]; then
-            echo "::error::Only admins can trigger ad-hoc audits (got permission: $PERM)"
-            exit 1
-          fi
-
       - name: Resolve target
         id: target
         env:
@@ -72,70 +35,61 @@ jobs:
         run: |
           set -euo pipefail
 
-          PR_NUMBER="${{ inputs.pr-number }}"
-          BRANCH="${{ inputs.branch }}"
-
-          # If PR number provided, resolve branch and SHA from the PR
-          if [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "0" ]]; then
-            PR_JSON=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUMBER" --jq '{sha: .head.sha, branch: .head.ref, state: .state}')
-            SHA=$(echo "$PR_JSON" | jq -r '.sha')
-            BRANCH=$(echo "$PR_JSON" | jq -r '.branch')
-            STATE=$(echo "$PR_JSON" | jq -r '.state')
-            if [[ "$STATE" != "open" ]]; then
-              echo "::warning::PR #$PR_NUMBER is $STATE"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if [[ "${{ github.event.action }}" != "labeled" || "${{ github.event.label.name }}" != "${{ inputs.required-label }}" ]]; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
-            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-            echo "::notice::Auditing PR #$PR_NUMBER ($BRANCH) at $SHA"
+            echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
-          # Otherwise resolve from branch name
-          elif [[ -n "$BRANCH" ]]; then
-            SHA=$(gh api repos/${{ github.repository }}/commits/"$BRANCH" --jq '.sha')
-            if [[ -z "$SHA" ]]; then
-              echo "::error::Branch '$BRANCH' not found"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PERM=$(gh api repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission --jq '.permission')
+            if [[ "$PERM" != "admin" ]]; then
+              echo "::error::Only admins can trigger ad-hoc audits (got: $PERM)"
               exit 1
             fi
-            # Try to find an open PR for this branch
-            PR_NUMBER=$(gh api repos/${{ github.repository }}/pulls --jq "[.[] | select(.head.ref == \"$BRANCH\" and .state == \"open\")] | first | .number // empty" 2>/dev/null || true)
-            echo "pr_number=${PR_NUMBER:-}" >> "$GITHUB_OUTPUT"
-            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-            if [[ -n "$PR_NUMBER" ]]; then
-              echo "::notice::Auditing branch $BRANCH at $SHA (PR #$PR_NUMBER)"
-            else
-              echo "::notice::Auditing branch $BRANCH at $SHA (no open PR found)"
-            fi
 
+            if [[ -n "${{ inputs.pr-number }}" && "${{ inputs.pr-number }}" != "0" ]]; then
+              SHA=$(gh api repos/${{ github.repository }}/pulls/${{ inputs.pr-number }} --jq '.head.sha')
+              echo "pr_number=${{ inputs.pr-number }}" >> "$GITHUB_OUTPUT"
+              echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            elif [[ -n "${{ inputs.branch }}" ]]; then
+              SHA=$(gh api repos/${{ github.repository }}/commits/${{ inputs.branch }} --jq '.sha')
+              echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::Either branch or pr-number must be provided"
+              exit 1
+            fi
           else
-            echo "::error::Either branch or pr-number must be provided"
-            exit 1
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
       - name: Publish event
+        if: steps.target.outputs.publish == 'true'
         run: |
           set -euo pipefail
 
-          echo "${{ secrets.EVENTS_KEY }}" > "${{ runner.temp }}/key"
-          echo "${{ secrets.EVENTS_CERT }}" > "${{ runner.temp }}/cert"
+          printf '%s' '${{ secrets.EVENTS_KEY }}' > "$RUNNER_TEMP/key"
+          printf '%s' '${{ secrets.EVENTS_CERT }}' > "$RUNNER_TEMP/cert"
 
-          PR_NUMBER="${{ steps.target.outputs.pr_number }}"
-          SHA="${{ steps.target.outputs.sha }}"
-
-          # Build JSON payload — include pr_number only if we have one
-          if [[ -n "$PR_NUMBER" ]]; then
-            PAYLOAD=$(jq -n \
-              --arg repo "${{ github.repository }}" \
-              --arg sha "$SHA" \
-              --argjson pr "$PR_NUMBER" \
-              '{repository: $repo, event: "pr_audit", data: {pr_number: $pr, sha: $sha}}')
-          else
-            PAYLOAD=$(jq -n \
-              --arg repo "${{ github.repository }}" \
-              --arg sha "$SHA" \
-              '{repository: $repo, event: "pr_audit", data: {sha: $sha}}')
-          fi
-
-          curl -sf -o /dev/null -X POST ${{ secrets.EVENTS_ARGS }} \
-            -H "Content-Type: application/json" \
-            --key "${{ runner.temp }}/key" \
-            --cert "${{ runner.temp }}/cert" \
-            -d "$PAYLOAD"
+          jq -n \
+            --arg repo "${{ github.repository }}" \
+            --arg sha "${{ steps.target.outputs.sha }}" \
+            --arg pr "${{ steps.target.outputs.pr_number }}" \
+            '{
+              repository: $repo,
+              event: "pr_audit",
+              data: (
+                {sha: $sha}
+                + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
+              )
+            }' \
+          | curl -sf -o /dev/null -X POST ${{ secrets.EVENTS_ARGS }} \
+              -H "Content-Type: application/json" \
+              --key "$RUNNER_TEMP/key" \
+              --cert "$RUNNER_TEMP/cert" \
+              -d @-
