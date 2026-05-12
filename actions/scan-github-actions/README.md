@@ -26,7 +26,7 @@ jobs:
 ```yaml
 steps:
   - uses: actions/checkout@v4
-  - uses: tempoxyz/gh-actions/actions/scan-actions@main
+  - uses: tempoxyz/gh-actions/actions/scan-github-actions@main
 ```
 
 ## Inputs
