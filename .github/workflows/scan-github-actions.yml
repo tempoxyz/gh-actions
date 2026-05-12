@@ -3,11 +3,6 @@ name: Scan GitHub Actions
 on:
   workflow_call:
     inputs:
-      paths:
-        description: "Paths to scan (whitespace-separated). Defaults to entire repo."
-        required: false
-        type: string
-        default: "."
       config:
         description: "Path to a zizmor configuration file for overrides"
         required: false
@@ -31,7 +26,6 @@ jobs:
       - name: Scan GitHub Actions
         uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
         with:
-          inputs: ${{ inputs.paths }}
           persona: regular
           online-audits: true
           advanced-security: false

@@ -33,5 +33,4 @@ steps:
 
 | Name | Description | Default |
 |------|-------------|---------|
-| `paths` | Paths to scan (whitespace-separated) | `.` |
 | `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` |
