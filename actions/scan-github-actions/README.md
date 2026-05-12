@@ -1,4 +1,4 @@
-# Scan Actions
+# Scan GitHub Actions
 
 Security scan for GitHub Actions workflows using [zizmor](https://github.com/zizmorcore/zizmor). Detects template injection, credential leakage, excessive permissions, unpinned actions, and more.
 
@@ -9,7 +9,7 @@ Security scan for GitHub Actions workflows using [zizmor](https://github.com/ziz
 ### Reusable workflow (recommended)
 
 ```yaml
-name: Scan Actions
+name: Scan GitHub Actions
 
 on:
   push:
@@ -18,7 +18,7 @@ on:
 
 jobs:
   scan:
-    uses: tempoxyz/gh-actions/.github/workflows/scan-actions.yml@main
+    uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
 ```
 
 ### Composite action

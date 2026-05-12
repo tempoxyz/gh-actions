@@ -1,4 +1,4 @@
-name: "Scan Actions"
+name: "Scan GitHub Actions"
 description: "Security scan for GitHub Actions workflows"
 
 inputs:

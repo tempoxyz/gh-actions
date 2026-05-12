@@ -14,7 +14,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
-| [`scan-actions`](actions/scan-actions) | Security scan for GitHub Actions workflows | any |
+| [`scan-github-actions`](actions/scan-github-actions) | Security scan for GitHub Actions workflows | any |
 
 ## Usage
 
@@ -65,12 +65,12 @@ Optional input:
 
 - `required-label` (default: `cyclops`)
 
-### `scan-actions`
+### `scan-github-actions`
 
 Security scan for GitHub Actions workflows. Uploads findings to GitHub Advanced Security.
 
 ```yaml
-name: Scan Actions
+name: Scan GitHub Actions
 
 on:
   push:
@@ -79,7 +79,7 @@ on:
 
 jobs:
   scan:
-    uses: tempoxyz/gh-actions/.github/workflows/scan-actions.yml@main
+    uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
 ```
 
 Optional inputs:

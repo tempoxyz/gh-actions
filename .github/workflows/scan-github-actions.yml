@@ -1,4 +1,4 @@
-name: Scan Actions
+name: Scan GitHub Actions
 
 on:
   workflow_call:
@@ -17,8 +17,8 @@ on:
 permissions: {}
 
 jobs:
-  scan-actions:
-    name: Scan Actions
+  scan-github-actions:
+    name: Scan GitHub Actions
     runs-on: ubuntu-latest
     permissions:
       contents: read
