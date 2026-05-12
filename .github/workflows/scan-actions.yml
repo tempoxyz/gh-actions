@@ -1,0 +1,39 @@
+name: Scan Actions
+
+on:
+  workflow_call:
+    inputs:
+      paths:
+        description: "Paths to scan (whitespace-separated). Defaults to entire repo."
+        required: false
+        type: string
+        default: "."
+      config:
+        description: "Path to a zizmor configuration file for overrides"
+        required: false
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  scan-actions:
+    name: Scan Actions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Scan GitHub Actions
+        uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        with:
+          inputs: ${{ inputs.paths }}
+          persona: regular
+          online-audits: true
+          advanced-security: true
+          config: ${{ inputs.config }}

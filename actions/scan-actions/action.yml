@@ -1,0 +1,25 @@
+name: "Scan Actions"
+description: "Security scan for GitHub Actions workflows"
+
+inputs:
+  paths:
+    description: "Paths to scan (whitespace-separated). Defaults to entire repo."
+    required: false
+    default: "."
+  config:
+    description: "Path to a zizmor configuration file for overrides"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Scan GitHub Actions
+      uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+      with:
+        inputs: ${{ inputs.paths }}
+        persona: regular
+        online-audits: true
+        advanced-security: true
+        config: ${{ inputs.config }}
+        token: ${{ github.token }}

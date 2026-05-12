@@ -14,7 +14,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
-| [`zizmor-scan`](actions/zizmor-scan) | Run zizmor GitHub Actions security analysis | any |
+| [`scan-actions`](actions/scan-actions) | Security scan for GitHub Actions workflows | any |
 
 ## Usage
 
@@ -65,12 +65,12 @@ Optional input:
 
 - `required-label` (default: `cyclops`)
 
-### `zizmor`
+### `scan-actions`
 
-Runs [zizmor](https://github.com/zizmorcore/zizmor) static analysis on GitHub Actions workflows and uploads SARIF results to GitHub Advanced Security.
+Security scan for GitHub Actions workflows. Uploads findings to GitHub Advanced Security.
 
 ```yaml
-name: Zizmor
+name: Scan Actions
 
 on:
   push:
@@ -78,8 +78,11 @@ on:
   pull_request:
 
 jobs:
-  zizmor:
-    uses: tempoxyz/gh-actions/.github/workflows/zizmor.yml@main
+  scan:
+    uses: tempoxyz/gh-actions/.github/workflows/scan-actions.yml@main
 ```
 
-See [`actions/zizmor-scan`](actions/zizmor-scan) for available inputs.
+Optional inputs:
+
+- `paths` — paths to scan (default: `.`)
+- `config` — path to a config file for rule overrides
