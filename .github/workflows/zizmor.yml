@@ -1,0 +1,72 @@
+name: Zizmor scan
+
+on:
+  workflow_call:
+    inputs:
+      inputs:
+        description: "Paths to scan (whitespace-separated)"
+        required: false
+        type: string
+        default: "."
+      persona:
+        description: "Auditing persona: regular, pedantic, or auditor"
+        required: false
+        type: string
+        default: "regular"
+      min-severity:
+        description: "Minimum severity to report: informational, low, medium, or high"
+        required: false
+        type: string
+        default: ""
+      min-confidence:
+        description: "Minimum confidence to report: low, medium, or high"
+        required: false
+        type: string
+        default: ""
+      online-audits:
+        description: "Whether to run online audits"
+        required: false
+        type: boolean
+        default: true
+      advanced-security:
+        description: "Upload SARIF results to GitHub Advanced Security"
+        required: false
+        type: boolean
+        default: true
+      config:
+        description: "Path to a custom zizmor configuration file"
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "Zizmor version to install"
+        required: false
+        type: string
+        default: "latest"
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor 🌈
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        with:
+          inputs: ${{ inputs.inputs }}
+          persona: ${{ inputs.persona }}
+          min-severity: ${{ inputs.min-severity }}
+          min-confidence: ${{ inputs.min-confidence }}
+          online-audits: ${{ inputs.online-audits }}
+          advanced-security: ${{ inputs.advanced-security }}
+          config: ${{ inputs.config }}
+          version: ${{ inputs.version }}

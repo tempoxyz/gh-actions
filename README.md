@@ -14,6 +14,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
+| [`zizmor-scan`](actions/zizmor-scan) | Run zizmor GitHub Actions security analysis | any |
 
 ## Usage
 
@@ -63,3 +64,22 @@ jobs:
 Optional input:
 
 - `required-label` (default: `cyclops`)
+
+### `zizmor`
+
+Runs [zizmor](https://github.com/zizmorcore/zizmor) static analysis on GitHub Actions workflows and uploads SARIF results to GitHub Advanced Security.
+
+```yaml
+name: Zizmor
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  zizmor:
+    uses: tempoxyz/gh-actions/.github/workflows/zizmor.yml@main
+```
+
+See [`actions/zizmor-scan`](actions/zizmor-scan) for available inputs.
