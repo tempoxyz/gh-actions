@@ -2,7 +2,7 @@
 
 Security scan for GitHub Actions workflows using [zizmor](https://github.com/zizmorcore/zizmor). Detects template injection, credential leakage, excessive permissions, unpinned actions, and more.
 
-**Opinionated defaults** — online audits enabled, results uploaded to GitHub Advanced Security, regular persona. Override individual rules via a `zizmor.yml` config file if needed.
+**Opinionated defaults** — online audits enabled, GitHub annotations on PR diffs, regular persona. Override individual rules via a `zizmor.yml` config file if needed.
 
 ## Usage
 

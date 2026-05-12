@@ -67,7 +67,7 @@ Optional input:
 
 ### `scan-github-actions`
 
-Security scan for GitHub Actions workflows. Uploads findings to GitHub Advanced Security.
+Security scan for GitHub Actions workflows. Findings appear as inline annotations on PRs.
 
 ```yaml
 name: Scan GitHub Actions

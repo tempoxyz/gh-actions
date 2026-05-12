@@ -20,6 +20,7 @@ runs:
         inputs: ${{ inputs.paths }}
         persona: regular
         online-audits: true
-        advanced-security: true
+        advanced-security: false
+        annotations: true
         config: ${{ inputs.config }}
         token: ${{ github.token }}
