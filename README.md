@@ -44,6 +44,8 @@ Pin to `@main` for latest, or tag releases (`@v1`, `@v1.0.0`) for stability.
 
 ## Reusable Workflows
 
+Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main`.
+
 ### `pr-audit`
 
 Publishes a `pr_audit` event when a pull request receives a configured label.
@@ -85,3 +87,57 @@ jobs:
 Optional input:
 
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
+
+### `cargo-deny`
+
+Runs `cargo deny check all`.
+
+```yaml
+jobs:
+  cargo-deny:
+    uses: tempoxyz/gh-actions/.github/workflows/cargo-deny.yml@main
+```
+
+Optional inputs:
+
+- `rust-toolchain` (default: `nightly`)
+- `deny-flags` (default: `--all-features`)
+
+### `cargo-update-pr`
+
+Runs `cargo update` and opens or updates a pull request for `Cargo.lock`.
+
+```yaml
+jobs:
+  cargo-update-pr:
+    uses: tempoxyz/gh-actions/.github/workflows/cargo-update-pr.yml@main
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Optional inputs:
+
+- `rust-toolchain` (default: `nightly`)
+- `title` (default: `chore(deps): weekly cargo update`)
+
+### `auto-assign-pr`
+
+Assigns newly opened or reopened pull requests to their author when the author is an internal collaborator.
+
+```yaml
+name: Auto Assign PR to Author
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-assign:
+    uses: tempoxyz/gh-actions/.github/workflows/auto-assign-pr.yml@main
+```
+
+Caller workflows must grant `issues: write` and `pull-requests: write`.
