@@ -16,6 +16,14 @@ inputs:
     description: "Additional tags (newline-separated). sha-<short> is added automatically."
     required: false
     default: ""
+  include-sha-tag:
+    description: "Add image:sha-<short> to the tag list"
+    required: false
+    default: "true"
+  labels:
+    description: "Image labels (newline-separated)"
+    required: false
+    default: ""
   platforms:
     description: "Target platforms (e.g. linux/amd64,linux/arm64)"
     required: false
@@ -40,11 +48,18 @@ inputs:
     description: "Cache destinations"
     required: false
     default: ""
+  provenance:
+    description: "Generate provenance attestations"
+    required: false
+    default: "true"
 
 outputs:
   short-sha:
     description: "7-char short SHA of the commit"
     value: ${{ steps.shortsha.outputs.shortsha }}
+  digest:
+    description: "Image digest"
+    value: ${{ steps.build.outputs.digest }}
 
 runs:
   using: "composite"
@@ -54,20 +69,41 @@ runs:
       shell: bash
       run: echo "shortsha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
+    - name: Compose tags
+      id: tags
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        INCLUDE_SHA_TAG: ${{ inputs.include-sha-tag }}
+        INPUT_TAGS: ${{ inputs.tags }}
+        SHORT_SHA: ${{ steps.shortsha.outputs.shortsha }}
+      run: |
+        {
+          echo "tags<<EOF"
+          if [ "$INCLUDE_SHA_TAG" = "true" ]; then
+            echo "${IMAGE}:sha-${SHORT_SHA}"
+          fi
+          if [ -n "$INPUT_TAGS" ]; then
+            echo "$INPUT_TAGS"
+          fi
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
 
     - name: Build and push
+      id: build
       uses: docker/build-push-action@263435318d21b8e681c14492fe198a989b4c8cf0 # v6.18.0
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.file }}
         push: ${{ inputs.push }}
         platforms: ${{ inputs.platforms }}
-        tags: |
-          ${{ inputs.image }}:sha-${{ steps.shortsha.outputs.shortsha }}
-          ${{ inputs.tags }}
+        tags: ${{ steps.tags.outputs.tags }}
+        labels: ${{ inputs.labels }}
         build-args: ${{ inputs.build-args }}
         target: ${{ inputs.target }}
         cache-from: ${{ inputs.cache-from }}
         cache-to: ${{ inputs.cache-to }}
+        provenance: ${{ inputs.provenance }}
