@@ -2,7 +2,7 @@
 
 Security scan for GitHub Actions workflows using [zizmor](https://github.com/zizmorcore/zizmor). Detects template injection, credential leakage, excessive permissions, unpinned actions, and more.
 
-**Opinionated defaults** — online audits enabled, GitHub annotations on PR diffs, regular persona. Override individual rules via a `zizmor.yml` config file if needed.
+**Opinionated defaults** — online audits enabled, GitHub annotations on PR diffs, regular persona. Results surface as inline annotations and console output; SARIF upload to GitHub Advanced Security is **not** enabled. Override individual rules via a `zizmor.yml` config file if needed.
 
 ## Usage
 
@@ -25,9 +25,11 @@ jobs:
 
 ```yaml
 steps:
-  - uses: actions/checkout@v4
+  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
   - uses: tempoxyz/gh-actions/actions/scan-github-actions@main
 ```
+
+> For strongest supply-chain hygiene, pin `tempoxyz/gh-actions` to a commit SHA rather than `@main` in consumer workflows.
 
 ## Inputs
 
