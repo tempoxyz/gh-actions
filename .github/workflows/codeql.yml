@@ -1,0 +1,46 @@
+name: CodeQL
+
+on:
+  workflow_call:
+    inputs:
+      languages:
+        description: "Comma-separated CodeQL languages to analyze"
+        required: false
+        type: string
+        default: rust
+      config-file:
+        description: "Path to the repository's CodeQL configuration file"
+        required: false
+        type: string
+        default: ./.github/codeql/codeql-config.yml
+      build-mode:
+        description: "CodeQL build mode"
+        required: false
+        type: string
+        default: none
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ inputs.languages }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@dc73d59c2d7bd4f8194098a91219eeee6d8a1719 # v4
+        with:
+          languages: ${{ inputs.languages }}
+          build-mode: ${{ inputs.build-mode }}
+          config-file: ${{ inputs.config-file }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@dc73d59c2d7bd4f8194098a91219eeee6d8a1719 # v4

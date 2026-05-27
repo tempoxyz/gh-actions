@@ -88,6 +88,49 @@ Optional input:
 
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
 
+### `codeql`
+
+Runs CodeQL with the default query suite and a repository-local config file for repo-specific exclusions.
+
+```yaml
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  analyze:
+    uses: tempoxyz/gh-actions/.github/workflows/codeql.yml@main
+```
+
+Default repo config path:
+
+```yaml
+# .github/codeql/codeql-config.yml
+name: "CodeQL config"
+
+query-filters:
+  - exclude:
+      id: rust/rule-id-to-disable
+```
+
+Optional inputs:
+
+- `languages` (default: `rust`)
+- `config-file` (default: `./.github/codeql/codeql-config.yml`)
+- `build-mode` (default: `none`)
+
 ### `cargo-deny`
 
 Runs `cargo deny check all`.
