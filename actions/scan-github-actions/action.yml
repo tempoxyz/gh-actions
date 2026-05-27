@@ -15,7 +15,7 @@ runs:
       with:
         persona: regular
         online-audits: true
-        advanced-security: false
+        advanced-security: true
         annotations: true
         config: ${{ inputs.config }}
         token: ${{ github.token }}
