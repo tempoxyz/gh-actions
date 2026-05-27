@@ -6,6 +6,10 @@ inputs:
     description: "Path to a zizmor configuration file for overrides"
     required: false
     default: ""
+  advanced-security:
+    description: "Upload SARIF to GitHub code scanning. Requires code scanning to be enabled for the repository."
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -15,7 +19,7 @@ runs:
       with:
         persona: regular
         online-audits: true
-        advanced-security: false
-        annotations: true
+        advanced-security: ${{ inputs.advanced-security }}
+        annotations: ${{ inputs.advanced-security != 'true' }}
         config: ${{ inputs.config }}
         token: ${{ github.token }}

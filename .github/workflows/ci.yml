@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "actions/**"
+
+permissions: {}
+
+jobs:
+  scan-github-actions:
+    name: Scan GitHub Actions
+    uses: ./.github/workflows/scan-github-actions.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write

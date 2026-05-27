@@ -27,7 +27,7 @@ runs:
   using: "composite"
   steps:
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
+      uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
       with:
         toolchain: ${{ inputs.toolchain }}
         components: ${{ inputs.components }}
@@ -35,7 +35,7 @@ runs:
 
     - name: Install mold linker
       if: inputs.mold == 'true'
-      uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
+      uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
 
     - name: Enable sccache
       if: inputs.sccache == 'true'

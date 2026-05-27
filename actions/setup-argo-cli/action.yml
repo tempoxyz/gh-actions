@@ -12,9 +12,10 @@ runs:
   steps:
     - name: Install Argo CLI
       shell: bash
-      run: |
+      env:
+        VERSION: ${{ inputs.version }}
+      run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
         set -euo pipefail
-        VERSION="${{ inputs.version }}"
         if [ "$VERSION" = "latest" ]; then
           URL="https://github.com/argoproj/argo-workflows/releases/latest/download/argo-linux-amd64.gz"
         else
