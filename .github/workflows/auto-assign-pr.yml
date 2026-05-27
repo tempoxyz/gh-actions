@@ -1,8 +1,6 @@
 name: Auto Assign PR to Author
 
 on:
-  pull_request:
-    types: [opened, reopened]
   workflow_call:
 
 defaults:
