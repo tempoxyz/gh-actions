@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: ""
+      advanced-security:
+        description: "Upload SARIF to GitHub code scanning. Requires Code Security/code scanning to be enabled for the repository."
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -30,6 +35,7 @@ jobs:
         with:
           persona: regular
           online-audits: true
-          advanced-security: true
+          advanced-security: ${{ inputs.advanced-security }}
+          annotations: ${{ !inputs.advanced-security }}
           config: ${{ inputs.config }}
           token: ${{ github.token }}

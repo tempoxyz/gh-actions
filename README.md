@@ -69,7 +69,7 @@ Optional input:
 
 ### `scan-github-actions`
 
-Security scan for GitHub Actions workflows (powered by [zizmor](https://github.com/zizmorcore/zizmor)). Findings appear as inline annotations on PRs, in the workflow log, and in GitHub Advanced Security code scanning.
+Security scan for GitHub Actions workflows (powered by [zizmor](https://github.com/zizmorcore/zizmor)). Findings appear as inline annotations on PRs and in the workflow log by default. SARIF upload to GitHub code scanning can be enabled for repositories with Code Security/code scanning enabled.
 
 ```yaml
 name: Scan GitHub Actions
@@ -82,6 +82,16 @@ on:
 jobs:
   scan:
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
+```
+
+Enable SARIF upload only in repositories with Code Security/code scanning enabled:
+
+```yaml
+jobs:
+  scan:
+    uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
+    with:
+      advanced-security: true
     permissions:
       actions: read
       contents: read
@@ -91,6 +101,7 @@ jobs:
 Optional input:
 
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
+- `advanced-security` (default: `false`) — upload SARIF to GitHub code scanning
 
 ### `cargo-deny`
 

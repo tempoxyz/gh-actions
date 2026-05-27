@@ -2,7 +2,7 @@
 
 Security scan for GitHub Actions workflows using [zizmor](https://github.com/zizmorcore/zizmor). Detects template injection, credential leakage, excessive permissions, unpinned actions, and more.
 
-**Opinionated defaults** — online audits enabled, regular persona, and SARIF upload to GitHub Advanced Security. Override individual rules via a `zizmor.yml` config file if needed.
+**Opinionated defaults** — online audits enabled, GitHub annotations on PR diffs, and regular persona. SARIF upload to GitHub code scanning is available for repositories with Code Security/code scanning enabled. Override individual rules via a `zizmor.yml` config file if needed.
 
 ## Usage
 
@@ -19,6 +19,16 @@ on:
 jobs:
   scan:
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
+```
+
+Enable SARIF upload only in repositories with Code Security/code scanning enabled:
+
+```yaml
+jobs:
+  scan:
+    uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
+    with:
+      advanced-security: true
     permissions:
       actions: read
       contents: read
@@ -40,3 +50,4 @@ steps:
 | Name | Description | Default |
 |------|-------------|---------|
 | `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` |
+| `advanced-security` | Upload SARIF to GitHub code scanning. Requires Code Security/code scanning to be enabled for the repository | `false` |
