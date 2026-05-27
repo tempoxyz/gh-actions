@@ -7,7 +7,7 @@ inputs:
     required: false
     default: ""
   advanced-security:
-    description: "Upload SARIF to GitHub code scanning. Requires Code Security/code scanning to be enabled for the repository."
+    description: "Upload SARIF to GitHub code scanning. Requires code scanning to be enabled for the repository."
     required: false
     default: "false"
 

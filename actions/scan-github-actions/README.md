@@ -2,7 +2,7 @@
 
 Security scan for GitHub Actions workflows using [zizmor](https://github.com/zizmorcore/zizmor). Detects template injection, credential leakage, excessive permissions, unpinned actions, and more.
 
-**Opinionated defaults** — online audits enabled, GitHub annotations on PR diffs, and regular persona. SARIF upload to GitHub code scanning is available for repositories with Code Security/code scanning enabled. Override individual rules via a `zizmor.yml` config file if needed.
+**Opinionated defaults** — online audits enabled, GitHub workflow annotations enabled, regular persona, and SARIF upload disabled. Repositories with GitHub code scanning enabled can opt into SARIF upload with `advanced-security: true`. Override individual rules via a `zizmor.yml` config file if needed.
 
 ## Usage
 
@@ -21,7 +21,7 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
 ```
 
-Enable SARIF upload only in repositories with Code Security/code scanning enabled:
+Enable SARIF upload only in repositories with code scanning enabled:
 
 ```yaml
 jobs:
@@ -38,9 +38,27 @@ jobs:
 ### Composite action
 
 ```yaml
+permissions:
+  contents: read
+
 steps:
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
   - uses: tempoxyz/gh-actions/actions/scan-github-actions@main
+```
+
+Composite action with SARIF upload:
+
+```yaml
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+steps:
+  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+  - uses: tempoxyz/gh-actions/actions/scan-github-actions@main
+    with:
+      advanced-security: "true"
 ```
 
 > For strongest supply-chain hygiene, pin `tempoxyz/gh-actions` to a commit SHA rather than `@main` in consumer workflows.
@@ -50,4 +68,4 @@ steps:
 | Name | Description | Default |
 |------|-------------|---------|
 | `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` |
-| `advanced-security` | Upload SARIF to GitHub code scanning. Requires Code Security/code scanning to be enabled for the repository | `false` |
+| `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires code scanning to be enabled for the repository | `false` |
