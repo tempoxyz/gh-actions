@@ -20,9 +20,11 @@ runs:
 
     - name: Sign images
       shell: bash
+      env:
+        IMAGES: ${{ inputs.images }}
       run: |
         set -euo pipefail
-        echo "${{ inputs.images }}" | while IFS= read -r image; do
+        echo "$IMAGES" | while IFS= read -r image; do
           [ -z "$image" ] && continue
           echo "Signing: $image"
           cosign sign --yes --recursive "$image"
