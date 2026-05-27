@@ -15,5 +15,6 @@ jobs:
     name: Scan GitHub Actions
     uses: ./.github/workflows/scan-github-actions.yml
     permissions:
+      actions: read
       contents: read
       security-events: write

@@ -20,6 +20,7 @@ jobs:
   scan:
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
     permissions:
+      actions: read
       contents: read
       security-events: write
 ```
