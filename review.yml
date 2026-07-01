@@ -1,0 +1,4 @@
+# Voight-Kampff configuration
+required-approvals: 1
+require-codeowners: false
+allow-self-reviews: true
