@@ -19,6 +19,30 @@ permissions: {}
 jobs:
   scan-github-actions:
     name: Scan GitHub Actions
+    if: ${{ !inputs.advanced-security }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Scan GitHub Actions
+        uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        with:
+          persona: regular
+          online-audits: true
+          advanced-security: false
+          annotations: true
+          config: ${{ inputs.config }}
+          token: ${{ github.token }}
+
+  scan-github-actions-sarif:
+    name: Scan GitHub Actions (SARIF)
+    if: ${{ inputs.advanced-security }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -35,7 +59,7 @@ jobs:
         with:
           persona: regular
           online-audits: true
-          advanced-security: ${{ inputs.advanced-security }}
-          annotations: ${{ !inputs.advanced-security }}
+          advanced-security: true
+          annotations: false
           config: ${{ inputs.config }}
           token: ${{ github.token }}
