@@ -6,6 +6,9 @@ name: Test
 # and a negative fixture, plus reusable/composite pin parity. The SARIF upload
 # path is intentionally not exercised here so this repo's code scanning stays
 # clean.
+#
+# All checks run in a single job so the suite surfaces as one status check
+# (`Test / integration`), which can be marked required in branch protection.
 
 on:
   push:
@@ -15,11 +18,8 @@ on:
 permissions: {}
 
 jobs:
-  # Positive: composite action on a staged known-good workflow must pass. Covers
-  # composite wiring (zizmor + actionlint) and acts as the control for the
-  # negative fixture below, which uses the same staging mechanism.
-  composite-clean:
-    name: composite (clean fixture)
+  integration:
+    name: integration
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -29,52 +29,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Stage clean fixture
-        run: cp testdata/fixtures/clean.yml .github/workflows/zz-clean-fixture.yml
-      - name: Run composite (expected to pass)
-        uses: ./actions/scan-github-actions
 
-  # Negative: staging a broken workflow must make the composite fail.
-  composite-negative:
-    name: composite (negative fixture)
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Stage broken fixture
-        run: cp testdata/fixtures/broken.yml .github/workflows/zz-broken-fixture.yml
-      - name: Run composite (expected to fail)
-        id: scan
-        continue-on-error: true
-        uses: ./actions/scan-github-actions
-      - name: Assert the scan failed
-        env:
-          OUTCOME: ${{ steps.scan.outcome }}
-        run: |
-          if [ "$OUTCOME" != "failure" ]; then
-            echo "::error::composite should have failed on the broken fixture (outcome=$OUTCOME)"
-            exit 1
-          fi
-          echo "composite correctly failed on the broken fixture"
-
-  # Guard: the reusable workflow and composite action must pin identical tool
-  # versions, since they duplicate the zizmor + actionlint steps.
-  digest-parity:
-    name: reusable/composite pin parity
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Assert pins match
+      # Guard: the reusable workflow and composite action must pin identical tool
+      # versions, since they duplicate the zizmor + actionlint steps.
+      - name: Assert reusable/composite pins match
         run: |
           set -euo pipefail
           reusable=.github/workflows/scan-github-actions.yml
@@ -94,3 +52,30 @@ jobs:
             fi
           done
           exit "$status"
+
+      # Positive: composite on a staged known-good workflow must pass. Covers
+      # composite wiring (zizmor + actionlint) and acts as the control for the
+      # negative case below, which uses the same staging mechanism.
+      - name: Stage clean fixture
+        run: cp testdata/fixtures/clean.yml .github/workflows/zz-clean-fixture.yml
+      - name: Run composite on clean fixture (expected to pass)
+        uses: ./actions/scan-github-actions
+
+      # Negative: swapping in a broken workflow must make the composite fail.
+      - name: Swap clean fixture for broken fixture
+        run: |
+          rm -f .github/workflows/zz-clean-fixture.yml
+          cp testdata/fixtures/broken.yml .github/workflows/zz-broken-fixture.yml
+      - name: Run composite on broken fixture (expected to fail)
+        id: scan
+        continue-on-error: true
+        uses: ./actions/scan-github-actions
+      - name: Assert the scan failed
+        env:
+          OUTCOME: ${{ steps.scan.outcome }}
+        run: |
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error::composite should have failed on the broken fixture (outcome=$OUTCOME)"
+            exit 1
+          fi
+          echo "composite correctly failed on the broken fixture"
