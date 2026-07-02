@@ -194,11 +194,11 @@ jobs:
       contents: read
 ```
 
-By default the scan covers the repo's own workflows and `.github/actions` (i.e. `.github/`), so vendored/third-party trees are not scanned. Repos that keep first-party actions elsewhere can widen the scope with the `paths` input.
+By default the scan covers the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow the scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own.
 
 Optional inputs:
 
-- `paths` (default: `.github/`) — whitespace-separated paths for zizmor to scan; set to `.` for the whole repo, or e.g. `.github actions` to also scan first-party actions under `actions/`
+- `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
 - `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
 

@@ -3,9 +3,9 @@ description: "Security scan for GitHub Actions workflows"
 
 inputs:
   paths:
-    description: "Whitespace-separated paths for zizmor to scan. Defaults to `.github/`, which covers the repo's own workflows and `.github/actions` while excluding vendored/third-party trees. Set to `.` to scan the whole repo, or add first-party action directories (e.g. `.github actions`)."
+    description: "Whitespace-separated paths for zizmor to scan. Defaults to `.` (the whole repo), so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Narrow it (e.g. to `.github/`) to exclude vendored or third-party trees."
     required: false
-    default: ".github/"
+    default: "."
   config:
     description: "Path to a zizmor configuration file for overrides"
     required: false
