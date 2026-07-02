@@ -77,6 +77,7 @@ steps:
 
 | Name | Description | Default | Available in |
 |------|-------------|---------|--------------|
+| `paths` | Whitespace-separated paths for zizmor to scan. Defaults to the repo's own workflows and `.github/actions`, excluding vendored/third-party trees. Set to `.` to scan the whole repo, or add first-party action directories (e.g. `.github actions`) | `.github/` | reusable + composite |
 | `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` | reusable + composite |
 | `actionlint` | Run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan | `true` | reusable + composite |
 | `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires a public repo, or a private/internal repo with GitHub Advanced Security, plus `security-events: write` on the calling job | `false` | composite only |

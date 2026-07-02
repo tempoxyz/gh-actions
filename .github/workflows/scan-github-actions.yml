@@ -3,6 +3,11 @@ name: Scan GitHub Actions
 on:
   workflow_call:
     inputs:
+      paths:
+        description: "Whitespace-separated paths for zizmor to scan. Defaults to `.github/`, which covers the repo's own workflows and `.github/actions` while excluding vendored/third-party trees. Set to `.` to scan the whole repo, or add first-party action directories (e.g. `.github actions`)."
+        required: false
+        type: string
+        default: ".github/"
       config:
         description: "Path to a zizmor configuration file for overrides"
         required: false
@@ -36,6 +41,7 @@ jobs:
       - name: Scan GitHub Actions
         uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
         with:
+          inputs: ${{ inputs.paths }}
           persona: regular
           online-audits: true
           advanced-security: false

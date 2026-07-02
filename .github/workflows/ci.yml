@@ -14,3 +14,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+    with:
+      # This repo authors composite actions under actions/, so widen the default
+      # `.github/` scope to also scan them.
+      paths: ".github actions"
