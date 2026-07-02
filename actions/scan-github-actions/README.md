@@ -79,4 +79,4 @@ steps:
 |------|-------------|---------|--------------|
 | `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` | reusable + composite |
 | `actionlint` | Run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan | `true` | reusable + composite |
-| `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires code scanning to be enabled for the repository | `false` | composite only |
+| `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires code scanning enabled for the repository and `security-events: write` on the calling job | `false` | composite only |
