@@ -1,0 +1,110 @@
+name: Reproducible Build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref (branch, tag, or full SHA) to build reproducibly."
+        required: false
+        type: string
+      binary-name:
+        description: "Name of the binary produced in out/ by scripts/reproducible-build.sh."
+        required: true
+        type: string
+      target:
+        description: "Target triple used in the output artifact name."
+        required: false
+        type: string
+        default: x86_64-unknown-linux-gnu
+      build-script:
+        description: "Path to the reproducible build script."
+        required: false
+        type: string
+        default: ./scripts/reproducible-build.sh
+      runs-on:
+        description: "Runner label for the build job."
+        required: false
+        type: string
+        default: depot-ubuntu-latest-16
+      retention-days:
+        description: "Artifact retention in days."
+        required: false
+        type: number
+        default: 7
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build & hash
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve version + artifact name
+        id: cfg
+        env:
+          BINARY_NAME: ${{ inputs.binary-name }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          SHORT=$(git rev-parse --short=7 HEAD)
+          SHA=$(git rev-parse HEAD)
+          echo "version=sha-$SHORT" >> "$GITHUB_OUTPUT"
+          echo "artifact=reproducible-hash-${SHA}" >> "$GITHUB_OUTPUT"
+          echo "bin=${BINARY_NAME}-sha-${SHORT}-${TARGET}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build reproducible binary
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if "$BUILD_SCRIPT"; then
+              exit 0
+            fi
+            echo "$BUILD_SCRIPT failed (attempt $attempt/3); retrying after backoff"
+            sleep $((attempt * 30))
+          done
+          echo "reproducible build failed after 3 attempts" >&2
+          exit 1
+
+      - name: Compute reproducible sha256
+        id: hash
+        env:
+          BIN: ${{ steps.cfg.outputs.bin }}
+          BINARY_NAME: ${{ inputs.binary-name }}
+          REF_INPUT: ${{ inputs.ref }}
+          VERSION: ${{ steps.cfg.outputs.version }}
+        run: |
+          set -euo pipefail
+          mv "out/${BINARY_NAME}" "$BIN"
+          shasum -a 256 "$BIN" > "${BIN}.reproducible.sha256"
+          echo "::group::Reproducible verification result"
+          echo "ref_input         = $REF_INPUT"
+          echo "commit            = $(git rev-parse HEAD)"
+          echo "version           = $VERSION"
+          echo "binary            = $BIN"
+          echo "SOURCE_DATE_EPOCH = $(git log -1 --pretty=%ct)"
+          cat "${BIN}.reproducible.sha256"
+          echo "::endgroup::"
+          echo "checksum=${BIN}.reproducible.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.cfg.outputs.artifact }}
+          path: ${{ steps.hash.outputs.checksum }}
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error

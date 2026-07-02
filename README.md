@@ -103,6 +103,54 @@ Optional input:
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
 - `advanced-security` (default: `false`) — upload SARIF to GitHub code scanning and disable workflow annotations
 
+### `reproducible-build`
+
+Builds a repository's byte-deterministic binary using `scripts/reproducible-build.sh`, writes a sha256 file, and uploads it as a short-lived artifact.
+
+```yaml
+name: Reproducible Build
+
+permissions: {}
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch, tag, or full SHA) to build reproducibly"
+        type: string
+        required: false
+        default: "main"
+
+concurrency:
+  group: reproducible-build-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  build:
+    uses: tempoxyz/gh-actions/.github/workflows/reproducible-build.yml@main
+    permissions:
+      contents: read
+    with:
+      ref: ${{ inputs.ref }}
+      binary-name: tempo
+```
+
+Caller workflows must grant `contents: read` on the reusable-workflow job so it can check out the repository being built.
+
+Required input:
+
+- `binary-name` — name of the binary produced in `out/`
+
+Optional inputs:
+
+- `ref` — Git ref to check out
+- `target` (default: `x86_64-unknown-linux-gnu`)
+- `build-script` (default: `./scripts/reproducible-build.sh`)
+- `runs-on` (default: `depot-ubuntu-latest-16`)
+- `retention-days` (default: `7`)
+
 ### `cargo-deny`
 
 Runs `cargo deny check all`.
