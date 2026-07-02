@@ -11,6 +11,8 @@ Both tools run together as a single check (a `Scan GitHub Actions` job in the re
 
 ## Usage
 
+> Examples use `@main` for brevity. In production, pin `tempoxyz/gh-actions` to a commit SHA — `@main` is mutable and will be flagged by this action's own unpinned-uses check. See [Versioning](../../README.md#versioning).
+
 ### Reusable workflow (recommended)
 
 ```yaml
@@ -84,8 +86,6 @@ steps:
     with:
       advanced-security: "true"
 ```
-
-> For strongest supply-chain hygiene, pin `tempoxyz/gh-actions` to a commit SHA rather than `@main` in consumer workflows.
 
 ## Inputs
 

@@ -20,7 +20,7 @@ Reusable GitHub Actions for the Tempo organization.
 
 ## Usage
 
-Reference actions using `tempoxyz/gh-actions/actions/<name>@main`:
+Reference actions using `tempoxyz/gh-actions/actions/<name>@main` (pin to a commit SHA in production — see [Versioning](#versioning)):
 
 ```yaml
 steps:
@@ -42,7 +42,13 @@ steps:
 
 ## Versioning
 
-Pin to `@main` for latest, or tag releases (`@v1`, `@v1.0.0`) for stability.
+Examples in this repo use `@main` for brevity. **For production, pin to a full commit SHA** — branch refs like `@main` are mutable, and the bundled `scan-github-actions` (zizmor) check flags unpinned uses. Add a trailing comment for readability:
+
+```yaml
+uses: tempoxyz/gh-actions/actions/setup-rust-build@<commit-sha> # main
+```
+
+This repo does not yet publish version tags; SHA pinning is the recommended stable reference.
 
 ## Reusable Workflows
 
@@ -56,7 +62,7 @@ Pin to `@main` for latest, or tag releases (`@v1`, `@v1.0.0`) for stability.
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 
-Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main`.
+Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main` (pin to a commit SHA in production — see [Versioning](#versioning)).
 
 ### `pr-audit`
 
