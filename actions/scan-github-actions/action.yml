@@ -10,6 +10,10 @@ inputs:
     description: "Upload SARIF to GitHub code scanning. Requires code scanning to be enabled for the repository."
     required: false
     default: "false"
+  actionlint:
+    description: "Run actionlint (workflow syntax, expression, and shellcheck/pyflakes checks) in addition to the zizmor security scan."
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -23,3 +27,9 @@ runs:
         annotations: ${{ inputs.advanced-security != 'true' }}
         config: ${{ inputs.config }}
         token: ${{ github.token }}
+
+    - name: Lint GitHub Actions
+      if: ${{ !cancelled() && inputs.actionlint == 'true' }}
+      uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+      with:
+        args: -color

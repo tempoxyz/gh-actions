@@ -16,7 +16,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
-| [`scan-github-actions`](actions/scan-github-actions) | Security scan for GitHub Actions workflows | any |
+| [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows | any |
 
 ## Usage
 
@@ -168,7 +168,9 @@ The reusable workflow checks out `tempoxyz/gh-actions` at `github.job_workflow_s
 
 ### `scan-github-actions`
 
-Security scan for GitHub Actions workflows (powered by [zizmor](https://github.com/zizmorcore/zizmor)). By default, findings appear as GitHub workflow annotations and in the workflow log; SARIF upload is disabled. Repositories with GitHub code scanning enabled can opt into SARIF upload with `advanced-security: true`.
+Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. By default, findings appear as GitHub workflow annotations and in the workflow log; SARIF upload is disabled and actionlint is enabled. Repositories with GitHub code scanning enabled can opt into SARIF upload with `advanced-security: true`, and the lint pass can be turned off with `actionlint: false`.
+
+zizmor and actionlint run together in a single **Scan GitHub Actions** check. By default that job is read-only (`actions: read`, `contents: read`); `security-events: write` is requested **only** when `advanced-security: true` (in which case the check is named **Scan GitHub Actions (SARIF)**).
 
 ```yaml
 name: Scan GitHub Actions
@@ -197,10 +199,11 @@ jobs:
       security-events: write
 ```
 
-Optional input:
+Optional inputs:
 
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
 - `advanced-security` (default: `false`) — upload SARIF to GitHub code scanning and disable workflow annotations
+- `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
 
 ### `reproducible-build`
 
