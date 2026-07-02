@@ -3,19 +3,45 @@ name: Pull request audit
 on:
   workflow_call:
     inputs:
-      required-label:
-        description: Label required to trigger audit event publishing.
+      audit-labels:
+        description: Newline-separated labels that trigger audit event publishing from pull_request labeled events.
         required: false
         type: string
-        default: cyclops
+        default: |
+          cyclops
+          agentic-audit
       branch:
-        description: Branch to audit (for manual workflow_dispatch runs).
+        description: Branch to audit when called from workflow_dispatch.
         required: false
         type: string
       pr-number:
-        description: PR number to audit (for manual workflow_dispatch runs).
+        description: PR number to audit when called from workflow_dispatch.
         required: false
         type: number
+      enable-comment-commands:
+        description: Whether issue_comment audit commands are handled.
+        required: false
+        type: boolean
+        default: true
+      comment-command-regex:
+        description: JavaScript regex source that matches allowed audit comment commands.
+        required: false
+        type: string
+        default: '^(?:@decofe\s+)?(?:cyclops\s+audit|derek\s+audit)\b'
+      permission-check-mode:
+        description: Use author_association checks or org membership API checks for comment commands.
+        required: false
+        type: string
+        default: association
+      organization:
+        description: Organization used when permission-check-mode is org.
+        required: false
+        type: string
+        default: tempoxyz
+      environment:
+        description: GitHub Environment name used to gate audit publishing jobs.
+        required: false
+        type: string
     secrets:
       EVENTS_KEY:
         required: true
@@ -23,15 +49,23 @@ on:
         required: true
       EVENTS_ARGS:
         required: true
+      DEREK_BENCH_TOKEN:
+        required: false
+
+permissions: {}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
     steps:
       - name: Resolve target
         id: target
         env:
           ACTOR: ${{ github.actor }}
+          AUDIT_LABELS: ${{ inputs.audit-labels }}
           BRANCH: ${{ inputs.branch }}
           EVENT_ACTION: ${{ github.event.action }}
           EVENT_NAME: ${{ github.event_name }}
@@ -40,13 +74,26 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
-          REQUIRED_LABEL: ${{ inputs.required-label }}
           TARGET_PR_NUMBER: ${{ inputs.pr-number }}
         run: |
           set -euo pipefail
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            if [[ "$EVENT_ACTION" != "labeled" || "$LABEL_NAME" != "$REQUIRED_LABEL" ]]; then
+            if [[ "$EVENT_ACTION" != "labeled" ]]; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            matched=false
+            while IFS= read -r label; do
+              [[ -n "$label" ]] || continue
+              if [[ "$LABEL_NAME" == "$label" ]]; then
+                matched=true
+                break
+              fi
+            done <<< "$AUDIT_LABELS"
+
+            if [[ "$matched" != "true" ]]; then
               echo "publish=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -81,14 +128,17 @@ jobs:
       - name: Publish event
         if: steps.target.outputs.publish == 'true'
         env:
+          EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
+          EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
+          EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
           REPO: ${{ github.repository }}
           TARGET_PR_NUMBER: ${{ steps.target.outputs.pr_number }}
           TARGET_SHA: ${{ steps.target.outputs.sha }}
         run: |
           set -euo pipefail
 
-          printf '%s' '${{ secrets.EVENTS_KEY }}' > "$RUNNER_TEMP/key"
-          printf '%s' '${{ secrets.EVENTS_CERT }}' > "$RUNNER_TEMP/cert"
+          printf '%s' "$EVENTS_KEY" > "$RUNNER_TEMP/key"
+          printf '%s' "$EVENTS_CERT" > "$RUNNER_TEMP/cert"
 
           jq -n \
             --arg repo "$REPO" \
@@ -102,8 +152,39 @@ jobs:
                 + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
               )
             }' \
-          | curl -sf -o /dev/null -X POST ${{ secrets.EVENTS_ARGS }} \
+          | curl -sf -o /dev/null -X POST $EVENTS_ARGS \
               -H "Content-Type: application/json" \
               --key "$RUNNER_TEMP/key" \
               --cert "$RUNNER_TEMP/cert" \
               -d @-
+
+  publish-comment:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    if: >-
+      inputs.enable-comment-commands &&
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout shared actions
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: tempoxyz/gh-actions
+          ref: ${{ github.job_workflow_sha }}
+          path: .gh-actions
+          persist-credentials: false
+
+      - name: Handle audit command
+        uses: ./.gh-actions/actions/pr-audit-comment
+        with:
+          command-regex: ${{ inputs.comment-command-regex }}
+          permission-check-mode: ${{ inputs.permission-check-mode }}
+          organization: ${{ inputs.organization }}
+          events-key: ${{ secrets.EVENTS_KEY }}
+          events-cert: ${{ secrets.EVENTS_CERT }}
+          events-args: ${{ secrets.EVENTS_ARGS }}
+          github-token: ${{ secrets.DEREK_BENCH_TOKEN || github.token }}

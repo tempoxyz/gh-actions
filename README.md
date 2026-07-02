@@ -11,6 +11,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy | tempo |
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign | tempo |
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems | dev-infra, tempo |
+| [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands | tempo, zones |
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
@@ -48,7 +49,7 @@ Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>
 
 ### `pr-audit`
 
-Publishes a `pr_audit` event when a pull request receives a configured label.
+Publishes a `pr_audit` event when a pull request receives a configured label or when an allowed user comments an audit command.
 
 ```yaml
 name: PR Audit
@@ -56,16 +57,53 @@ name: PR Audit
 on:
   pull_request:
     types: [labeled]
+  issue_comment:
+    types: [created]
 
 jobs:
   pr-audit:
     uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
-    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      environment: pr-audit
+    secrets:
+      EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
+      EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
+      EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
 ```
 
-Optional input:
+The default behavior matches the Tempo/Zones audit command surface:
 
-- `required-label` (default: `cyclops`)
+- labels: `cyclops`, `agentic-audit`
+- comments: `cyclops audit`, `@decofe cyclops audit`, `derek audit`
+- arguments: `fast`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `note="..."`
+
+Optional inputs:
+
+- `audit-labels` — newline-separated labels that trigger audit publishing
+- `enable-comment-commands` (default: `true`)
+- `comment-command-regex` — JavaScript regex source for accepted comment commands
+- `permission-check-mode` (default: `association`) — use `association` for `OWNER` / `MEMBER` / `COLLABORATOR` checks, or `org` for org membership API checks
+- `organization` (default: `tempoxyz`) — organization used by `permission-check-mode: org`
+- `environment` — GitHub Environment name, such as `pr-audit`, applied to both audit publishing jobs
+- `branch` / `pr-number` — target for ad-hoc `workflow_dispatch` callers
+
+The reusable workflow checks out `tempoxyz/gh-actions` at `github.job_workflow_sha`, so bundled actions match the pinned reusable workflow revision.
+
+Repos that need protected environment gates, such as Zones' current `environment: pr-audit` gate for `EVENTS_*`, should pass `environment: pr-audit` so the called jobs preserve that approval boundary. Repos that need the older Tempo org-membership token behavior can also set:
+
+```yaml
+with:
+  permission-check-mode: org
+secrets:
+  EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
+  EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
+  EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
+  DEREK_BENCH_TOKEN: ${{ secrets.DEREK_BENCH_TOKEN }}
+```
 
 ### `scan-github-actions`
 
