@@ -11,6 +11,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy | tempo |
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign | tempo |
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems | dev-infra, tempo |
+| [`label-pr`](actions/label-pr) | Copy eligible labels from a linked issue to a pull request | tempo, zones |
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
@@ -66,6 +67,30 @@ jobs:
 Optional input:
 
 - `required-label` (default: `cyclops`)
+
+### `label-prs`
+
+Labels newly opened pull requests by copying eligible labels from the issue linked in the pull request body.
+
+```yaml
+name: Label PRs
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  label-prs:
+    uses: tempoxyz/gh-actions/.github/workflows/label-prs.yml@main
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+```
+
+Caller workflows must grant these permissions on the reusable-workflow job. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels; `pull-requests: write` supports PR labeling permissions.
+
+The reusable workflow checks out `tempoxyz/gh-actions` at `github.job_workflow_sha`, so the bundled `label-pr` action matches the pinned reusable workflow revision.
 
 ### `scan-github-actions`
 
