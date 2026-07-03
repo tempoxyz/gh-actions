@@ -2,7 +2,7 @@
 
 Handles PR audit commands posted as issue comments and publishes `pr_audit` events.
 
-Because it needs `issues: write` and `pull-requests: write`, use it in a caller-owned job. This is the privileged counterpart to the read-only [`pr-audit`](../../README.md#pr-audit) reusable workflow.
+Because it needs `issues: write` and `pull-requests: read`, use it in a caller-owned job. This is the privileged counterpart to the read-only [`pr-audit`](../../README.md#pr-audit) reusable workflow.
 
 ```yaml
 on:
@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
+      pull-requests: read
     steps:
       - uses: tempoxyz/gh-actions/actions/pr-audit-comment@main
         with:

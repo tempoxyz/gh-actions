@@ -11,7 +11,6 @@ Reusable GitHub Actions for the Tempo organization.
 | [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy | tempo |
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign | tempo |
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems | dev-infra, tempo |
-| [`label-pr`](actions/label-pr) | Copy eligible labels from a linked issue to a pull request | tempo, zones |
 | [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands | tempo, zones |
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
@@ -101,7 +100,7 @@ Repos that need protected environment gates, such as Zones' `environment: pr-aud
 
 #### Comment-command audits (opt-in, privileged)
 
-Because comment handling needs `issues: write` and `pull-requests: write`, it lives in a caller-owned job that runs the [`pr-audit-comment`](actions/pr-audit-comment) composite action rather than in the read-only reusable workflow. Add it alongside the label job:
+Because comment handling needs `issues: write` and `pull-requests: read`, it lives in a caller-owned job that runs the [`pr-audit-comment`](actions/pr-audit-comment) composite action rather than in the read-only reusable workflow. Add it alongside the label job:
 
 ```yaml
 on:
@@ -129,7 +128,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
+      pull-requests: read
     steps:
       - uses: tempoxyz/gh-actions/actions/pr-audit-comment@main
         with:
@@ -166,12 +165,11 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
 ```
 
-Caller workflows must grant these permissions on the reusable-workflow job. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels; `pull-requests: write` supports PR labeling permissions.
+Caller workflows must grant these permissions on the reusable-workflow job. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels to the pull request through GitHub's Issues API.
 
-The reusable workflow checks out `tempoxyz/gh-actions` at `github.job_workflow_sha`, so the bundled `label-pr` action matches the pinned reusable workflow revision.
+The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`, so the bundled label script matches the pinned reusable workflow revision.
 
 ### `scan-github-actions`
 
