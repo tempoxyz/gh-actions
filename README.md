@@ -46,15 +46,57 @@ Pin to `@main` for latest, or tag releases (`@v1`, `@v1.0.0`) for stability.
 
 ## Reusable Workflows
 
+| Workflow | Description | Source |
+|----------|-------------|--------|
+| [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
+| [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
+| [`scan-github-actions`](#scan-github-actions) | Security scan for GitHub Actions workflows | any |
+| [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
+| [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | tempo, zones |
+| [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
+| [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
+
 Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main`.
 
 ### `pr-audit`
 
-Publishes a `pr_audit` event when a pull request receives a configured label or when an allowed user comments an audit command.
+Publishes a `pr_audit` event when a pull request receives a configured label. This reusable workflow is **read-only** (`contents: read`); comment-driven audit commands are handled separately by the [`pr-audit-comment`](actions/pr-audit-comment) composite action in a caller-owned job (see below).
+
+#### Label audits (read-only)
 
 ```yaml
 name: PR Audit
 
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  pr-audit:
+    uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
+    permissions:
+      contents: read
+    with:
+      environment: pr-audit
+    secrets:
+      EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
+      EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
+      EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
+```
+
+Optional inputs:
+
+- `required-label` — label that triggers audit publishing (default: `cyclops`)
+- `environment` — GitHub Environment name, such as `pr-audit`, used to gate audit publishing
+- `branch` / `pr-number` — target for ad-hoc `workflow_dispatch` callers
+
+Repos that need protected environment gates, such as Zones' `environment: pr-audit` gate for `EVENTS_*`, should pass `environment: pr-audit` so the publish job preserves that approval boundary.
+
+#### Comment-command audits (opt-in, privileged)
+
+Because comment handling needs `issues: write` and `pull-requests: write`, it lives in a caller-owned job that runs the [`pr-audit-comment`](actions/pr-audit-comment) composite action rather than in the read-only reusable workflow. Add it alongside the label job:
+
+```yaml
 on:
   pull_request:
     types: [labeled]
@@ -66,45 +108,39 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
     permissions:
       contents: read
-      issues: write
-      pull-requests: write
     with:
       environment: pr-audit
     secrets:
       EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
       EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
       EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
+
+  pr-audit-comment:
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    environment: pr-audit
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: tempoxyz/gh-actions/actions/pr-audit-comment@main
+        with:
+          command-regex: '^(?:@decofe\s+)?(?:cyclops\s+audit|derek\s+audit)\b'
+          permission-check-mode: association
+          organization: tempoxyz
+          events-key: ${{ secrets.EVENTS_KEY }}
+          events-cert: ${{ secrets.EVENTS_CERT }}
+          events-args: ${{ secrets.EVENTS_ARGS }}
+          github-token: ${{ github.token }}
 ```
 
-The default behavior matches the Tempo/Zones audit command surface:
+The comment surface supports:
 
-- labels: `cyclops`, `agentic-audit`
 - comments: `cyclops audit`, `@decofe cyclops audit`, `derek audit`
 - arguments: `fast`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `note="..."`
 
-Optional inputs:
-
-- `audit-labels` — newline-separated labels that trigger audit publishing
-- `enable-comment-commands` (default: `true`)
-- `comment-command-regex` — JavaScript regex source for accepted comment commands
-- `permission-check-mode` (default: `association`) — use `association` for `OWNER` / `MEMBER` / `COLLABORATOR` checks, or `org` for org membership API checks
-- `organization` (default: `tempoxyz`) — organization used by `permission-check-mode: org`
-- `environment` — GitHub Environment name, such as `pr-audit`, applied to both audit publishing jobs
-- `branch` / `pr-number` — target for ad-hoc `workflow_dispatch` callers
-
-The reusable workflow checks out `tempoxyz/gh-actions` at `github.job_workflow_sha`, so bundled actions match the pinned reusable workflow revision.
-
-Repos that need protected environment gates, such as Zones' current `environment: pr-audit` gate for `EVENTS_*`, should pass `environment: pr-audit` so the called jobs preserve that approval boundary. Repos that need the older Tempo org-membership token behavior can also set:
-
-```yaml
-with:
-  permission-check-mode: org
-secrets:
-  EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
-  EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
-  EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
-  DEREK_BENCH_TOKEN: ${{ secrets.DEREK_BENCH_TOKEN }}
-```
+Set `permission-check-mode: org` (with `organization`) for org-membership API checks, and pass `github-token: ${{ secrets.DEREK_BENCH_TOKEN }}` if you need the Tempo org token behavior.
 
 ### `label-prs`
 
