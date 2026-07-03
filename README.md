@@ -295,7 +295,7 @@ Optional inputs:
 
 ### `rust-build-binaries`
 
-Builds one or more Rust binaries and uploads each binary as an artifact. The default `cargo` mode matches Tempo's current build workflow; `build-command: just` matches Zones' current `just build "$BINARY" "--profile $PROFILE"` workflow.
+Builds one or more Rust binaries with `cargo build --bin <binary> --profile <profile>` and uploads each binary as an artifact.
 
 ```yaml
 name: Build binaries
@@ -324,20 +324,6 @@ jobs:
       binaries: |
         tempo
         tempo-sidecar
-```
-
-Zones can keep its `just` build entrypoint:
-
-```yaml
-jobs:
-  build:
-    uses: tempoxyz/gh-actions/.github/workflows/rust-build-binaries.yml@main
-    permissions:
-      contents: read
-    with:
-      profile: ${{ inputs.profile || 'dev' }}
-      build-command: just
-      binaries: |
         tempo-zone
 ```
 
@@ -348,7 +334,6 @@ Required input:
 Optional inputs:
 
 - `profile` (default: `dev`) — Cargo build profile; artifact paths use `debug` when profile is `dev`
-- `build-command` (default: `cargo`) — either `cargo` or `just`
 - `rust-toolchain` (default: `stable`)
 - `runs-on` (default: `depot-ubuntu-latest-16`)
 - `checkout-submodules` (default: `false`)

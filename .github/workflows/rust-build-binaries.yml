@@ -32,11 +32,6 @@ on:
         required: false
         type: string
         default: "false"
-      build-command:
-        description: Build command mode. Supported values are "cargo" and "just".
-        required: false
-        type: string
-        default: cargo
       artifact-path-template:
         description: Artifact path template. Use {profile-dir} and {binary} placeholders.
         required: false
@@ -103,28 +98,11 @@ jobs:
           RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       - uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
       - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-      - name: Install just
-        if: inputs.build-command == 'just'
-        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
-        with:
-          tool: just
-      - name: Validate build command
-        if: inputs.build-command != 'cargo' && inputs.build-command != 'just'
-        run: |
-          echo "::error::build-command must be either 'cargo' or 'just'"
-          exit 1
-      - name: Build with cargo
-        if: inputs.build-command == 'cargo'
+      - name: Build
         env:
           BINARY: ${{ matrix.binary }}
           PROFILE: ${{ inputs.profile }}
         run: cargo build --bin "$BINARY" --profile "$PROFILE"
-      - name: Build with just
-        if: inputs.build-command == 'just'
-        env:
-          BINARY: ${{ matrix.binary }}
-          PROFILE: ${{ inputs.profile }}
-        run: just build "$BINARY" "--profile $PROFILE"
       - name: Resolve artifact path
         id: artifact
         env:
