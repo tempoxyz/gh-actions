@@ -291,15 +291,6 @@ name: Build binaries
 
 on:
   workflow_dispatch:
-    inputs:
-      profile:
-        default: maxperf
-        description: Build profile
-        type: choice
-        options:
-          - release
-          - maxperf
-          - profiling
 
 permissions: {}
 
@@ -309,7 +300,7 @@ jobs:
     permissions:
       contents: read
     with:
-      profile: ${{ inputs.profile || 'dev' }}
+      profile: release
       binaries: |
         api-server
         worker
@@ -319,10 +310,10 @@ jobs:
 Required input:
 
 - `binaries` — newline-separated binary names to build and upload
+- `profile` — Cargo build profile; artifact paths use `debug` when profile is `dev`
 
 Optional inputs:
 
-- `profile` (default: `dev`) — Cargo build profile; artifact paths use `debug` when profile is `dev`
 - `rust-toolchain` (default: `stable`)
 - `runs-on` (default: `depot-ubuntu-latest-16`)
 - `checkout-submodules` (default: `false`)

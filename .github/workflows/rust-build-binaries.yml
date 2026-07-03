@@ -9,9 +9,8 @@ on:
         type: string
       profile:
         description: Cargo build profile.
-        required: false
+        required: true
         type: string
-        default: dev
       runs-on:
         description: Runner used for build jobs.
         required: false
