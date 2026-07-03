@@ -1,0 +1,26 @@
+name: Label PRs
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  label-prs:
+    name: Label PRs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout shared actions
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: tempoxyz/gh-actions
+          ref: ${{ github.job_workflow_sha }}
+          path: .gh-actions
+          persist-credentials: false
+
+      - name: Label PRs
+        uses: ./.gh-actions/actions/label-pr
