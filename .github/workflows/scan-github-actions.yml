@@ -3,27 +3,35 @@ name: Scan GitHub Actions
 on:
   workflow_call:
     inputs:
+      paths:
+        description: "Whitespace-separated paths for zizmor to scan. Defaults to `.` (the whole repo), so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Narrow it (e.g. to `.github/`) to exclude vendored or third-party trees."
+        required: false
+        type: string
+        default: "."
       config:
         description: "Path to a zizmor configuration file for overrides"
         required: false
         type: string
         default: ""
-      advanced-security:
-        description: "Upload SARIF to GitHub code scanning. Requires code scanning to be enabled for the repository."
+      actionlint:
+        description: "Run actionlint (workflow syntax, expression, and shellcheck/pyflakes checks) in addition to the zizmor security scan."
         required: false
         type: boolean
-        default: false
+        default: true
 
 permissions: {}
 
 jobs:
+  # zizmor annotations + actionlint. Both are read-only, so this workflow never
+  # requests `security-events: write` and callers only need read scopes.
+  # SARIF upload to code scanning is available via the composite action instead
+  # (see actions/scan-github-actions), which runs in a job you control.
   scan-github-actions:
     name: Scan GitHub Actions
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
-      security-events: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -33,9 +41,16 @@ jobs:
       - name: Scan GitHub Actions
         uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
         with:
+          inputs: ${{ inputs.paths }}
           persona: regular
           online-audits: true
-          advanced-security: ${{ inputs.advanced-security }}
-          annotations: ${{ !inputs.advanced-security }}
+          advanced-security: false
+          annotations: true
           config: ${{ inputs.config }}
           token: ${{ github.token }}
+
+      - name: Lint GitHub Actions
+        if: ${{ !cancelled() && inputs.actionlint }}
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+        with:
+          args: -color
