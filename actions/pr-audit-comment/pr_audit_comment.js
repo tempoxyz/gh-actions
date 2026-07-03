@@ -209,6 +209,10 @@ function publishEvent(payload) {
 }
 
 module.exports = async ({ github, context, core }) => {
+  // Only handle comments posted on pull requests; no-op on other events
+  // so a misconfigured caller job exits cleanly instead of crashing.
+  if (!context.payload.comment || !context.payload.issue?.pull_request) return;
+
   const body = context.payload.comment.body.trim();
   const commandRegex = process.env.COMMAND_REGEX;
   if (!new RegExp(commandRegex, "i").test(body)) return;
