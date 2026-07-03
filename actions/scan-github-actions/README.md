@@ -3,11 +3,11 @@
 Security scan **and** lint for GitHub Actions workflows. Runs two complementary tools:
 
 - [zizmor](https://github.com/zizmorcore/zizmor) — **security**: template injection, credential leakage, excessive permissions, unpinned actions, and more.
-- [actionlint](https://github.com/rhysd/actionlint) plus action metadata validation — **correctness/lint**: workflow syntax, `${{ }}` expression checks, and composite action metadata checks.
+- [actionlint](https://github.com/rhysd/actionlint) — **correctness/lint**: workflow syntax, `${{ }}` expression checks, and [shellcheck](https://github.com/koalaman/shellcheck)/[pyflakes](https://github.com/PyCQA/pyflakes) on `run:` scripts.
 
 Both tools run together as a single check (a `Scan GitHub Actions` job in the reusable workflow, or two steps in your own job with the composite action). The **reusable workflow is read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`. SARIF upload to GitHub code scanning is available **only via the composite action** (`advanced-security: true`), which runs in a job you control and where you grant `security-events: write`.
 
-**Opinionated defaults** — zizmor online audits enabled, GitHub workflow annotations enabled, regular persona, and SARIF upload disabled; workflow and composite action linting enabled. Disable the lint pass with `actionlint: false`. Override individual zizmor rules via a `zizmor.yml` config file, and actionlint rules via `.github/actionlint.yaml`, if needed.
+**Opinionated defaults** — zizmor online audits enabled, GitHub workflow annotations enabled, regular persona, and SARIF upload disabled; actionlint enabled. Disable the lint pass with `actionlint: false`. Override individual zizmor rules via a `zizmor.yml` config file, and actionlint rules via `.github/actionlint.yaml`, if needed.
 
 ## Usage
 
@@ -79,5 +79,5 @@ steps:
 |------|-------------|---------|--------------|
 | `paths` | Whitespace-separated paths for zizmor to scan. Defaults to the whole repo, covering first-party workflows and actions anywhere (e.g. across a monorepo). Narrow it (e.g. to `.github/`) to exclude vendored or third-party trees | `.` | reusable + composite |
 | `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` | reusable + composite |
-| `actionlint` | Run workflow linting and composite action metadata/script linting alongside the zizmor scan | `true` | reusable + composite |
+| `actionlint` | Run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan | `true` | reusable + composite |
 | `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires a public repo, or a private/internal repo with GitHub Advanced Security, plus `security-events: write` on the calling job | `false` | composite only |

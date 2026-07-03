@@ -2,9 +2,10 @@ name: Test
 
 # Integration tests for the scan-github-actions composite action. Distinct from
 # ci.yml (which already dogfoods the reusable read-only path on this repo): this
-# suite exercises the composite path with a clean fixture and a negative fixture.
-# The SARIF upload path is intentionally not exercised here so this repo's code
-# scanning stays clean.
+# suite exercises the composite path (untested by ci.yml) with a clean fixture
+# and a negative fixture, plus reusable/composite pin parity. The SARIF upload
+# path is intentionally not exercised here so this repo's code scanning stays
+# clean.
 #
 # All checks run in a single job so the suite surfaces as one status check
 # (`Test / integration`), which can be marked required in branch protection.
@@ -29,15 +30,28 @@ jobs:
         with:
           persist-credentials: false
 
-      # Guard: the reusable workflow should delegate to the local composite
-      # action so scan/lint behavior has a single source of truth.
-      - name: Assert reusable delegates to composite
+      # Guard: the reusable workflow and composite action must pin identical tool
+      # versions, since they duplicate the zizmor + actionlint steps.
+      - name: Assert reusable/composite pins match
         run: |
           set -euo pipefail
-          if ! grep -q 'uses: ./actions/scan-github-actions' .github/workflows/scan-github-actions.yml; then
-            echo "::error::reusable workflow must call ./actions/scan-github-actions"
-            exit 1
-          fi
+          reusable=.github/workflows/scan-github-actions.yml
+          composite=actions/scan-github-actions/action.yml
+          status=0
+          for tool in 'zizmorcore/zizmor-action' 'docker://rhysd/actionlint'; do
+            r=$(grep -oE "${tool}@[^ ]+" "$reusable" | sort -u || true)
+            c=$(grep -oE "${tool}@[^ ]+" "$composite" | sort -u || true)
+            if [ -z "$r" ] || [ -z "$c" ]; then
+              echo "::error::missing pin for ${tool} (reusable='$r' composite='$c')"
+              status=1
+            elif [ "$r" != "$c" ]; then
+              echo "::error::${tool} pin differs (reusable='$r' composite='$c')"
+              status=1
+            else
+              echo "ok: ${tool} -> $r"
+            fi
+          done
+          exit "$status"
 
       # Positive: composite on a staged known-good workflow must pass. Covers
       # composite wiring (zizmor + actionlint) and acts as the control for the
