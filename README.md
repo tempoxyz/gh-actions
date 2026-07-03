@@ -103,20 +103,48 @@ Optional input:
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
 - `advanced-security` (default: `false`) — upload SARIF to GitHub code scanning and disable workflow annotations
 
-### `cargo-deny`
+### `rust-lint`
 
-Runs `cargo deny check all`.
+Runs the common Rust lint set used by Tempo repositories: `cargo clippy`, `cargo fmt`, `typos`, and `cargo deny`.
+
+```yaml
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+
+permissions: {}
+
+jobs:
+  lint:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
+    permissions:
+      contents: read
+```
+
+Zones can use the shared workflow without the old Foundry setup:
 
 ```yaml
 jobs:
-  cargo-deny:
-    uses: tempoxyz/gh-actions/.github/workflows/cargo-deny.yml@main
+  lint:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
+    with:
+      rust-toolchain: nightly-2026-02-21
+    permissions:
+      contents: read
 ```
 
 Optional inputs:
 
-- `rust-toolchain` (default: `nightly`)
+- `rust-toolchain` (default: `nightly`) — used for clippy and fmt
+- `clippy-flags` (default: `--all-targets --all-features --locked`)
+- `fmt-flags` (default: `--all --check`)
 - `deny-flags` (default: `--all-features`)
+- `checkout-submodules` (default: `false`) — passed to clippy checkout only
+- `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
 
 ### `cargo-update-pr`
 
