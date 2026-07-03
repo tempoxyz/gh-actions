@@ -58,7 +58,8 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
 | [`scan-github-actions`](#scan-github-actions) | Security scan for GitHub Actions workflows | any |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
-| [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | tempo, zones |
+| [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
+| [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 
@@ -252,7 +253,7 @@ Optional inputs:
 
 ### `rust-lint`
 
-Runs the common Rust lint set used by Tempo repositories: `cargo clippy`, `cargo fmt`, `typos`, and `cargo deny`.
+Runs a common Rust lint set: `cargo clippy`, `cargo fmt`, `typos`, and `cargo deny`.
 
 ```yaml
 name: Lint
@@ -268,18 +269,6 @@ permissions: {}
 jobs:
   lint:
     uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
-    permissions:
-      contents: read
-```
-
-Zones can use the shared workflow without the old Foundry setup:
-
-```yaml
-jobs:
-  lint:
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
-    with:
-      rust-toolchain: nightly-2026-02-21
     permissions:
       contents: read
 ```
@@ -322,9 +311,9 @@ jobs:
     with:
       profile: ${{ inputs.profile || 'dev' }}
       binaries: |
-        tempo
-        tempo-sidecar
-        tempo-zone
+        api-server
+        worker
+        cli
 ```
 
 Required input:
