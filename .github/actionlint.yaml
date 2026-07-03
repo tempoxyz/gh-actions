@@ -1,0 +1,8 @@
+# actionlint does not know the `github.job_workflow_sha` context property
+# (it is missing from actionlint's schema even on the latest release), but it
+# is a valid GitHub context used by reusable workflows to check out shared
+# actions at the same ref. Ignore only that specific false positive.
+paths:
+  .github/workflows/label-prs.yml:
+    ignore:
+      - 'property "job_workflow_sha" is not defined'
