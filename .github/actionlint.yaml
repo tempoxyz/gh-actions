@@ -6,9 +6,3 @@ paths:
   .github/workflows/label-prs.yml:
     ignore:
       - 'property "job_workflow_sha" is not defined'
-  .github/workflows/rust-build-binaries.yml:
-    ignore:
-      - 'property "job_workflow_sha" is not defined'
-  .github/workflows/rust-lint.yml:
-    ignore:
-      - 'property "job_workflow_sha" is not defined'
