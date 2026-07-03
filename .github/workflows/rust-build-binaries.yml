@@ -1,0 +1,156 @@
+name: rust build binaries
+
+on:
+  workflow_call:
+    inputs:
+      binaries:
+        description: Newline-separated binary names to build and upload.
+        required: true
+        type: string
+      profile:
+        description: Cargo build profile.
+        required: false
+        type: string
+        default: dev
+      runs-on:
+        description: Runner used for build jobs.
+        required: false
+        type: string
+        default: depot-ubuntu-latest-16
+      timeout-minutes:
+        description: Timeout for each build job.
+        required: false
+        type: number
+        default: 60
+      rust-toolchain:
+        description: Rust toolchain used for builds.
+        required: false
+        type: string
+        default: stable
+      checkout-submodules:
+        description: Submodule checkout mode passed to actions/checkout.
+        required: false
+        type: string
+        default: "false"
+      build-command:
+        description: Build command mode. Supported values are "cargo" and "just".
+        required: false
+        type: string
+        default: cargo
+      artifact-path-template:
+        description: Artifact path template. Use {profile-dir} and {binary} placeholders.
+        required: false
+        type: string
+        default: target/{profile-dir}/{binary}
+      retention-days:
+        description: Artifact retention in days.
+        required: false
+        type: number
+        default: 7
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
+jobs:
+  resolve:
+    name: resolve binaries
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      binaries: ${{ steps.binaries.outputs.json }}
+    steps:
+      - name: Resolve binary matrix
+        id: binaries
+        env:
+          BINARIES: ${{ inputs.binaries }}
+        run: |
+          json=$(
+            printf '%s\n' "$BINARIES" \
+              | jq -R -s -c 'split("\n") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))'
+          )
+          if [ "$json" = "[]" ]; then
+            echo "::error::binaries input must contain at least one binary"
+            exit 1
+          fi
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ matrix.binary }})
+    needs: resolve
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      RUSTC_WRAPPER: sccache
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        binary: ${{ fromJSON(needs.resolve.outputs.binaries) }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          submodules: ${{ inputs.checkout-submodules }}
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+        env:
+          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      - uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - name: Install just
+        if: inputs.build-command == 'just'
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: just
+      - name: Validate build command
+        if: inputs.build-command != 'cargo' && inputs.build-command != 'just'
+        run: |
+          echo "::error::build-command must be either 'cargo' or 'just'"
+          exit 1
+      - name: Build with cargo
+        if: inputs.build-command == 'cargo'
+        env:
+          BINARY: ${{ matrix.binary }}
+          PROFILE: ${{ inputs.profile }}
+        run: cargo build --bin "$BINARY" --profile "$PROFILE"
+      - name: Build with just
+        if: inputs.build-command == 'just'
+        env:
+          BINARY: ${{ matrix.binary }}
+          PROFILE: ${{ inputs.profile }}
+        run: just build "$BINARY" "--profile $PROFILE"
+      - name: Resolve artifact path
+        id: artifact
+        env:
+          TEMPLATE: ${{ inputs.artifact-path-template }}
+          BINARY: ${{ matrix.binary }}
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          profile_dir="$PROFILE"
+          if [ "$profile_dir" = "dev" ]; then
+            profile_dir="debug"
+          fi
+          path="${TEMPLATE//\{profile-dir\}/$profile_dir}"
+          path="${path//\{profile\}/$PROFILE}"
+          path="${path//\{binary\}/$BINARY}"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: binary-upload
+        with:
+          if-no-files-found: error
+          name: ${{ matrix.binary }}
+          path: ${{ steps.artifact.outputs.path }}
+          retention-days: ${{ inputs.retention-days }}
+      - uses: cloudposse/github-action-matrix-outputs-write@ed06cf3a6bf23b8dce36d1cf0d63123885bb8375 # v1.0.0
+        id: out
+        with:
+          matrix-step-name: ${{ github.job }}
+          matrix-key: ${{ matrix.binary }}
+          outputs: |-
+            artifact_id: ${{ steps.binary-upload.outputs.artifact-id }}

@@ -293,6 +293,69 @@ Optional inputs:
 - `checkout-submodules` (default: `false`) — passed to clippy checkout only
 - `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
 
+### `rust-build-binaries`
+
+Builds one or more Rust binaries and uploads each binary as an artifact. The default `cargo` mode matches Tempo's current build workflow; `build-command: just` matches Zones' current `just build "$BINARY" "--profile $PROFILE"` workflow.
+
+```yaml
+name: Build binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        default: maxperf
+        description: Build profile
+        type: choice
+        options:
+          - release
+          - maxperf
+          - profiling
+
+permissions: {}
+
+jobs:
+  build:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-build-binaries.yml@main
+    permissions:
+      contents: read
+    with:
+      profile: ${{ inputs.profile || 'dev' }}
+      binaries: |
+        tempo
+        tempo-sidecar
+```
+
+Zones can keep its `just` build entrypoint:
+
+```yaml
+jobs:
+  build:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-build-binaries.yml@main
+    permissions:
+      contents: read
+    with:
+      profile: ${{ inputs.profile || 'dev' }}
+      build-command: just
+      binaries: |
+        tempo-zone
+```
+
+Required input:
+
+- `binaries` — newline-separated binary names to build and upload
+
+Optional inputs:
+
+- `profile` (default: `dev`) — Cargo build profile; artifact paths use `debug` when profile is `dev`
+- `build-command` (default: `cargo`) — either `cargo` or `just`
+- `rust-toolchain` (default: `stable`)
+- `runs-on` (default: `depot-ubuntu-latest-16`)
+- `checkout-submodules` (default: `false`)
+- `artifact-path-template` (default: `target/{profile-dir}/{binary}`)
+- `retention-days` (default: `7`)
+- `timeout-minutes` (default: `60`)
+
 ### `cargo-update-pr`
 
 Runs `cargo update` and opens or updates a pull request for `Cargo.lock`.
