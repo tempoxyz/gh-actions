@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ inputs.rust-toolchain }}
 
@@ -57,15 +57,18 @@ jobs:
         env:
           PR_TITLE: ${{ inputs.title }}
         run: |
-          export cargo_update_log="$(cat cargo_update.log)"
+          cargo_update_log="$(cat cargo_update.log)"
+          export cargo_update_log
 
-          echo "commit_message<<EOF" >> $GITHUB_OUTPUT
-          printf "%s\n\n%s\n" "$PR_TITLE" "$cargo_update_log" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "commit_message<<EOF"
+            printf "%s\n\n%s\n" "$PR_TITLE" "$cargo_update_log"
+            echo "EOF"
 
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$BODY" | envsubst >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            echo "body<<EOF"
+            echo "$BODY" | envsubst
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1

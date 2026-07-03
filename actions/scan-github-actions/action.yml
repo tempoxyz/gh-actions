@@ -2,6 +2,10 @@ name: "Scan GitHub Actions"
 description: "Security scan for GitHub Actions workflows"
 
 inputs:
+  paths:
+    description: "Whitespace-separated paths for zizmor to scan. Defaults to `.` (the whole repo), so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Narrow it (e.g. to `.github/`) to exclude vendored or third-party trees."
+    required: false
+    default: "."
   config:
     description: "Path to a zizmor configuration file for overrides"
     required: false
@@ -10,6 +14,10 @@ inputs:
     description: "Upload SARIF to GitHub code scanning. Requires code scanning to be enabled for the repository."
     required: false
     default: "false"
+  actionlint:
+    description: "Run actionlint (workflow syntax, expression, and shellcheck/pyflakes checks) in addition to the zizmor security scan."
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -17,9 +25,16 @@ runs:
     - name: Scan GitHub Actions
       uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
       with:
+        inputs: ${{ inputs.paths }}
         persona: regular
         online-audits: true
         advanced-security: ${{ inputs.advanced-security }}
         annotations: ${{ inputs.advanced-security != 'true' }}
         config: ${{ inputs.config }}
         token: ${{ github.token }}
+
+    - name: Lint GitHub Actions
+      if: ${{ !cancelled() && inputs.actionlint == 'true' }}
+      uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+      with:
+        args: -color

@@ -1,0 +1,22 @@
+# Minimal known-good workflow used by .github/workflows/test.yml to prove the
+# scan passes on valid input. Copied into .github/workflows at test time; never
+# committed there.
+name: clean fixture
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ok:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Print title safely
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: echo "title $TITLE"

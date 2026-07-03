@@ -16,11 +16,11 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
-| [`scan-github-actions`](actions/scan-github-actions) | Security scan for GitHub Actions workflows | any |
+| [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows | any |
 
 ## Usage
 
-Reference actions using `tempoxyz/gh-actions/actions/<name>@main`:
+Reference actions using `tempoxyz/gh-actions/actions/<name>@main` (pin to a commit SHA in production — see [Versioning](#versioning)):
 
 ```yaml
 steps:
@@ -42,7 +42,13 @@ steps:
 
 ## Versioning
 
-Pin to `@main` for latest, or tag releases (`@v1`, `@v1.0.0`) for stability.
+Examples in this repo use `@main` for brevity. **For production, pin to a full commit SHA** — branch refs like `@main` are mutable, and the bundled `scan-github-actions` (zizmor) check flags unpinned uses. Add a trailing comment for readability:
+
+```yaml
+uses: tempoxyz/gh-actions/actions/setup-rust-build@<commit-sha> # main
+```
+
+This repo does not yet publish version tags; SHA pinning is the recommended stable reference.
 
 ## Reusable Workflows
 
@@ -56,7 +62,7 @@ Pin to `@main` for latest, or tag releases (`@v1`, `@v1.0.0`) for stability.
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 
-Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main`.
+Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main` (pin to a commit SHA in production — see [Versioning](#versioning)).
 
 ### `pr-audit`
 
@@ -168,7 +174,9 @@ The reusable workflow checks out `tempoxyz/gh-actions` at `github.job_workflow_s
 
 ### `scan-github-actions`
 
-Security scan for GitHub Actions workflows (powered by [zizmor](https://github.com/zizmorcore/zizmor)). By default, findings appear as GitHub workflow annotations and in the workflow log; SARIF upload is disabled. Repositories with GitHub code scanning enabled can opt into SARIF upload with `advanced-security: true`.
+Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
+
+zizmor and actionlint run together in a single **Scan GitHub Actions** check. The reusable workflow is **read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`, so callers only grant read scopes. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
 ```yaml
 name: Scan GitHub Actions
@@ -181,26 +189,18 @@ on:
 jobs:
   scan:
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
-```
-
-Enable SARIF upload only in repositories with code scanning enabled:
-
-```yaml
-jobs:
-  scan:
-    uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
-    with:
-      advanced-security: true
     permissions:
       actions: read
       contents: read
-      security-events: write
 ```
 
-Optional input:
+By default the scan covers the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow the scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own.
 
+Optional inputs:
+
+- `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
-- `advanced-security` (default: `false`) — upload SARIF to GitHub code scanning and disable workflow annotations
+- `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
 
 ### `reproducible-build`
 

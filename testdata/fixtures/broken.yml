@@ -1,0 +1,20 @@
+# Intentionally broken workflow used by .github/workflows/test.yml to prove the
+# scan fails on bad input. NOT a real workflow — it is never committed under
+# .github/workflows, only copied there at test time.
+name: broken fixture
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  bad:
+    runs-on: ubuntu-latest
+    steps:
+      # zizmor: template injection from an untrusted context
+      - run: echo "title ${{ github.event.pull_request.title }}"
+      # zizmor: unpinned action reference
+      - uses: actions/checkout@v4
+      # actionlint/shellcheck: SC2086 unquoted variable
+      - run: echo $GITHUB_REF

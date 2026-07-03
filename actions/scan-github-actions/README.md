@@ -1,10 +1,17 @@
 # Scan GitHub Actions
 
-Security scan for GitHub Actions workflows using [zizmor](https://github.com/zizmorcore/zizmor). Detects template injection, credential leakage, excessive permissions, unpinned actions, and more.
+Security scan **and** lint for GitHub Actions workflows. Runs two complementary tools:
 
-**Opinionated defaults** — online audits enabled, GitHub workflow annotations enabled, regular persona, and SARIF upload disabled. Repositories with GitHub code scanning enabled can opt into SARIF upload with `advanced-security: true`. Override individual rules via a `zizmor.yml` config file if needed.
+- [zizmor](https://github.com/zizmorcore/zizmor) — **security**: template injection, credential leakage, excessive permissions, unpinned actions, and more.
+- [actionlint](https://github.com/rhysd/actionlint) — **correctness/lint**: workflow syntax, `${{ }}` expression checks, and [shellcheck](https://github.com/koalaman/shellcheck)/[pyflakes](https://github.com/PyCQA/pyflakes) on `run:` scripts.
+
+Both tools run together as a single check (a `Scan GitHub Actions` job in the reusable workflow, or two steps in your own job with the composite action). The **reusable workflow is read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`. SARIF upload to GitHub code scanning is available **only via the composite action** (`advanced-security: true`), which runs in a job you control and where you grant `security-events: write`.
+
+**Opinionated defaults** — zizmor online audits enabled, GitHub workflow annotations enabled, regular persona, and SARIF upload disabled; actionlint enabled. Disable the lint pass with `actionlint: false`. Override individual zizmor rules via a `zizmor.yml` config file, and actionlint rules via `.github/actionlint.yaml`, if needed.
 
 ## Usage
+
+> Examples use `@main` for brevity. In production, pin `tempoxyz/gh-actions` to a commit SHA — `@main` is mutable and will be flagged by this action's own unpinned-uses check. See [Versioning](../../README.md#versioning).
 
 ### Reusable workflow (recommended)
 
@@ -16,23 +23,28 @@ on:
     branches: [main]
   pull_request:
 
+permissions: {}
+
 jobs:
   scan:
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
+    permissions:
+      actions: read
+      contents: read
 ```
 
-Enable SARIF upload only in repositories with code scanning enabled:
+Disable the lint pass or point zizmor at a custom config:
 
 ```yaml
 jobs:
   scan:
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
     with:
-      advanced-security: true
+      actionlint: false            # zizmor only
+      config: .github/zizmor.yml   # zizmor rule overrides
     permissions:
       actions: read
       contents: read
-      security-events: write
 ```
 
 ### Composite action
@@ -61,11 +73,11 @@ steps:
       advanced-security: "true"
 ```
 
-> For strongest supply-chain hygiene, pin `tempoxyz/gh-actions` to a commit SHA rather than `@main` in consumer workflows.
-
 ## Inputs
 
-| Name | Description | Default |
-|------|-------------|---------|
-| `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` |
-| `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires code scanning to be enabled for the repository | `false` |
+| Name | Description | Default | Available in |
+|------|-------------|---------|--------------|
+| `paths` | Whitespace-separated paths for zizmor to scan. Defaults to the whole repo, covering first-party workflows and actions anywhere (e.g. across a monorepo). Narrow it (e.g. to `.github/`) to exclude vendored or third-party trees | `.` | reusable + composite |
+| `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` | reusable + composite |
+| `actionlint` | Run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan | `true` | reusable + composite |
+| `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires a public repo, or a private/internal repo with GitHub Advanced Security, plus `security-events: write` on the calling job | `false` | composite only |
