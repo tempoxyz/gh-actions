@@ -3,7 +3,7 @@ description: "Install Argo Workflows CLI"
 
 inputs:
   version:
-    description: "Argo CLI version (e.g., v3.6.2). Defaults to latest."
+    description: "Argo CLI version (e.g., v3.6.4). Mutable 'latest' is rejected."
     required: false
     default: "v3.6.4"
 
@@ -17,14 +17,21 @@ runs:
       run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
         set -euo pipefail
         if [ "$VERSION" = "latest" ]; then
-          URL="https://github.com/argoproj/argo-workflows/releases/latest/download/argo-linux-amd64.gz"
-        else
-          URL="https://github.com/argoproj/argo-workflows/releases/download/${VERSION}/argo-linux-amd64.gz"
+          echo "::error::setup-argo-cli requires an immutable Argo release tag, not 'latest'"
+          exit 1
         fi
+
+        ASSET="argo-linux-amd64.gz"
+        BASE_URL="https://github.com/argoproj/argo-workflows/releases/download/${VERSION}"
         INSTALL_DIR="${RUNNER_TEMP:-/tmp}/argo-bin"
         mkdir -p "$INSTALL_DIR"
-        curl -fsSL -o "$INSTALL_DIR/argo-linux-amd64.gz" "$URL"
-        gunzip "$INSTALL_DIR/argo-linux-amd64.gz"
+
+        curl -fsSL -o "$INSTALL_DIR/$ASSET" "$BASE_URL/$ASSET"
+        curl -fsSL -o "$INSTALL_DIR/argo-workflows-cli-checksums.txt" "$BASE_URL/argo-workflows-cli-checksums.txt"
+        grep "  $ASSET$" "$INSTALL_DIR/argo-workflows-cli-checksums.txt" > "$INSTALL_DIR/$ASSET.sha256"
+        (cd "$INSTALL_DIR" && sha256sum -c "$ASSET.sha256")
+
+        gunzip "$INSTALL_DIR/$ASSET"
         chmod +x "$INSTALL_DIR/argo-linux-amd64"
         mv "$INSTALL_DIR/argo-linux-amd64" "$INSTALL_DIR/argo"
         echo "$INSTALL_DIR" >> "$GITHUB_PATH"
