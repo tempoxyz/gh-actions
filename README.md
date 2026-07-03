@@ -84,6 +84,9 @@ jobs:
       contents: read
     with:
       environment: pr-audit
+      required-labels: |
+        cyclops
+        agentic-audit
     secrets:
       EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
       EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
@@ -92,7 +95,8 @@ jobs:
 
 Optional inputs:
 
-- `required-label` — label that triggers audit publishing (default: `cyclops`)
+- `required-label` — label that triggers audit publishing (default: `cyclops`); kept for compatibility
+- `required-labels` — comma or newline-separated labels that trigger audit publishing; when set, this overrides `required-label`
 - `environment` — GitHub Environment name, such as `pr-audit`, used to gate audit publishing
 - `branch` / `pr-number` — target for ad-hoc `workflow_dispatch` callers
 
@@ -122,7 +126,14 @@ jobs:
       EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
 
   pr-audit-comment:
-    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      (
+        startsWith(github.event.comment.body, 'cyclops audit') ||
+        startsWith(github.event.comment.body, '@decofe cyclops audit') ||
+        startsWith(github.event.comment.body, 'derek audit')
+      )
     runs-on: ubuntu-latest
     environment: pr-audit
     permissions:

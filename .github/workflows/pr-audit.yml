@@ -4,10 +4,14 @@ on:
   workflow_call:
     inputs:
       required-label:
-        description: Label required to trigger audit event publishing.
+        description: Label required to trigger audit event publishing. Kept for compatibility; use required-labels for multiple labels.
         required: false
         type: string
         default: cyclops
+      required-labels:
+        description: Comma or newline-separated labels that trigger audit event publishing.
+        required: false
+        type: string
       branch:
         description: Branch to audit when called from workflow_dispatch.
         required: false
@@ -42,6 +46,7 @@ jobs:
         env:
           ACTOR: ${{ github.actor }}
           REQUIRED_LABEL: ${{ inputs.required-label }}
+          REQUIRED_LABELS: ${{ inputs.required-labels }}
           BRANCH: ${{ inputs.branch }}
           EVENT_ACTION: ${{ github.event.action }}
           EVENT_NAME: ${{ github.event_name }}
@@ -55,7 +60,23 @@ jobs:
           set -euo pipefail
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            if [[ "$EVENT_ACTION" != "labeled" || "$LABEL_NAME" != "$REQUIRED_LABEL" ]]; then
+            labels="${REQUIRED_LABELS:-$REQUIRED_LABEL}"
+            if [[ "$EVENT_ACTION" != "labeled" ]]; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            matched=false
+            while IFS= read -r label; do
+              label="${label#"${label%%[![:space:]]*}"}"
+              label="${label%"${label##*[![:space:]]}"}"
+              if [[ -n "$label" && "$LABEL_NAME" == "$label" ]]; then
+                matched=true
+                break
+              fi
+            done < <(printf '%s\n' "$labels" | tr ',' '\n')
+
+            if [[ "$matched" != "true" ]]; then
               echo "publish=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
