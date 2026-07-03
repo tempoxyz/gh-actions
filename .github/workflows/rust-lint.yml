@@ -74,14 +74,16 @@ jobs:
         with:
           persist-credentials: false
           submodules: ${{ inputs.checkout-submodules }}
-      - name: Install Rust toolchain
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy
-          rustup default "$RUST_TOOLCHAIN"
-        env:
-          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
-      - uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
-      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: tempoxyz/gh-actions
+          ref: ${{ github.job_workflow_sha }}
+          path: .gh-actions
+          persist-credentials: false
+      - uses: ./.gh-actions/actions/setup-rust-build
+        with:
+          toolchain: ${{ inputs.rust-toolchain }}
+          components: clippy
       - name: Run clippy
         run: |
           # CLIPPY_FLAGS is a space-separated flag list that must word-split.
@@ -101,12 +103,18 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Install Rust toolchain
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt
-          rustup default "$RUST_TOOLCHAIN"
-        env:
-          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: tempoxyz/gh-actions
+          ref: ${{ github.job_workflow_sha }}
+          path: .gh-actions
+          persist-credentials: false
+      - uses: ./.gh-actions/actions/setup-rust-build
+        with:
+          toolchain: ${{ inputs.rust-toolchain }}
+          components: rustfmt
+          mold: "false"
+          sccache: "false"
       - name: Run fmt
         run: |
           # FMT_FLAGS is a space-separated flag list that must word-split.
@@ -137,10 +145,17 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Install Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: tempoxyz/gh-actions
+          ref: ${{ github.job_workflow_sha }}
+          path: .gh-actions
+          persist-credentials: false
+      - uses: ./.gh-actions/actions/setup-rust-build
+        with:
+          toolchain: stable
+          mold: "false"
+          sccache: "false"
       - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
         with:
           command: check all
