@@ -32,10 +32,10 @@ on:
         type: string
         default: "false"
       artifact-path-template:
-        description: Artifact path template. Use {profile-dir} and {binary} placeholders.
+        description: Artifact path template. Use {profile} and {binary} placeholders.
         required: false
         type: string
-        default: target/{profile-dir}/{binary}
+        default: target/{profile}/{binary}
       retention-days:
         description: Artifact retention in days.
         required: false
@@ -90,11 +90,9 @@ jobs:
           persist-credentials: false
           submodules: ${{ inputs.checkout-submodules }}
       - name: Install Rust toolchain
-        env:
-          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
-          rustup default "$RUST_TOOLCHAIN"
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ inputs.rust-toolchain }}
       - name: Install mold linker
         uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
       - name: Enable sccache
@@ -111,12 +109,7 @@ jobs:
           BINARY: ${{ matrix.binary }}
           PROFILE: ${{ inputs.profile }}
         run: |
-          profile_dir="$PROFILE"
-          if [ "$profile_dir" = "dev" ]; then
-            profile_dir="debug"
-          fi
-          path="${TEMPLATE//\{profile-dir\}/$profile_dir}"
-          path="${path//\{profile\}/$PROFILE}"
+          path="${TEMPLATE//\{profile\}/$PROFILE}"
           path="${path//\{binary\}/$BINARY}"
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -310,14 +310,14 @@ jobs:
 Required input:
 
 - `binaries` — newline-separated binary names to build and upload
-- `profile` — Cargo build profile; artifact paths use `debug` when profile is `dev`
+- `profile` — Cargo build profile
 
 Optional inputs:
 
 - `rust-toolchain` (default: `stable`)
 - `runs-on` (default: `depot-ubuntu-latest-16`)
 - `checkout-submodules` (default: `false`)
-- `artifact-path-template` (default: `target/{profile-dir}/{binary}`)
+- `artifact-path-template` (default: `target/{profile}/{binary}`)
 - `retention-days` (default: `7`)
 - `timeout-minutes` (default: `60`)
 
