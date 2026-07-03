@@ -1,0 +1,43 @@
+name: "PR Audit Comment"
+description: "Handle PR audit issue_comment commands and publish pr_audit events"
+
+inputs:
+  command-regex:
+    description: "JavaScript regex source that matches allowed audit comment commands"
+    required: true
+  permission-check-mode:
+    description: "Use author_association checks or org membership API checks"
+    required: true
+  organization:
+    description: "Organization used when permission-check-mode is org"
+    required: true
+  events-key:
+    description: "Client key used by the event endpoint"
+    required: true
+  events-cert:
+    description: "Client certificate used by the event endpoint"
+    required: true
+  events-args:
+    description: "curl arguments for the event endpoint"
+    required: true
+  github-token:
+    description: "GitHub token used for permission checks and status comments"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Handle audit command
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        COMMAND_REGEX: ${{ inputs.command-regex }}
+        PERMISSION_CHECK_MODE: ${{ inputs.permission-check-mode }}
+        ORGANIZATION: ${{ inputs.organization }}
+        EVENTS_KEY: ${{ inputs.events-key }}
+        EVENTS_CERT: ${{ inputs.events-cert }}
+        EVENTS_ARGS: ${{ inputs.events-args }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const handle = require(`${process.env.GITHUB_ACTION_PATH}/pr_audit_comment.js`)
+          await handle({github, context, core})
