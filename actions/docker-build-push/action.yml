@@ -67,7 +67,9 @@ runs:
     - name: Compute short SHA
       id: shortsha
       shell: bash
-      run: echo "shortsha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+      env:
+        GITHUB_SHA_IN: ${{ github.sha }}
+      run: echo "shortsha=${GITHUB_SHA_IN::7}" >> "$GITHUB_OUTPUT"
 
     - name: Compose tags
       id: tags

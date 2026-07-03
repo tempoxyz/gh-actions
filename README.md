@@ -16,7 +16,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
-| [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows | any |
+| [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint for GitHub Actions workflows and composite actions | any |
 
 ## Usage
 
@@ -174,7 +174,7 @@ The reusable workflow checks out `tempoxyz/gh-actions` at `github.job_workflow_s
 
 ### `scan-github-actions`
 
-Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
+Security scan and lint for GitHub Actions workflows and composite actions: [zizmor](https://github.com/zizmorcore/zizmor) for security, [actionlint](https://github.com/rhysd/actionlint) for workflow syntax and `run:` script correctness, plus action metadata validation under `actions/`. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
 
 zizmor and actionlint run together in a single **Scan GitHub Actions** check. The reusable workflow is **read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`, so callers only grant read scopes. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
@@ -200,7 +200,7 @@ Optional inputs:
 
 - `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
-- `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
+- `actionlint` (default: `true`) — run workflow linting and composite action metadata/script linting alongside the zizmor scan
 
 ### `reproducible-build`
 

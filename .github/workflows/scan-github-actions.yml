@@ -14,7 +14,7 @@ on:
         type: string
         default: ""
       actionlint:
-        description: "Run actionlint (workflow syntax, expression, and shellcheck/pyflakes checks) in addition to the zizmor security scan."
+        description: "Run actionlint for workflows and composite action linting in addition to the zizmor security scan."
         required: false
         type: boolean
         default: true
@@ -22,8 +22,9 @@ on:
 permissions: {}
 
 jobs:
-  # zizmor annotations + actionlint. Both are read-only, so this workflow never
-  # requests `security-events: write` and callers only need read scopes.
+  # Delegates to the composite action so scan/lint behavior has one source of
+  # truth. The reusable workflow remains read-only and never requests
+  # `security-events: write`.
   # SARIF upload to code scanning is available via the composite action instead
   # (see actions/scan-github-actions), which runs in a job you control.
   scan-github-actions:
@@ -39,18 +40,9 @@ jobs:
           persist-credentials: false
 
       - name: Scan GitHub Actions
-        uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        uses: ./actions/scan-github-actions
         with:
-          inputs: ${{ inputs.paths }}
-          persona: regular
-          online-audits: true
           advanced-security: false
-          annotations: true
+          actionlint: ${{ inputs.actionlint }}
           config: ${{ inputs.config }}
-          token: ${{ github.token }}
-
-      - name: Lint GitHub Actions
-        if: ${{ !cancelled() && inputs.actionlint }}
-        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
-        with:
-          args: -color
+          paths: ${{ inputs.paths }}
