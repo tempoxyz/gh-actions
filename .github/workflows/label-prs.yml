@@ -16,8 +16,8 @@ jobs:
       - name: Checkout shared actions
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: tempoxyz/gh-actions
-          ref: ${{ github.workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           path: .gh-actions
           persist-credentials: false
 
