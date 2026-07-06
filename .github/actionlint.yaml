@@ -1,2 +1,10 @@
-# Keep actionlint config in place for future repo-local suppressions.
-paths: {}
+# actionlint's schema (even on the latest release) does not yet know the
+# `job.workflow_sha` / `job.workflow_repository` context properties. They are
+# valid GitHub contexts used by a reusable workflow to check out the shared
+# actions from its own repo at its own ref (see the `job` context in
+# https://docs.github.com/en/actions/reference/workflows-and-actions/contexts).
+# Ignore only those specific false positives.
+paths:
+  .github/workflows/label-prs.yml:
+    ignore:
+      - 'property "workflow_(sha|repository)" is not defined'
