@@ -56,6 +56,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
 | [`scan-github-actions`](#scan-github-actions) | Security scan for GitHub Actions workflows | any |
+| [`check-action-pins`](#check-action-pins) | Validate that GitHub Actions and reusable workflows are pinned to full commit SHAs | any |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
@@ -228,6 +229,41 @@ Optional inputs:
 - `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
 - `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
+
+### `check-action-pins`
+
+Validates that GitHub Actions and reusable workflows are pinned to full commit
+SHAs using [pinact](https://github.com/suzuki-shunsuke/pinact). The workflow
+runs in check-only mode, so it never edits files or pushes commits.
+
+```yaml
+name: Check GitHub Actions Pins
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  check-action-pins:
+    uses: tempoxyz/gh-actions/.github/workflows/check-action-pins.yml@main
+    permissions:
+      contents: read
+```
+
+By default, the workflow reads `.pinact.yaml` from the caller repository when it
+exists. That lets each repo keep local exceptions, such as allowing
+`dtolnay/rust-toolchain`, without weakening the shared workflow.
+
+Optional inputs:
+
+- `config` (default: `.pinact.yaml`) — path to the caller repo's pinact configuration file
+- `no-api` (default: `false`) — perform offline full-SHA validation without API-based comment or minimum-age verification
+- `verify-comment` (default: `false`) — require/verify version comments on SHA-pinned actions
+- `verify-min-age` (default: `true`) — verify current pins against configured minimum-age rules
+- `runs-on`, `timeout-minutes`
 
 ### `reproducible-build`
 

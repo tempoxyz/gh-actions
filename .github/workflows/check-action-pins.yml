@@ -1,0 +1,72 @@
+name: Check GitHub Actions pins
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: Path to a pinact configuration file.
+        required: false
+        type: string
+        default: .pinact.yaml
+      no-api:
+        description: Perform offline validation without API-based comment or minimum-age verification.
+        required: false
+        type: boolean
+        default: false
+      verify-comment:
+        description: Verify that pinned actions include version comments.
+        required: false
+        type: boolean
+        default: false
+      verify-min-age:
+        description: Verify current pins against the configured minimum age.
+        required: false
+        type: boolean
+        default: true
+      runs-on:
+        description: Runner used for pin validation.
+        required: false
+        type: string
+        default: ubuntu-latest
+      timeout-minutes:
+        description: Timeout for the pin validation job.
+        required: false
+        type: number
+        default: 10
+
+permissions: {}
+
+jobs:
+  check-action-pins:
+    name: Check GitHub Actions pins
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve pinact config
+        id: pinact-config
+        env:
+          CONFIG: ${{ inputs.config }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$CONFIG" && -f "$CONFIG" ]]; then
+            echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
+          else
+            echo "config=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check action pins
+        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        with:
+          config: ${{ steps.pinact-config.outputs.config }}
+          fix: "false"
+          github_token: ${{ github.token }}
+          no_api: ${{ inputs.no-api }}
+          verify: ${{ !inputs.no-api && inputs.verify-comment }}
+          verify_min_age: ${{ !inputs.no-api && inputs.verify-min-age }}
