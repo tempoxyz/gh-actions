@@ -1,0 +1,59 @@
+name: Workflow validation
+
+on:
+  workflow_call:
+    inputs:
+      paths:
+        description: Whitespace-separated paths for zizmor to scan.
+        required: false
+        type: string
+        default: "."
+      zizmor-config:
+        description: Path to a zizmor configuration file for overrides.
+        required: false
+        type: string
+        default: ""
+      actionlint:
+        description: Run actionlint in addition to the zizmor security scan.
+        required: false
+        type: boolean
+        default: true
+      pin-config:
+        description: Path to a pinact configuration file.
+        required: false
+        type: string
+        default: .pinact.yaml
+      pin-no-api:
+        description: Check full-length SHA pins without API-dependent comment or minimum-age verification.
+        required: false
+        type: boolean
+        default: false
+      verify-pin-comments:
+        description: Verify that pinned actions include version comments.
+        required: false
+        type: boolean
+        default: false
+      verify-pin-min-age:
+        description: Verify current pins against the configured minimum age.
+        required: false
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  workflow-validation:
+    name: Workflow validation
+    uses: ./.github/workflows/scan-github-actions.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      paths: ${{ inputs.paths }}
+      config: ${{ inputs.zizmor-config }}
+      actionlint: ${{ inputs.actionlint }}
+      pinact: true
+      pin-config: ${{ inputs.pin-config }}
+      pin-no-api: ${{ inputs.pin-no-api }}
+      verify-pin-comments: ${{ inputs.verify-pin-comments }}
+      verify-pin-min-age: ${{ inputs.verify-pin-min-age }}

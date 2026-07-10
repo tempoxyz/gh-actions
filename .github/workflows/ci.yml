@@ -8,11 +8,9 @@ on:
 permissions: {}
 
 jobs:
-  scan-github-actions:
-    name: Scan GitHub Actions
-    uses: ./.github/workflows/scan-github-actions.yml
+  workflow-validation:
+    name: Workflow validation
+    uses: ./.github/workflows/workflow-validation.yml
     permissions:
       actions: read
       contents: read
-    with:
-      pinact: true

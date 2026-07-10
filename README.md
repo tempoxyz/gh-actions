@@ -55,6 +55,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 |----------|-------------|--------|
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
+| [`workflow-validation`](#workflow-validation) | Shared GitHub Actions security baseline: zizmor, actionlint, and pin policy | any |
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
@@ -198,6 +199,44 @@ jobs:
 Caller workflows must grant these permissions on the reusable-workflow job. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels to the pull request through GitHub's Issues API.
 
 The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`, so the bundled label script matches the pinned reusable workflow revision.
+
+### `workflow-validation`
+
+Runs the default GitHub Actions security baseline for a repository:
+
+- `scan-github-actions` for zizmor security checks and actionlint workflow linting
+- pinact policy enabled by default for minimum release age and version comments
+
+Use this as the default rollout target for repos that want the standard Tempo
+workflow hardening checks.
+
+```yaml
+name: Workflow Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  workflow-validation:
+    uses: tempoxyz/gh-actions/.github/workflows/workflow-validation.yml@main
+    permissions:
+      actions: read
+      contents: read
+```
+
+Optional inputs:
+
+- `paths` (default: `.`) — whitespace-separated paths for zizmor to scan
+- `zizmor-config` — path to a zizmor configuration file for overrides
+- `actionlint` (default: `true`) — run actionlint alongside zizmor
+- `pin-config` (default: `.pinact.yaml`) — path to the caller repo's pinact configuration file
+- `pin-no-api` (default: `false`) — check full-length SHA pins without API calls; disables comment and minimum-age verification
+- `verify-pin-comments` (default: `false`) — require/verify version comments on SHA-pinned actions
+- `verify-pin-min-age` (default: `true`) — verify current pins against configured minimum-age rules
 
 ### `scan-github-actions`
 
