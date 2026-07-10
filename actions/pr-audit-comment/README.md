@@ -45,3 +45,8 @@ Supported arguments:
 - `run-label=LABEL`
 - `dry-run`
 - `note="..."`
+
+In `association` permission mode, a trusted commenter who is also the PR author
+is accepted by matching their GitHub user IDs. Different commenters still
+require the PR author's fetched association to be `OWNER`, `MEMBER`, or
+`COLLABORATOR`.

@@ -87,7 +87,8 @@ function parseArgs(body, commandRegex) {
 
 async function checkPermission({ github, context, core }) {
   const mode = process.env.PERMISSION_CHECK_MODE;
-  const commenter = context.payload.comment.user.login;
+  const commenterUser = context.payload.comment.user;
+  const commenter = commenterUser.login;
 
   const { data: pr } = await github.rest.pulls.get({
     owner: context.repo.owner,
@@ -103,7 +104,11 @@ async function checkPermission({ github, context, core }) {
       return null;
     }
 
-    if (!allowed.has(pr.author_association)) {
+    // The issue_comment payload can identify a private org member even when the
+    // repo-scoped token reports that same user as CONTRIBUTOR on pulls.get.
+    // A trusted commenter who authored the PR has already satisfied both checks.
+    const commenterIsPrAuthor = commenterUser.id != null && commenterUser.id === pr.user?.id;
+    if (!commenterIsPrAuthor && !allowed.has(pr.author_association)) {
       core.setFailed(`PR author @${pr.user.login} is not allowed to trigger Cyclops audits (${pr.author_association})`);
       return null;
     }
@@ -208,7 +213,7 @@ function publishEvent(payload) {
   }
 }
 
-module.exports = async ({ github, context, core }) => {
+async function handle({ github, context, core }) {
   // Only handle comments posted on pull requests; no-op on other events
   // so a misconfigured caller job exits cleanly instead of crashing.
   if (!context.payload.comment || !context.payload.issue?.pull_request) return;
@@ -273,4 +278,7 @@ module.exports = async ({ github, context, core }) => {
     });
     core.setFailed(error.message);
   }
-};
+}
+
+handle.checkPermission = checkPermission;
+module.exports = handle;

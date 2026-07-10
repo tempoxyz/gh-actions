@@ -1,11 +1,10 @@
 name: Test
 
-# Integration tests for the scan-github-actions composite action. Distinct from
-# ci.yml (which already dogfoods the reusable read-only path on this repo): this
-# suite exercises the composite path (untested by ci.yml) with a clean fixture
-# and a negative fixture, plus reusable/composite pin parity. The SARIF upload
-# path is intentionally not exercised here so this repo's code scanning stays
-# clean.
+# Tests for JavaScript-backed actions and the scan-github-actions composite.
+# Distinct from ci.yml (which already dogfoods the reusable read-only path on
+# this repo), this suite exercises the composite path with a clean fixture and a
+# negative fixture, plus reusable/composite pin parity. The SARIF upload path is
+# intentionally not exercised here so this repo's code scanning stays clean.
 #
 # All checks run in a single job so the suite surfaces as one status check
 # (`Test / integration`), which can be marked required in branch protection.
@@ -29,6 +28,9 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+
+      - name: Test PR audit comment permissions
+        run: node --test actions/pr-audit-comment/pr_audit_comment.test.js
 
       # Guard: the reusable workflow and composite action must pin identical tool
       # versions, since they duplicate the zizmor + actionlint steps.
