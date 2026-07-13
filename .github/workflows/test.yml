@@ -30,6 +30,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Test PR audit comment authorization
+        run: node --test actions/pr-audit-comment/pr_audit_comment.test.js
+
       # Guard: the reusable workflow and composite action must pin identical tool
       # versions, since they duplicate the zizmor + actionlint steps.
       - name: Assert reusable/composite pins match
