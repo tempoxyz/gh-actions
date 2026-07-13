@@ -175,7 +175,30 @@ function buildSummary(defaults) {
   return `**Config:** ${summaryParts.join(", ")}`;
 }
 
+function parseEventsArgs(value) {
+  const parser = [
+    "import json",
+    "import shlex",
+    "import sys",
+    "print(json.dumps(shlex.split(sys.stdin.read())))",
+  ].join("\n");
+  const result = spawnSync("python3", ["-c", parser], {
+    input: value || "",
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    throw new Error(`Invalid EVENTS_ARGS: ${result.stderr || result.stdout}`);
+  }
+
+  const args = JSON.parse(result.stdout);
+  if (args.length === 0) {
+    throw new Error("EVENTS_ARGS must contain at least one curl argument");
+  }
+  return args;
+}
+
 function publishEvent(payload) {
+  const eventsArgs = parseEventsArgs(process.env.EVENTS_ARGS);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-"));
   const keyPath = path.join(tmp, "key");
   const certPath = path.join(tmp, "cert");
@@ -184,22 +207,22 @@ function publishEvent(payload) {
   fs.writeFileSync(certPath, process.env.EVENTS_CERT);
   fs.writeFileSync(payloadPath, JSON.stringify(payload));
 
-  const script = [
-    "set -euo pipefail",
-    'curl -sf -o /dev/null -X POST $EVENTS_ARGS',
-    '  -H "Content-Type: application/json"',
-    '  --key "$KEY_PATH"',
-    '  --cert "$CERT_PATH"',
-    '  -d @"$PAYLOAD_PATH"',
-  ].join(" \\\n");
-
-  const result = spawnSync("bash", ["-c", script], {
-    env: {
-      ...process.env,
-      KEY_PATH: keyPath,
-      CERT_PATH: certPath,
-      PAYLOAD_PATH: payloadPath,
-    },
+  const result = spawnSync("curl", [
+    "-sf",
+    "-o",
+    "/dev/null",
+    "-X",
+    "POST",
+    ...eventsArgs,
+    "-H",
+    "Content-Type: application/json",
+    "--key",
+    keyPath,
+    "--cert",
+    certPath,
+    "-d",
+    `@${payloadPath}`,
+  ], {
     encoding: "utf8",
   });
   fs.rmSync(tmp, { recursive: true, force: true });

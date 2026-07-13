@@ -123,8 +123,24 @@ jobs:
           printf '%s' "$EVENTS_KEY" > "$RUNNER_TEMP/key"
           printf '%s' "$EVENTS_CERT" > "$RUNNER_TEMP/cert"
 
-          # EVENTS_ARGS is a space-separated argument list that must word-split.
-          # shellcheck disable=SC2086
+          events_args=()
+          while IFS= read -r -d '' arg; do
+            events_args+=("$arg")
+          done < <(
+            python3 - <<'PY'
+          import os
+          import shlex
+          import sys
+
+          for arg in shlex.split(os.environ["EVENTS_ARGS"]):
+              sys.stdout.buffer.write(arg.encode() + b"\0")
+          PY
+          )
+          if (( ${#events_args[@]} == 0 )); then
+            echo "::error::EVENTS_ARGS must contain at least one curl argument"
+            exit 1
+          fi
+
           jq -n \
             --arg repo "$REPO" \
             --arg sha "$TARGET_SHA" \
@@ -137,7 +153,7 @@ jobs:
                 + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
               )
             }' \
-          | curl -sf -o /dev/null -X POST $EVENTS_ARGS \
+          | curl -sf -o /dev/null -X POST "${events_args[@]}" \
               -H "Content-Type: application/json" \
               --key "$RUNNER_TEMP/key" \
               --cert "$RUNNER_TEMP/cert" \
