@@ -30,9 +30,9 @@ jobs:
 ```
 
 In `association` mode, PR authors must normally be an owner, member, or
-collaborator. PRs whose head branch belongs to the base repository are also
-allowed so repository-local contributor and automation branches continue to
-work.
+collaborator. Set `allow-same-repository-author: "true"` to also allow PRs whose
+head branch belongs to the base repository, for repository-local contributor
+and automation branches.
 
 For `permission-check-mode: org`, `permission-token` can provide a token with
 organization membership access independently from `github-token`, which

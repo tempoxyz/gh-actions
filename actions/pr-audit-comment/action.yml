@@ -26,6 +26,10 @@ inputs:
   permission-token:
     description: "Optional GitHub token used only for org membership checks"
     required: false
+  allow-same-repository-author:
+    description: "Allow low-association PR authors when the head is in the base repository"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -36,6 +40,7 @@ runs:
         COMMAND_REGEX: ${{ inputs.command-regex }}
         PERMISSION_CHECK_MODE: ${{ inputs.permission-check-mode }}
         PERMISSION_TOKEN: ${{ inputs.permission-token }}
+        ALLOW_SAME_REPOSITORY_AUTHOR: ${{ inputs.allow-same-repository-author }}
         ORGANIZATION: ${{ inputs.organization }}
         EVENTS_KEY: ${{ inputs.events-key }}
         EVENTS_CERT: ${{ inputs.events-cert }}
@@ -44,4 +49,4 @@ runs:
         github-token: ${{ inputs.github-token }}
         script: |
           const handle = require(`${process.env.GITHUB_ACTION_PATH}/pr_audit_comment.js`)
-          await handle({github, context, core})
+          await handle({github, context, core, getOctokit})

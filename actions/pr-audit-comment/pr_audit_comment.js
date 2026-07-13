@@ -85,7 +85,7 @@ function parseArgs(body, commandRegex) {
   return { defaults, errors };
 }
 
-async function checkPermission({ github, context, core }) {
+async function checkPermission({ github, context, core, getOctokit }) {
   const mode = process.env.PERMISSION_CHECK_MODE;
   const commenter = context.payload.comment.user.login;
 
@@ -103,13 +103,12 @@ async function checkPermission({ github, context, core }) {
       return null;
     }
 
-    if (!allowed.has(pr.author_association)) {
-      const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
-      const headRepo = pr.head.repo?.full_name;
-      if (headRepo !== baseRepo) {
-        core.setFailed(`PR author @${pr.user.login} is not allowed to trigger Cyclops audits (${pr.author_association})`);
-        return null;
-      }
+    const allowSameRepositoryAuthor = process.env.ALLOW_SAME_REPOSITORY_AUTHOR === "true";
+    const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
+    const sameRepository = pr.head.repo?.full_name === baseRepo;
+    if (!allowed.has(pr.author_association) && !(allowSameRepositoryAuthor && sameRepository)) {
+      core.setFailed(`PR author @${pr.user.login} is not allowed to trigger Cyclops audits (${pr.author_association})`);
+      return null;
     }
     return pr;
   }
@@ -121,14 +120,11 @@ async function checkPermission({ github, context, core }) {
 
   const org = process.env.ORGANIZATION;
   const permissionToken = process.env.PERMISSION_TOKEN;
+  const permissionGithub = permissionToken ? getOctokit(permissionToken) : github;
   const checkMembership = async (username) => {
     try {
-      const request = { org, username };
-      if (permissionToken) {
-        request.headers = { authorization: `Bearer ${permissionToken}` };
-      }
-      const { status } = await github.rest.orgs.checkMembershipForUser(request);
-      return status === 204 || status === 302;
+      const { status } = await permissionGithub.rest.orgs.checkMembershipForUser({ org, username });
+      return status === 204;
     } catch {
       return false;
     }
@@ -202,13 +198,23 @@ function publishEvent(payload) {
     '  -d @"$PAYLOAD_PATH"',
   ].join(" \\\n");
 
+  const env = {
+    PATH: process.env.PATH,
+    EVENTS_ARGS: process.env.EVENTS_ARGS,
+    KEY_PATH: keyPath,
+    CERT_PATH: certPath,
+    PAYLOAD_PATH: payloadPath,
+  };
+  for (const name of [
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE",
+  ]) {
+    if (process.env[name] !== undefined) env[name] = process.env[name];
+  }
+
   const result = spawnSync("bash", ["-c", script], {
-    env: {
-      ...process.env,
-      KEY_PATH: keyPath,
-      CERT_PATH: certPath,
-      PAYLOAD_PATH: payloadPath,
-    },
+    env,
     encoding: "utf8",
   });
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -217,7 +223,7 @@ function publishEvent(payload) {
   }
 }
 
-module.exports = async ({ github, context, core }) => {
+module.exports = async ({ github, context, core, getOctokit }) => {
   // Only handle comments posted on pull requests; no-op on other events
   // so a misconfigured caller job exits cleanly instead of crashing.
   if (!context.payload.comment || !context.payload.issue?.pull_request) return;
@@ -226,7 +232,7 @@ module.exports = async ({ github, context, core }) => {
   const commandRegex = process.env.COMMAND_REGEX;
   if (!new RegExp(commandRegex, "i").test(body)) return;
 
-  const pr = await checkPermission({ github, context, core });
+  const pr = await checkPermission({ github, context, core, getOctokit });
   if (!pr) return;
 
   const { defaults, errors } = parseArgs(body, commandRegex);
