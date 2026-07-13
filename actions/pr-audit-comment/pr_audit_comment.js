@@ -104,8 +104,12 @@ async function checkPermission({ github, context, core }) {
     }
 
     if (!allowed.has(pr.author_association)) {
-      core.setFailed(`PR author @${pr.user.login} is not allowed to trigger Cyclops audits (${pr.author_association})`);
-      return null;
+      const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
+      const headRepo = pr.head.repo?.full_name;
+      if (headRepo !== baseRepo) {
+        core.setFailed(`PR author @${pr.user.login} is not allowed to trigger Cyclops audits (${pr.author_association})`);
+        return null;
+      }
     }
     return pr;
   }
@@ -116,9 +120,14 @@ async function checkPermission({ github, context, core }) {
   }
 
   const org = process.env.ORGANIZATION;
+  const permissionToken = process.env.PERMISSION_TOKEN;
   const checkMembership = async (username) => {
     try {
-      const { status } = await github.rest.orgs.checkMembershipForUser({ org, username });
+      const request = { org, username };
+      if (permissionToken) {
+        request.headers = { authorization: `Bearer ${permissionToken}` };
+      }
+      const { status } = await github.rest.orgs.checkMembershipForUser(request);
       return status === 204 || status === 302;
     } catch {
       return false;

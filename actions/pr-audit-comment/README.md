@@ -29,6 +29,23 @@ jobs:
           github-token: ${{ github.token }}
 ```
 
+In `association` mode, PR authors must normally be an owner, member, or
+collaborator. PRs whose head branch belongs to the base repository are also
+allowed so repository-local contributor and automation branches continue to
+work.
+
+For `permission-check-mode: org`, `permission-token` can provide a token with
+organization membership access independently from `github-token`, which
+continues to handle PR reads and status comments. If `permission-token` is not
+set, membership checks use `github-token` as before.
+
+```yaml
+          permission-check-mode: org
+          organization: tempoxyz
+          github-token: ${{ secrets.DEREK_BENCH_TOKEN }}
+          permission-token: ${{ secrets.DEREK_BENCH_ACK_TOKEN }}
+```
+
 Supported default commands:
 
 - `cyclops audit`

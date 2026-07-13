@@ -157,7 +157,21 @@ The comment surface supports:
 - comments: `cyclops audit`, `@decofe cyclops audit`, `derek audit`
 - arguments: `fast`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `note="..."`
 
-Set `permission-check-mode: org` (with `organization`) for org-membership API checks, and pass `github-token: ${{ secrets.DEREK_BENCH_TOKEN }}` if you need the Tempo org token behavior.
+Set `permission-check-mode: org` (with `organization`) for org-membership API
+checks. Use `permission-token` when those checks need a token distinct from the
+one used for PR reads and status comments:
+
+```yaml
+          permission-check-mode: org
+          organization: tempoxyz
+          github-token: ${{ secrets.DEREK_BENCH_TOKEN }}
+          permission-token: ${{ secrets.DEREK_BENCH_ACK_TOKEN }}
+```
+
+If `permission-token` is omitted, membership checks use `github-token` as
+before. In `association` mode, same-repository PR authors are allowed even when
+their association is `CONTRIBUTOR`, preserving repository-local automation and
+contributor branches.
 
 ### `label-prs`
 
