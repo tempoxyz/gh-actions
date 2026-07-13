@@ -61,6 +61,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
+| [`close-stale-prs`](#close-stale-prs) | Warn and close inactive pull requests | any |
 
 Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main` (pin to a commit SHA in production — see [Versioning](#versioning)).
 
@@ -368,3 +369,57 @@ jobs:
 ```
 
 Caller workflows must grant `issues: write` and `pull-requests: write`.
+
+### `close-stale-prs`
+
+Warns matching open pull requests before automatically closing them after a configured inactivity interval. The caller owns the schedule and can safely start with `dry-run: true`.
+
+```yaml
+name: Close stale pull requests
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  close-stale-prs:
+    uses: tempoxyz/gh-actions/.github/workflows/close-stale-prs.yml@<commit-sha> # main
+    with:
+      stale-after-days: '30'
+      warning-days: '7'
+      authors: |
+        dependabot[bot]
+        renovate[bot]
+      required-labels: |
+        dependencies
+      excluded-labels: |
+        do-not-close
+      dry-run: true
+```
+
+`contents: read` lets the reusable workflow check out its own pinned revision; `issues: write` manages warning labels and comments; `pull-requests: write` closes pull requests.
+
+Inputs:
+
+| Input | Default | Description |
+|---|---:|---|
+| `stale-after-days` | required | Positive whole days of inactivity before closing a pull request |
+| `warning-days` | `7` | Whole days before closure to warn; `0` disables warnings |
+| `authors` | empty | Newline-separated GitHub logins; a PR may match any value |
+| `author-associations` | empty | Newline-separated author associations; a PR may match any value |
+| `required-labels` | empty | Newline-separated labels a PR must all have |
+| `excluded-labels` | empty | Newline-separated labels a PR must have none of |
+| `warning-label` | `stale-pr-warning` | Marker label, created automatically if absent |
+| `warning-message` | built-in text | Warning text; empty disables pre-close warnings |
+| `close-message` | built-in text | Close comment text; empty closes silently |
+| `dry-run` | `false` | Log candidates without changing pull requests |
+
+All non-empty selector categories are combined with AND. Multiple values inside `authors` or `author-associations` use OR; all `required-labels` must be present. Labels are case-insensitive. Supported author associations are `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, `FIRST_TIMER`, `NONE`, and `MANNEQUIN`.
+
+Warnings add the marker label and one deadline-bearing comment. If later PR activity occurs, the next run removes the label. The action’s own warning writes do not extend the warning deadline. The warning label cannot also be included in `required-labels` or `excluded-labels`.

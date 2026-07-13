@@ -1,0 +1,91 @@
+name: Close Stale Pull Requests
+
+on:
+  workflow_call:
+    inputs:
+      stale-after-days:
+        description: Positive whole days of inactivity before closing a pull request.
+        required: true
+        type: string
+      warning-days:
+        description: Whole days before closure to warn; 0 disables warnings.
+        required: false
+        default: "7"
+        type: string
+      authors:
+        description: Newline-separated GitHub logins. A pull request author may match any value.
+        required: false
+        default: ""
+        type: string
+      author-associations:
+        description: Newline-separated GitHub author association values. A pull request may match any value.
+        required: false
+        default: ""
+        type: string
+      required-labels:
+        description: Newline-separated labels that a pull request must all have.
+        required: false
+        default: ""
+        type: string
+      excluded-labels:
+        description: Newline-separated labels that exclude a pull request.
+        required: false
+        default: ""
+        type: string
+      warning-label:
+        description: Label used to mark pull requests that have received a stale warning.
+        required: false
+        default: stale-pr-warning
+        type: string
+      warning-message:
+        description: Warning text. Set to an empty string to disable warnings.
+        required: false
+        default: This pull request has been inactive.
+        type: string
+      close-message:
+        description: Close comment text. Set to an empty string to close silently.
+        required: false
+        default: Closing this pull request because it has been inactive for the configured interval.
+        type: string
+      dry-run:
+        description: Log candidates without changing pull requests.
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+jobs:
+  close-stale-prs:
+    name: Close stale pull requests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout shared actions
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .gh-actions
+          persist-credentials: false
+
+      - name: Close stale pull requests
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          STALE_AFTER_DAYS: ${{ inputs.stale-after-days }}
+          WARNING_DAYS: ${{ inputs.warning-days }}
+          AUTHORS: ${{ inputs.authors }}
+          AUTHOR_ASSOCIATIONS: ${{ inputs.author-associations }}
+          REQUIRED_LABELS: ${{ inputs.required-labels }}
+          EXCLUDED_LABELS: ${{ inputs.excluded-labels }}
+          WARNING_LABEL: ${{ inputs.warning-label }}
+          WARNING_MESSAGE: ${{ inputs.warning-message }}
+          CLOSE_MESSAGE: ${{ inputs.close-message }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        with:
+          script: |
+            const closeStalePrs = require('./.gh-actions/.github/scripts/close_stale_prs.js')
+            await closeStalePrs.closeStalePrs({github, context, core, inputs: process.env})

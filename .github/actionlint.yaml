@@ -8,3 +8,6 @@ paths:
   .github/workflows/label-prs.yml:
     ignore:
       - 'property "workflow_(sha|repository)" is not defined'
+  .github/workflows/close-stale-prs.yml:
+    ignore:
+      - 'property "workflow_(sha|repository)" is not defined'
