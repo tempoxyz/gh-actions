@@ -48,7 +48,8 @@ function parseBoolean(value, name) {
 function parseConfig(inputs) {
   const staleAfterDays = parsePositiveInteger(inputs.STALE_AFTER_DAYS, "stale-after-days");
   const warningDays = parseNonNegativeInteger(inputs.WARNING_DAYS, "warning-days");
-  if (warningDays >= staleAfterDays && warningDays !== 0) {
+  const warningMessage = String(inputs.WARNING_MESSAGE ?? DEFAULT_WARNING_MESSAGE);
+  if (warningMessage !== "" && warningDays >= staleAfterDays && warningDays !== 0) {
     throw new Error("warning-days must be less than stale-after-days, or 0 to disable warnings.");
   }
 
@@ -78,7 +79,7 @@ function parseConfig(inputs) {
     requiredLabels: new Set(requiredLabels.map((value) => value.toLowerCase())),
     excludedLabels: new Set(excludedLabels.map((value) => value.toLowerCase())),
     warningLabel,
-    warningMessage: String(inputs.WARNING_MESSAGE ?? DEFAULT_WARNING_MESSAGE),
+    warningMessage,
     closeMessage: String(inputs.CLOSE_MESSAGE ?? DEFAULT_CLOSE_MESSAGE),
     dryRun: parseBoolean(inputs.DRY_RUN ?? "false", "dry-run"),
   };

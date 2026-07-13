@@ -107,6 +107,7 @@ test("parses selectors and rejects unsafe warning-label overlap", () => {
     /warning-label must not also be required or excluded/,
   );
   assert.throws(() => parseConfig(inputs({ WARNING_DAYS: "30" })), /warning-days must be less/);
+  assert.doesNotThrow(() => parseConfig(inputs({ STALE_AFTER_DAYS: "7", WARNING_MESSAGE: "" })));
 });
 
 test("requires every required label and excludes matching excluded labels", () => {
@@ -232,7 +233,7 @@ test("closes silently when warnings and close comments are disabled", async () =
     github,
     context: { repo: REPO },
     core: core(),
-    inputs: inputs({ WARNING_DAYS: "0", CLOSE_MESSAGE: "" }),
+    inputs: inputs({ STALE_AFTER_DAYS: "7", WARNING_MESSAGE: "", CLOSE_MESSAGE: "" }),
     now: NOW,
   });
 
