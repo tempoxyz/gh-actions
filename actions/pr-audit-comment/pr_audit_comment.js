@@ -131,7 +131,11 @@ async function checkPermission({ github, context, core, getOctokit }) {
   const permissionGithub = permissionToken ? getOctokit(permissionToken) : github;
   const checkMembership = async (username) => {
     try {
-      const { status } = await permissionGithub.rest.orgs.checkMembershipForUser({ org, username });
+      const { status } = await permissionGithub.rest.orgs.checkMembershipForUser({
+        org,
+        username,
+        request: { redirect: "manual" },
+      });
       return status === 204;
     } catch {
       return false;

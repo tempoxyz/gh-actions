@@ -243,6 +243,11 @@ test("org mode does not accept HTTP 302 as membership", async () => {
   });
 
   assert.equal(result.permission.calls.membership.length, 1);
+  assert.deepEqual(result.permission.calls.membership[0], {
+    org: "tempoxyz",
+    username: "commenter",
+    request: { redirect: "manual" },
+  });
   assert.equal(result.primary.calls.comments.length, 0);
   assert.match(result.core.failures[0], /is not a member/);
 });
