@@ -169,12 +169,12 @@ one used for PR reads and status comments:
 ```
 
 If `permission-token` is omitted, membership checks use `github-token` as
-before. In `association` mode, low-association PR authors remain denied by
+before. In `association` mode, a trusted commenter who is also the PR author is
+accepted by matching non-null numeric GitHub user IDs, even when the fetched
+author association is weaker. Other low-association PR authors remain denied by
 default. Set `allow-same-repository-author: "true"` to allow PRs whose head
 branch belongs to the base repository, for repository-local contributor and
 automation branches.
-their association is `CONTRIBUTOR`, preserving repository-local automation and
-contributor branches.
 
 ### `label-prs`
 

@@ -87,7 +87,8 @@ function parseArgs(body, commandRegex) {
 
 async function checkPermission({ github, context, core, getOctokit }) {
   const mode = process.env.PERMISSION_CHECK_MODE;
-  const commenter = context.payload.comment.user.login;
+  const commenterUser = context.payload.comment.user;
+  const commenter = commenterUser.login;
 
   const { data: pr } = await github.rest.pulls.get({
     owner: context.repo.owner,
@@ -106,7 +107,14 @@ async function checkPermission({ github, context, core, getOctokit }) {
     const allowSameRepositoryAuthor = process.env.ALLOW_SAME_REPOSITORY_AUTHOR === "true";
     const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
     const sameRepository = pr.head.repo?.full_name === baseRepo;
-    if (!allowed.has(pr.author_association) && !(allowSameRepositoryAuthor && sameRepository)) {
+    // pulls.get can report CONTRIBUTOR even when issue_comment identifies the
+    // same user as a trusted member, so avoid rejecting that trusted author twice.
+    const commenterIsPrAuthor = commenterUser.id != null && commenterUser.id === pr.user?.id;
+    const authorAllowed =
+      allowed.has(pr.author_association) ||
+      commenterIsPrAuthor ||
+      (allowSameRepositoryAuthor && sameRepository);
+    if (!authorAllowed) {
       core.setFailed(`PR author @${pr.user.login} is not allowed to trigger Cyclops audits (${pr.author_association})`);
       return null;
     }

@@ -5,11 +5,13 @@ const handle = require("./pr_audit_comment.js");
 
 function makePr({
   authorAssociation = "MEMBER",
+  authorId = 2,
+  authorLogin = "pr-author",
   headRepo = "tempoxyz/example",
 } = {}) {
   return {
     author_association: authorAssociation,
-    user: { login: "pr-author" },
+    user: { id: authorId, login: authorLogin },
     head: {
       sha: "0123456789abcdef",
       repo: headRepo === null ? null : { full_name: headRepo },
@@ -17,7 +19,11 @@ function makePr({
   };
 }
 
-function makeContext({ commenterAssociation = "MEMBER" } = {}) {
+function makeContext({
+  commenterAssociation = "MEMBER",
+  commenterId = 1,
+  commenterLogin = "commenter",
+} = {}) {
   return {
     repo: {
       owner: "tempoxyz",
@@ -33,7 +39,7 @@ function makeContext({ commenterAssociation = "MEMBER" } = {}) {
         // createComment(), but never reaches publishEvent()/curl.
         body: "cyclops audit unsupported=value",
         author_association: commenterAssociation,
-        user: { login: "commenter" },
+        user: { id: commenterId, login: commenterLogin },
       },
       issue: {
         pull_request: {},
@@ -133,6 +139,8 @@ async function runScenario({
   mode,
   pr = makePr(),
   commenterAssociation = "MEMBER",
+  commenterId = 1,
+  commenterLogin = "commenter",
   permissionToken,
   allowSameRepositoryAuthor = false,
   primaryMembership = async () => ({ status: 204 }),
@@ -168,7 +176,11 @@ async function runScenario({
   try {
     await handle({
       github: primary.client,
-      context: makeContext({ commenterAssociation }),
+      context: makeContext({
+        commenterAssociation,
+        commenterId,
+        commenterLogin,
+      }),
       core,
       getOctokit,
     });
@@ -270,6 +282,98 @@ test("org mode rejects a non-member PR author", async () => {
     result.core.failures[0],
     /PR author @pr-author is not a member/,
   );
+});
+
+test("trusted commenter who authored the PR bypasses a low fetched association", async () => {
+  const result = await runScenario({
+    mode: "association",
+    commenterId: 7,
+    pr: makePr({
+      authorAssociation: "CONTRIBUTOR",
+      authorId: 7,
+      headRepo: "external/example",
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 1);
+  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
+});
+
+test("untrusted commenter is denied even when they authored the PR", async () => {
+  const result = await runScenario({
+    mode: "association",
+    commenterAssociation: "CONTRIBUTOR",
+    commenterId: 7,
+    pr: makePr({
+      authorAssociation: "CONTRIBUTOR",
+      authorId: 7,
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(result.core.failures[0], /@commenter is not allowed/);
+});
+
+test("different trusted commenter cannot bypass a low author association", async () => {
+  const result = await runScenario({
+    mode: "association",
+    commenterId: 8,
+    pr: makePr({
+      authorAssociation: "CONTRIBUTOR",
+      authorId: 7,
+      headRepo: "external/example",
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(result.core.failures[0], /PR author @pr-author is not allowed/);
+});
+
+test("matching login with different user IDs does not identify the PR author", async () => {
+  const result = await runScenario({
+    mode: "association",
+    commenterId: 8,
+    commenterLogin: "same-user",
+    pr: makePr({
+      authorAssociation: "CONTRIBUTOR",
+      authorId: 7,
+      authorLogin: "same-user",
+      headRepo: "external/example",
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(result.core.failures[0], /PR author @same-user is not allowed/);
+});
+
+test("missing user IDs fall back to the fetched author association", async () => {
+  const result = await runScenario({
+    mode: "association",
+    commenterId: null,
+    pr: makePr({
+      authorAssociation: "CONTRIBUTOR",
+      authorId: null,
+      headRepo: "external/example",
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(result.core.failures[0], /PR author @pr-author is not allowed/);
+});
+
+test("trusted fetched author association remains allowed when user IDs are missing", async () => {
+  const result = await runScenario({
+    mode: "association",
+    commenterId: null,
+    pr: makePr({
+      authorAssociation: "MEMBER",
+      authorId: null,
+      headRepo: "external/example",
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 1);
+  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
 });
 
 test("same-repository exception is disabled by default", async () => {

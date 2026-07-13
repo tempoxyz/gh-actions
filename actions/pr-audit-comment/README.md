@@ -29,10 +29,13 @@ jobs:
           github-token: ${{ github.token }}
 ```
 
-In `association` mode, PR authors must normally be an owner, member, or
-collaborator. Set `allow-same-repository-author: "true"` to also allow PRs whose
-head branch belongs to the base repository, for repository-local contributor
-and automation branches.
+In `association` mode, an owner, member, or collaborator may trigger an audit.
+If that trusted commenter is also the PR author, matching non-null numeric
+GitHub user IDs avoids rejecting them when the fetched author association is
+weaker. Other low-association PR authors remain denied by default. Set
+`allow-same-repository-author: "true"` to also allow PRs whose head branch
+belongs to the base repository, for repository-local contributor and automation
+branches.
 
 For `permission-check-mode: org`, `permission-token` can provide a token with
 organization membership access independently from `github-token`, which
