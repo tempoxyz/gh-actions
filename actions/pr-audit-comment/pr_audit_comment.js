@@ -224,6 +224,15 @@ function publishEvent(payload) {
   fs.writeFileSync(certPath, process.env.EVENTS_CERT);
   fs.writeFileSync(payloadPath, JSON.stringify(payload));
 
+  const env = { PATH: process.env.PATH };
+  for (const name of [
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE",
+  ]) {
+    if (process.env[name] !== undefined) env[name] = process.env[name];
+  }
+
   const result = spawnSync("curl", [
     "-sf",
     "-o",
@@ -240,6 +249,7 @@ function publishEvent(payload) {
     "-d",
     `@${payloadPath}`,
   ], {
+    env,
     encoding: "utf8",
   });
   fs.rmSync(tmp, { recursive: true, force: true });
