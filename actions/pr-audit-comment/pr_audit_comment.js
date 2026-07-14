@@ -199,9 +199,10 @@ function parseEventsArgs(value) {
     "import sys",
     "print(json.dumps(shlex.split(sys.stdin.read())))",
   ].join("\n");
-  const result = spawnSync("python3", ["-c", parser], {
+  const result = spawnSync("python3", ["-I", "-c", parser], {
     input: value || "",
     encoding: "utf8",
+    env: { PATH: process.env.PATH },
   });
   if (result.status !== 0) {
     throw new Error(`Invalid EVENTS_ARGS: ${result.stderr || result.stdout}`);

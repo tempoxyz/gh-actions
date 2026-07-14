@@ -127,21 +127,31 @@ jobs:
           while IFS= read -r -d '' arg; do
             events_args+=("$arg")
           done < <(
-            python3 - <<'PY'
-          import os
+            env -i PATH="$PATH" python3 -I -S -c '
           import shlex
           import sys
 
-          for arg in shlex.split(os.environ["EVENTS_ARGS"]):
+          for arg in shlex.split(sys.stdin.read()):
               sys.stdout.buffer.write(arg.encode() + b"\0")
-          PY
+          ' <<< "$EVENTS_ARGS"
           )
           if (( ${#events_args[@]} == 0 )); then
             echo "::error::EVENTS_ARGS must contain at least one curl argument"
             exit 1
           fi
 
-          jq -n \
+          child_env=(PATH="$PATH")
+          for name in \
+            HTTP_PROXY HTTPS_PROXY NO_PROXY ALL_PROXY \
+            http_proxy https_proxy no_proxy all_proxy \
+            SSL_CERT_FILE SSL_CERT_DIR CURL_CA_BUNDLE
+          do
+            if [[ -v "$name" ]]; then
+              child_env+=("$name=${!name}")
+            fi
+          done
+
+          env -i PATH="$PATH" jq -n \
             --arg repo "$REPO" \
             --arg sha "$TARGET_SHA" \
             --arg pr "$TARGET_PR_NUMBER" \
@@ -153,7 +163,7 @@ jobs:
                 + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
               )
             }' \
-          | curl -sf -o /dev/null -X POST "${events_args[@]}" \
+          | env -i "${child_env[@]}" curl -sf -o /dev/null -X POST "${events_args[@]}" \
               -H "Content-Type: application/json" \
               --key "$RUNNER_TEMP/key" \
               --cert "$RUNNER_TEMP/cert" \

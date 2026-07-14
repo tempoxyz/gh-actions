@@ -1,5 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 const handle = require("./pr_audit_comment.js");
 
@@ -23,8 +27,11 @@ function makeContext({
   commenterAssociation = "MEMBER",
   commenterId = 1,
   commenterLogin = "commenter",
+  body = "cyclops audit unsupported=value",
 } = {}) {
   return {
+    serverUrl: "https://github.com",
+    runId: 999,
     repo: {
       owner: "tempoxyz",
       repo: "example",
@@ -35,9 +42,7 @@ function makeContext({
     payload: {
       comment: {
         id: 456,
-        // Deliberately invalid argument: an allowed request reaches
-        // createComment(), but never reaches publishEvent()/curl.
-        body: "cyclops audit unsupported=value",
+        body,
         author_association: commenterAssociation,
         user: { id: commenterId, login: commenterLogin },
       },
@@ -69,6 +74,8 @@ function makeClient({
     pulls: [],
     membership: [],
     comments: [],
+    commentUpdates: [],
+    reactions: [],
   };
 
   const client = {
@@ -89,6 +96,16 @@ function makeClient({
         async createComment(request) {
           calls.comments.push(request);
           return { data: { id: 789 } };
+        },
+        async updateComment(request) {
+          calls.commentUpdates.push(request);
+          return { data: { id: request.comment_id } };
+        },
+      },
+      reactions: {
+        async createForIssueComment(request) {
+          calls.reactions.push(request);
+          return { data: { id: 790 } };
         },
       },
     },
@@ -141,6 +158,7 @@ async function runScenario({
   commenterAssociation = "MEMBER",
   commenterId = 1,
   commenterLogin = "commenter",
+  body,
   permissionToken,
   allowSameRepositoryAuthor = false,
   primaryMembership = async () => ({ status: 204 }),
@@ -180,6 +198,7 @@ async function runScenario({
         commenterAssociation,
         commenterId,
         commenterLogin,
+        body,
       }),
       core,
       getOctokit,
@@ -194,6 +213,93 @@ async function runScenario({
     permission,
     getOctokitTokens,
   };
+}
+
+function writeExecutable(file, body) {
+  fs.writeFileSync(file, body, { mode: 0o755 });
+}
+
+function shellQuote(value) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function makeProcessHarness(tmp) {
+  const bin = path.join(tmp, "bin");
+  fs.mkdirSync(bin);
+
+  const pythonPath = spawnSync("sh", ["-c", "command -v python3"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  assert.ok(pythonPath, "python3 is required for publication tests");
+
+  const files = {
+    pythonArgs: path.join(tmp, "python-args"),
+    pythonEnv: path.join(tmp, "python-env"),
+    curlArgs: path.join(tmp, "curl-args"),
+    curlEnv: path.join(tmp, "curl-env"),
+  };
+
+  writeExecutable(path.join(bin, "python3"), `#!/bin/sh
+printf '%s\n' "$@" > ${shellQuote(files.pythonArgs)}
+env > ${shellQuote(files.pythonEnv)}
+exec ${shellQuote(pythonPath)} "$@"
+`);
+  writeExecutable(path.join(bin, "curl"), `#!/bin/sh
+printf '%s\n' "$@" > ${shellQuote(files.curlArgs)}
+env > ${shellQuote(files.curlEnv)}
+cat >/dev/null
+`);
+  writeExecutable(path.join(bin, "jq"), `#!/bin/sh
+printf '%s\n' '{"repository":"tempoxyz/example","event":"pr_audit","data":{}}'
+`);
+
+  return { bin, files };
+}
+
+function readLines(file) {
+  return fs.readFileSync(file, "utf8").trimEnd().split("\n");
+}
+
+function assertIsolatedEnvironment(file, expectedProxy = undefined) {
+  const environment = readLines(file);
+  if (expectedProxy === undefined) {
+    assert.equal(environment.some((entry) => entry.startsWith("HTTP_PROXY=")), false);
+  } else {
+    assert.ok(environment.includes(`HTTP_PROXY=${expectedProxy}`));
+  }
+  assert.ok(environment.some((entry) => entry.startsWith("PATH=")));
+  for (const name of [
+    "EVENTS_KEY",
+    "EVENTS_CERT",
+    "EVENTS_ARGS",
+    "PERMISSION_TOKEN",
+    "PYTHONPATH",
+    "SECRET_CANARY",
+  ]) {
+    assert.equal(
+      environment.some((entry) => entry.startsWith(`${name}=`)),
+      false,
+      `${name} leaked to child process`,
+    );
+  }
+}
+
+function workflowPublishScript() {
+  const lines = fs.readFileSync(
+    path.join(__dirname, "../../.github/workflows/pr-audit.yml"),
+    "utf8",
+  ).split("\n");
+  const name = lines.findIndex((line) => line.trim() === "- name: Publish event");
+  assert.notEqual(name, -1);
+  const run = lines.findIndex((line, index) => index > name && line.trim() === "run: |");
+  assert.notEqual(run, -1);
+
+  const script = [];
+  for (const line of lines.slice(run + 1)) {
+    if (line && !line.startsWith("          ")) break;
+    script.push(line.startsWith("          ") ? line.slice(10) : "");
+  }
+  return script.join("\n");
 }
 
 test("org mode uses a separate client for permission-token", async () => {
@@ -461,4 +567,172 @@ test("untrusted commenter is rejected before the author exception", async () => 
     result.core.failures[0],
     /@commenter is not allowed/,
   );
+});
+
+test("comment publisher preserves quoted arguments and isolates parser and curl", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-test-"));
+  const harness = makeProcessHarness(tmp);
+  const hostile = path.join(tmp, "hostile workspace");
+  const importMarker = path.join(tmp, "import-shadow-ran");
+  const shellMarker = path.join(tmp, "shell-syntax-ran");
+  fs.mkdirSync(hostile);
+  for (const module of ["json", "shlex"]) {
+    fs.writeFileSync(
+      path.join(hostile, `${module}.py`),
+      `open(${JSON.stringify(importMarker)}, "w").write("leaked")\n`,
+    );
+  }
+
+  const proxy = "http://proxy.example:8080";
+  const restoreEnvironment = setEnvironment({
+    PATH: `${harness.bin}:${process.env.PATH}`,
+    EVENTS_ARGS: `--url "https://events.example/a path" -H 'X-Literal: $(touch ${shellMarker})'`,
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+    PYTHONPATH: hostile,
+    SECRET_CANARY: "must-not-leak",
+    HTTP_PROXY: proxy,
+  });
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(hostile);
+    const result = await runScenario({
+      mode: "association",
+      body: "cyclops audit note='quoted guidance'",
+      permissionToken: "permission-token-canary",
+    });
+
+    assert.deepEqual(result.core.failures, []);
+    assert.equal(result.primary.calls.commentUpdates.length, 1);
+    assert.match(result.primary.calls.commentUpdates[0].body, /event published/);
+    assert.deepEqual(readLines(harness.files.pythonArgs).slice(0, 2), ["-I", "-c"]);
+    assert.deepEqual(readLines(harness.files.curlArgs).slice(5, 9), [
+      "--url",
+      "https://events.example/a path",
+      "-H",
+      `X-Literal: $(touch ${shellMarker})`,
+    ]);
+    assertIsolatedEnvironment(harness.files.pythonEnv);
+    assertIsolatedEnvironment(harness.files.curlEnv, proxy);
+    assert.equal(fs.existsSync(importMarker), false);
+    assert.equal(fs.existsSync(shellMarker), false);
+  } finally {
+    process.chdir(previousCwd);
+    restoreEnvironment();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("comment publisher rejects empty and malformed event arguments", async () => {
+  for (const [eventsArgs, message] of [
+    ["", /must contain at least one curl argument/],
+    ["'unterminated", /Invalid EVENTS_ARGS/],
+  ]) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-invalid-"));
+    const harness = makeProcessHarness(tmp);
+    const restoreEnvironment = setEnvironment({
+      PATH: `${harness.bin}:${process.env.PATH}`,
+      EVENTS_ARGS: eventsArgs,
+      EVENTS_KEY: "event-key-canary",
+      EVENTS_CERT: "event-cert-canary",
+    });
+
+    try {
+      const result = await runScenario({
+        mode: "association",
+        body: "cyclops audit",
+      });
+      assert.match(result.core.failures[0], message);
+      assert.equal(result.primary.calls.commentUpdates.length, 1);
+      assert.match(result.primary.calls.commentUpdates[0].body, /failed to publish/);
+      assert.equal(fs.existsSync(harness.files.curlArgs), false);
+    } finally {
+      restoreEnvironment();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+});
+
+test("reusable workflow publisher preserves arguments and isolates child processes", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-workflow-test-"));
+  const harness = makeProcessHarness(tmp);
+  const hostile = path.join(tmp, "hostile workspace");
+  const runnerTemp = path.join(tmp, "runner temp");
+  const importMarker = path.join(tmp, "workflow-import-shadow-ran");
+  const shellMarker = path.join(tmp, "workflow-shell-syntax-ran");
+  fs.mkdirSync(hostile);
+  fs.mkdirSync(runnerTemp);
+  fs.writeFileSync(
+    path.join(hostile, "shlex.py"),
+    `open(${JSON.stringify(importMarker)}, "w").write("leaked")\n`,
+  );
+
+  const proxy = "http://proxy.example:8080";
+  const result = spawnSync("bash", ["-c", workflowPublishScript()], {
+    cwd: hostile,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${harness.bin}:${process.env.PATH}`,
+      EVENTS_ARGS: `--url "https://events.example/a path" -H 'X-Literal: $(touch ${shellMarker})'`,
+      EVENTS_KEY: "event-key-canary",
+      EVENTS_CERT: "event-cert-canary",
+      REPO: "tempoxyz/example",
+      TARGET_PR_NUMBER: "123",
+      TARGET_SHA: "0123456789abcdef",
+      RUNNER_TEMP: runnerTemp,
+      PYTHONPATH: hostile,
+      SECRET_CANARY: "must-not-leak",
+      HTTP_PROXY: proxy,
+    },
+  });
+
+  try {
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.deepEqual(readLines(harness.files.pythonArgs).slice(0, 3), ["-I", "-S", "-c"]);
+    assert.deepEqual(readLines(harness.files.curlArgs).slice(5, 9), [
+      "--url",
+      "https://events.example/a path",
+      "-H",
+      `X-Literal: $(touch ${shellMarker})`,
+    ]);
+    assertIsolatedEnvironment(harness.files.pythonEnv);
+    assertIsolatedEnvironment(harness.files.curlEnv, proxy);
+    assert.equal(fs.existsSync(importMarker), false);
+    assert.equal(fs.existsSync(shellMarker), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("reusable workflow publisher rejects empty and malformed event arguments", () => {
+  for (const eventsArgs of ["", "'unterminated"]) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-workflow-invalid-"));
+    const harness = makeProcessHarness(tmp);
+    const runnerTemp = path.join(tmp, "runner-temp");
+    fs.mkdirSync(runnerTemp);
+    const result = spawnSync("bash", ["-c", workflowPublishScript()], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${harness.bin}:${process.env.PATH}`,
+        EVENTS_ARGS: eventsArgs,
+        EVENTS_KEY: "event-key-canary",
+        EVENTS_CERT: "event-cert-canary",
+        REPO: "tempoxyz/example",
+        TARGET_PR_NUMBER: "123",
+        TARGET_SHA: "0123456789abcdef",
+        RUNNER_TEMP: runnerTemp,
+      },
+    });
+
+    try {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout + result.stderr, /must contain at least one curl argument/);
+      assert.equal(fs.existsSync(harness.files.curlArgs), false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
 });
