@@ -123,9 +123,37 @@ jobs:
           printf '%s' "$EVENTS_KEY" > "$RUNNER_TEMP/key"
           printf '%s' "$EVENTS_CERT" > "$RUNNER_TEMP/cert"
 
-          # EVENTS_ARGS is a space-separated argument list that must word-split.
-          # shellcheck disable=SC2086
-          jq -n \
+          events_args=()
+          while IFS= read -r -d '' arg; do
+            events_args+=("$arg")
+          done < <(
+            env -i PATH="$PATH" python3 -I -S -c '
+          import shlex
+          import sys
+
+          for arg in shlex.split(sys.stdin.read()):
+              sys.stdout.buffer.write(arg.encode() + b"\0")
+          ' <<< "$EVENTS_ARGS"
+          )
+          if (( ${#events_args[@]} == 0 )); then
+            echo "::error::EVENTS_ARGS must contain at least one curl argument"
+            exit 1
+          fi
+
+          child_env=(PATH="$PATH")
+          for name in \
+            HTTP_PROXY HTTPS_PROXY NO_PROXY ALL_PROXY \
+            http_proxy https_proxy no_proxy all_proxy \
+            SSL_CERT_FILE SSL_CERT_DIR CURL_CA_BUNDLE
+          do
+            if [[ -v "$name" ]]; then
+              child_env+=("$name=${!name}")
+            fi
+          done
+
+          # The single-quoted program contains jq variables, not shell expansions.
+          # shellcheck disable=SC2016
+          env -i PATH="$PATH" jq -n \
             --arg repo "$REPO" \
             --arg sha "$TARGET_SHA" \
             --arg pr "$TARGET_PR_NUMBER" \
@@ -137,7 +165,7 @@ jobs:
                 + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
               )
             }' \
-          | curl -sf -o /dev/null -X POST $EVENTS_ARGS \
+          | env -i "${child_env[@]}" curl -sf -o /dev/null -X POST "${events_args[@]}" \
               -H "Content-Type: application/json" \
               --key "$RUNNER_TEMP/key" \
               --cert "$RUNNER_TEMP/cert" \
