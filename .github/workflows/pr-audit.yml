@@ -151,6 +151,8 @@ jobs:
             fi
           done
 
+          # The single-quoted program contains jq variables, not shell expansions.
+          # shellcheck disable=SC2016
           env -i PATH="$PATH" jq -n \
             --arg repo "$REPO" \
             --arg sha "$TARGET_SHA" \
