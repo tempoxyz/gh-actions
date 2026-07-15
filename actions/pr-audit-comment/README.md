@@ -32,9 +32,9 @@ jobs:
 In `association` mode, an owner, member, or collaborator may trigger an audit.
 If that trusted commenter is also the PR author, matching non-null numeric
 GitHub user IDs avoids rejecting them when the fetched author association is
-weaker. PRs whose head branch belongs to the base repository are also allowed:
-the trusted commenter is the authorization boundary, while external-fork
-authors remain subject to the association check.
+weaker. For a PR whose head branch belongs to the base repository, the trusted
+commenter is the authorization boundary. External-fork authors remain subject
+to the association check.
 
 For `permission-check-mode: org`, `permission-token` can provide a token with
 organization membership access independently from `github-token`, which
