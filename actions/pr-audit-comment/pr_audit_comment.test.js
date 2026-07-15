@@ -392,7 +392,7 @@ test("org mode rejects a non-member PR author", async () => {
   );
 });
 
-test("trusted commenter who authored the PR bypasses a low fetched association", async () => {
+test("external-fork author cannot bypass a low association by also commenting", async () => {
   const result = await runScenario({
     mode: "association",
     commenterId: 7,
@@ -403,8 +403,8 @@ test("trusted commenter who authored the PR bypasses a low fetched association",
     }),
   });
 
-  assert.equal(result.primary.calls.comments.length, 1);
-  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
 });
 
 test("untrusted commenter is denied even when they authored the PR", async () => {
@@ -419,7 +419,7 @@ test("untrusted commenter is denied even when they authored the PR", async () =>
   });
 
   assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /@commenter is not allowed/);
+  assert.match(result.core.failures[0], /Audit commenter @commenter is not allowed/);
 });
 
 test("different trusted commenter cannot bypass a low author association", async () => {
@@ -434,7 +434,7 @@ test("different trusted commenter cannot bypass a low author association", async
   });
 
   assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /PR author @pr-author is not allowed/);
+  assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
 });
 
 test("matching login with different user IDs does not identify the PR author", async () => {
@@ -451,7 +451,7 @@ test("matching login with different user IDs does not identify the PR author", a
   });
 
   assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /PR author @same-user is not allowed/);
+  assert.match(result.core.failures[0], /External-fork PR author @same-user/);
 });
 
 test("missing user IDs fall back to the fetched author association", async () => {
@@ -466,7 +466,7 @@ test("missing user IDs fall back to the fetched author association", async () =>
   });
 
   assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /PR author @pr-author is not allowed/);
+  assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
 });
 
 test("trusted fetched author association remains allowed when user IDs are missing", async () => {
@@ -509,7 +509,7 @@ test("same-repository exception never permits a fork author", async () => {
   assert.equal(result.primary.calls.comments.length, 0);
   assert.match(
     result.core.failures[0],
-    /PR author @pr-author is not allowed/,
+    /External-fork PR author @pr-author/,
   );
 });
 
@@ -525,7 +525,7 @@ test("same-repository exception fails closed for a deleted fork", async () => {
   assert.equal(result.primary.calls.comments.length, 0);
   assert.match(
     result.core.failures[0],
-    /PR author @pr-author is not allowed/,
+    /External-fork PR author @pr-author/,
   );
 });
 
@@ -542,7 +542,7 @@ test("untrusted commenter is rejected before the author exception", async () => 
   assert.equal(result.primary.calls.comments.length, 0);
   assert.match(
     result.core.failures[0],
-    /@commenter is not allowed/,
+    /Audit commenter @commenter is not allowed/,
   );
 });
 
