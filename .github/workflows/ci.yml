@@ -14,9 +14,5 @@ jobs:
     permissions:
       actions: read
       contents: read
-
-  check-action-pins:
-    name: Check GitHub Actions pins
-    uses: ./.github/workflows/check-action-pins.yml
-    permissions:
-      contents: read
+    with:
+      pinact: true
