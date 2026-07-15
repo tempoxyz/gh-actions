@@ -100,22 +100,21 @@ async function checkPermission({ github, context, core, getOctokit }) {
     const allowed = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
     const commenterAssociation = context.payload.comment.author_association;
     if (!allowed.has(commenterAssociation)) {
-      core.setFailed(`@${commenter} is not allowed to trigger Cyclops audits (${commenterAssociation})`);
+      core.setFailed(
+        `Audit commenter @${commenter} is not allowed to trigger Cyclops audits (${commenterAssociation})`,
+      );
       return null;
     }
 
-    const allowSameRepositoryAuthor = process.env.ALLOW_SAME_REPOSITORY_AUTHOR === "true";
     const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
     const sameRepository = pr.head.repo?.full_name === baseRepo;
-    // pulls.get can report CONTRIBUTOR even when issue_comment identifies the
-    // same user as a trusted member, so avoid rejecting that trusted author twice.
-    const commenterIsPrAuthor = commenterUser.id != null && commenterUser.id === pr.user?.id;
-    const authorAllowed =
-      allowed.has(pr.author_association) ||
-      commenterIsPrAuthor ||
-      (allowSameRepositoryAuthor && sameRepository);
+    // A trusted commenter authorizes audits of repository-local branches.
+    // PR author association is relevant only when the head belongs to a fork.
+    const authorAllowed = sameRepository || allowed.has(pr.author_association);
     if (!authorAllowed) {
-      core.setFailed(`PR author @${pr.user.login} is not allowed to trigger Cyclops audits (${pr.author_association})`);
+      core.setFailed(
+        `External-fork PR author @${pr.user.login} is not allowed to be audited (${pr.author_association})`,
+      );
       return null;
     }
     return pr;
