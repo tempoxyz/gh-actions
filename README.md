@@ -41,7 +41,7 @@ steps:
 
 ## Versioning
 
-Examples in this repo use `@main` for brevity. **For production, pin to a full commit SHA** — branch refs like `@main` are mutable, and the bundled `scan-github-actions` (zizmor) check flags unpinned uses. Add a trailing comment for readability:
+Examples in this repo use `@main` for brevity. **For production, pin to a full commit SHA** — branch refs like `@main` are mutable, and the bundled `scan-github-actions` (zizmor) check flags unpinned uses. Add a trailing reference comment; `check-action-pins` requires one for bare SHA pins, and it also improves readability:
 
 ```yaml
 uses: tempoxyz/gh-actions/actions/setup-rust-build@<commit-sha> # main
@@ -248,7 +248,7 @@ permissions: {}
 
 jobs:
   check-action-pins:
-    uses: tempoxyz/gh-actions/.github/workflows/check-action-pins.yml@main
+    uses: tempoxyz/gh-actions/.github/workflows/check-action-pins.yml@<commit-sha> # main
     permissions:
       contents: read
 ```
@@ -260,8 +260,8 @@ exists. That lets each repo keep local exceptions, such as allowing
 Optional inputs:
 
 - `config` (default: `.pinact.yaml`) — path to the caller repo's pinact configuration file
-- `no-api` (default: `false`) — perform offline full-SHA validation without API-based comment or minimum-age verification
-- `verify-comment` (default: `false`) — require/verify version comments on SHA-pinned actions
+- `no-api` (default: `false`) — perform offline full-SHA validation without API-based comment or minimum-age verification; trailing comments remain required for bare SHA pins
+- `verify-comment` (default: `false`) — use the GitHub API to verify that semver version comments resolve to the pinned SHA
 - `verify-min-age` (default: `true`) — verify current pins against configured minimum-age rules
 - `runs-on`, `timeout-minutes`
 

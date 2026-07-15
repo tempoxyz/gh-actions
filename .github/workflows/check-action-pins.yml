@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
       verify-comment:
-        description: Verify that pinned actions include version comments.
+        description: Use the GitHub API to verify that semver version comments resolve to the pinned SHA.
         required: false
         type: boolean
         default: false
@@ -55,10 +55,15 @@ jobs:
           CONFIG: ${{ inputs.config }}
         run: |
           set -euo pipefail
-          if [[ -n "$CONFIG" && -f "$CONFIG" ]]; then
-            echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
-          else
+          if [[ -z "$CONFIG" ]]; then
             echo "config=" >> "$GITHUB_OUTPUT"
+          elif [[ -f "$CONFIG" ]]; then
+            echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
+          elif [[ "$CONFIG" == ".pinact.yaml" ]]; then
+            echo "config=" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error file=$CONFIG::pinact config file does not exist"
+            exit 1
           fi
 
       - name: Check action pins
