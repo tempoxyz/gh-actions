@@ -104,7 +104,6 @@ async function checkPermission({ github, context, core, getOctokit }) {
       return null;
     }
 
-    const allowSameRepositoryAuthor = process.env.ALLOW_SAME_REPOSITORY_AUTHOR === "true";
     const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
     const sameRepository = pr.head.repo?.full_name === baseRepo;
     // pulls.get can report CONTRIBUTOR even when issue_comment identifies the
@@ -113,7 +112,7 @@ async function checkPermission({ github, context, core, getOctokit }) {
     const authorAllowed =
       allowed.has(pr.author_association) ||
       commenterIsPrAuthor ||
-      (allowSameRepositoryAuthor && sameRepository);
+      sameRepository;
     if (!authorAllowed) {
       core.setFailed(`PR author @${pr.user.login} is not allowed to trigger Cyclops audits (${pr.author_association})`);
       return null;
