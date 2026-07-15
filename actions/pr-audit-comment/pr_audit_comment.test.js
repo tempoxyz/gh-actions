@@ -160,7 +160,6 @@ async function runScenario({
   commenterLogin = "commenter",
   body,
   permissionToken,
-  allowSameRepositoryAuthor = false,
   primaryMembership = async () => ({ status: 204 }),
   permissionMembership = async () => ({ status: 204 }),
 }) {
@@ -169,8 +168,6 @@ async function runScenario({
     PERMISSION_CHECK_MODE: mode,
     PERMISSION_TOKEN: permissionToken,
     ORGANIZATION: "tempoxyz",
-    ALLOW_SAME_REPOSITORY_AUTHOR:
-      allowSameRepositoryAuthor ? "true" : "false",
   });
 
   const primary = makeClient({
@@ -487,26 +484,9 @@ test("trusted fetched author association remains allowed when user IDs are missi
   assert.match(result.core.failures[0], /Invalid cyclops audit command/);
 });
 
-test("same-repository exception is disabled by default", async () => {
+test("same-repository PR authors are allowed", async () => {
   const result = await runScenario({
     mode: "association",
-    pr: makePr({
-      authorAssociation: "CONTRIBUTOR",
-      headRepo: "tempoxyz/example",
-    }),
-  });
-
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(
-    result.core.failures[0],
-    /PR author @pr-author is not allowed/,
-  );
-});
-
-test("same-repository exception can be enabled explicitly", async () => {
-  const result = await runScenario({
-    mode: "association",
-    allowSameRepositoryAuthor: true,
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
       headRepo: "tempoxyz/example",
@@ -520,7 +500,6 @@ test("same-repository exception can be enabled explicitly", async () => {
 test("same-repository exception never permits a fork author", async () => {
   const result = await runScenario({
     mode: "association",
-    allowSameRepositoryAuthor: true,
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
       headRepo: "external/example",
@@ -537,7 +516,6 @@ test("same-repository exception never permits a fork author", async () => {
 test("same-repository exception fails closed for a deleted fork", async () => {
   const result = await runScenario({
     mode: "association",
-    allowSameRepositoryAuthor: true,
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
       headRepo: null,
@@ -555,7 +533,6 @@ test("untrusted commenter is rejected before the author exception", async () => 
   const result = await runScenario({
     mode: "association",
     commenterAssociation: "CONTRIBUTOR",
-    allowSameRepositoryAuthor: true,
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
       headRepo: "tempoxyz/example",
