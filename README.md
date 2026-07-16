@@ -203,7 +203,7 @@ The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`,
 
 Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
 
-Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the default policy. Existing callers remain unchanged because the pinact check is opt-in.
+Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold, so repository configuration remains review-sensitive. Existing callers remain unchanged because the pinact check is opt-in.
 
 zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is **read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`, so callers only grant read scopes. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
@@ -225,7 +225,7 @@ jobs:
       pinact: true
 ```
 
-By default the scan covers the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow the scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own.
+By default zizmor scans the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow zizmor's scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own. Pinact uses its own file discovery; monorepos with action manifests outside its defaults can set `files` in their Pinact configuration.
 
 Optional inputs:
 

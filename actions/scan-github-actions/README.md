@@ -47,6 +47,8 @@ jobs:
       contents: read
 ```
 
+The reusable workflow can also run Pinact policy checks by setting `pinact: true`. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive.
+
 ### Composite action
 
 ```yaml
@@ -80,4 +82,10 @@ steps:
 | `paths` | Whitespace-separated paths for zizmor to scan. Defaults to the whole repo, covering first-party workflows and actions anywhere (e.g. across a monorepo). Narrow it (e.g. to `.github/`) to exclude vendored or third-party trees | `.` | reusable + composite |
 | `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` | reusable + composite |
 | `actionlint` | Run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan | `true` | reusable + composite |
+| `pinact` | Run Pinact policy checks alongside zizmor and actionlint | `false` | reusable only |
+| `pin-config` | Path to the caller repository's Pinact configuration; the default path is optional when absent | `.pinact.yaml` | reusable only |
+| `pin-no-api` | Perform offline pin validation without API-based comment or minimum-age verification | `false` | reusable only |
+| `verify-pin-comments` | Verify that semver version comments resolve to the pinned SHA | `false` | reusable only |
+| `verify-pin-min-age` | Verify current pins against configured minimum-age rules | `true` | reusable only |
+| `pin-min-age` | Overrideable default minimum age in days for pinned action commits | `7` | reusable only |
 | `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires a public repo, or a private/internal repo with GitHub Advanced Security, plus `security-events: write` on the calling job | `false` | composite only |
