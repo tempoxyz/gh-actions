@@ -41,7 +41,7 @@ steps:
 
 ## Versioning
 
-Examples in this repo use `@main` for brevity. **For production, pin to a full commit SHA** — branch refs like `@main` are mutable, and the bundled `scan-github-actions` (zizmor) check flags unpinned uses. Add a trailing comment for readability:
+Examples in this repo use `@main` for brevity. **For production, pin to a full commit SHA** — branch refs like `@main` are mutable, and the bundled `scan-github-actions` workflow flags unpinned uses. Add a trailing reference comment; the optional pinact policy check requires one for bare SHA pins, and it also improves readability:
 
 ```yaml
 uses: tempoxyz/gh-actions/actions/setup-rust-build@<commit-sha> # main
@@ -55,7 +55,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 |----------|-------------|--------|
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
-| [`scan-github-actions`](#scan-github-actions) | Security scan for GitHub Actions workflows | any |
+| [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
@@ -203,7 +203,9 @@ The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`,
 
 Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
 
-zizmor and actionlint run together in a single **Scan GitHub Actions** check. The reusable workflow is **read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`, so callers only grant read scopes. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
+Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold, so repository configuration remains review-sensitive. Existing callers remain unchanged because the pinact check is opt-in.
+
+zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is **read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`, so callers only grant read scopes. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
 ```yaml
 name: Scan GitHub Actions
@@ -219,15 +221,23 @@ jobs:
     permissions:
       actions: read
       contents: read
+    with:
+      pinact: true
 ```
 
-By default the scan covers the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow the scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own.
+By default zizmor scans the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow zizmor's scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own. Pinact uses its own file discovery; monorepos with action manifests outside its defaults can set `files` in their Pinact configuration.
 
 Optional inputs:
 
 - `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
 - `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
+- `pinact` (default: `false`) — run pinact policy checks alongside zizmor and actionlint
+- `pin-config` (default: `.pinact.yaml`) — path to the caller repo's pinact configuration file; the default is optional when absent
+- `pin-no-api` (default: `false`) — perform offline pin validation without API-based comment or minimum-age verification
+- `verify-pin-comments` (default: `false`) — verify that semver version comments resolve to the pinned SHA
+- `verify-pin-min-age` (default: `true`) — verify current pins against configured minimum-age rules
+- `pin-min-age` (default: `7`) — default minimum age in days for pinned action commits; caller-local Pinact configuration can override it
 
 ### `reproducible-build`
 

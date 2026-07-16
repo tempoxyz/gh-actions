@@ -18,12 +18,43 @@ on:
         required: false
         type: boolean
         default: true
+      pinact:
+        description: "Run pinact policy checks in addition to the zizmor security scan."
+        required: false
+        type: boolean
+        default: false
+      pin-config:
+        description: Path to a pinact configuration file.
+        required: false
+        type: string
+        default: .pinact.yaml
+      pin-no-api:
+        description: Perform offline pin validation without API-based comment or minimum-age verification.
+        required: false
+        type: boolean
+        default: false
+      verify-pin-comments:
+        description: Use the GitHub API to verify that semver version comments resolve to the pinned SHA.
+        required: false
+        type: boolean
+        default: false
+      verify-pin-min-age:
+        description: Verify current pins against the configured minimum age.
+        required: false
+        type: boolean
+        default: true
+      pin-min-age:
+        description: Default minimum age in days for pinned action commits.
+        required: false
+        type: number
+        default: 7
 
 permissions: {}
 
 jobs:
-  # zizmor annotations + actionlint. Both are read-only, so this workflow never
-  # requests `security-events: write` and callers only need read scopes.
+  # zizmor annotations, actionlint, and optional pinact checks are read-only, so
+  # this workflow never requests `security-events: write` and callers only need
+  # read scopes.
   # SARIF upload to code scanning is available via the composite action instead
   # (see actions/scan-github-actions), which runs in a job you control.
   scan-github-actions:
@@ -38,7 +69,45 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Resolve pinact config
+        if: ${{ inputs.pinact }}
+        id: pinact-config
+        env:
+          CONFIG: ${{ inputs.pin-config }}
+          MIN_AGE: ${{ inputs.pin-min-age }}
+        run: |
+          set -euo pipefail
+
+          policy="$RUNNER_TEMP/pinact-policy.yaml"
+          printf 'version: 3\nmin_age:\n  value: %s\n' "$MIN_AGE" > "$policy"
+          echo "global-config=$policy" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "$CONFIG" ]]; then
+            echo "config=" >> "$GITHUB_OUTPUT"
+          elif [[ -f "$CONFIG" ]]; then
+            echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
+          elif [[ "$CONFIG" == ".pinact.yaml" ]]; then
+            echo "config=" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error file=$CONFIG::pinact config file does not exist"
+            exit 1
+          fi
+
+      - name: Check action pin policy
+        if: ${{ inputs.pinact }}
+        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        env:
+          PINACT_GLOBAL_CONFIG: ${{ steps.pinact-config.outputs.global-config }}
+        with:
+          config: ${{ steps.pinact-config.outputs.config }}
+          fix: "false"
+          github_token: ${{ github.token }}
+          no_api: ${{ inputs.pin-no-api }}
+          verify: ${{ !inputs.pin-no-api && inputs.verify-pin-comments }}
+          verify_min_age: ${{ !inputs.pin-no-api && inputs.verify-pin-min-age }}
+
       - name: Scan GitHub Actions
+        if: ${{ !cancelled() }}
         uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
         with:
           inputs: ${{ inputs.paths }}

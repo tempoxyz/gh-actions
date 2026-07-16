@@ -56,6 +56,22 @@ jobs:
           done
           exit "$status"
 
+      # Guard the reusable workflow wiring that the integration steps below
+      # cannot invoke directly from within this job.
+      - name: Assert reusable Pinact policy wiring
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/scan-github-actions.yml
+          input=$(sed -n '/^      pin-min-age:/,/^$/p' "$workflow")
+          resolver=$(sed -n '/- name: Resolve pinact config/,/- name: Check action pin policy/p' "$workflow")
+          action=$(sed -n '/- name: Check action pin policy/,/- name: Scan GitHub Actions/p' "$workflow")
+
+          grep -q 'type: number' <<< "$input"
+          grep -q 'default: 7' <<< "$input"
+          grep -q 'MIN_AGE:.*inputs.pin-min-age' <<< "$resolver"
+          grep -q "printf 'version: 3.*min_age:.*value: %s" <<< "$resolver"
+          grep -q 'PINACT_GLOBAL_CONFIG:.*steps.pinact-config.outputs.global-config' <<< "$action"
+
       # Positive: composite on a staged known-good workflow must pass. Covers
       # composite wiring (zizmor + actionlint) and acts as the control for the
       # negative case below, which uses the same staging mechanism.
@@ -82,3 +98,70 @@ jobs:
             exit 1
           fi
           echo "composite correctly failed on the broken fixture"
+
+      # The reusable scanner supplies a seven-day global policy even when the
+      # caller has no local Pinact config. A fixed public commit and deliberately
+      # large test threshold keep this check deterministic as the PR ages.
+      - name: Stage recent pin without caller config
+        id: recent-pin
+        env:
+          ACTION_REPOSITORY: actions/checkout
+          ACTION_SHA: 9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+          MIN_AGE: "36500"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/zz-broken-fixture.yml
+          mv .pinact.yaml "$RUNNER_TEMP/caller-pinact.yaml"
+          fixture=".github/workflows/zz-recent-pin.yml"
+          policy="$RUNNER_TEMP/pinact-policy.yaml"
+          commit_date=$(gh api "repos/$ACTION_REPOSITORY/commits/$ACTION_SHA" --jq .commit.committer.date)
+          cutoff=$(date -u -d "$MIN_AGE days ago" +%s)
+          if (( $(date -u -d "$commit_date" +%s) <= cutoff )); then
+            echo "::error::test pin is not newer than the configured threshold"
+            exit 1
+          fi
+          printf 'name: recent pin\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: %s@%s # v7.0.0\n' \
+            "$ACTION_REPOSITORY" "$ACTION_SHA" > "$fixture"
+          printf 'version: 3\nmin_age:\n  value: %s\n' "$MIN_AGE" > "$policy"
+          echo "include=^${ACTION_REPOSITORY}$" >> "$GITHUB_OUTPUT"
+          echo "policy=$policy" >> "$GITHUB_OUTPUT"
+      - name: Check recent pin without minimum-age policy
+        id: recent-pin-no-policy
+        continue-on-error: true
+        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        with:
+          config: ""
+          fix: "false"
+          github_token: ${{ github.token }}
+          includes: ${{ steps.recent-pin.outputs.include }}
+          verify_min_age: "true"
+      - name: Check recent pin with default minimum-age policy
+        id: recent-pin-with-policy
+        continue-on-error: true
+        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        env:
+          PINACT_GLOBAL_CONFIG: ${{ steps.recent-pin.outputs.policy }}
+        with:
+          config: ""
+          fix: "false"
+          github_token: ${{ github.token }}
+          includes: ${{ steps.recent-pin.outputs.include }}
+          verify_min_age: "true"
+      - name: Assert default minimum-age policy
+        env:
+          WITHOUT_POLICY: ${{ steps.recent-pin-no-policy.outcome }}
+          WITH_POLICY: ${{ steps.recent-pin-with-policy.outcome }}
+        run: |
+          set -euo pipefail
+          mv "$RUNNER_TEMP/caller-pinact.yaml" .pinact.yaml
+          rm .github/workflows/zz-recent-pin.yml
+          if [[ "$WITHOUT_POLICY" != "success" ]]; then
+            echo "::error::recent pin should pass without a minimum-age policy (outcome=$WITHOUT_POLICY)"
+            exit 1
+          fi
+          if [[ "$WITH_POLICY" != "failure" ]]; then
+            echo "::error::recent pin should fail with the default minimum-age policy (outcome=$WITH_POLICY)"
+            exit 1
+          fi
+          echo "default minimum-age policy correctly rejected a recent pin"
