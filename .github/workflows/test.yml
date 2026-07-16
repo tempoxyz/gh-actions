@@ -111,6 +111,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          rm -f .github/workflows/zz-broken-fixture.yml
           mv .pinact.yaml "$RUNNER_TEMP/caller-pinact.yaml"
           fixture=".github/workflows/zz-recent-pin.yml"
           policy="$RUNNER_TEMP/pinact-policy.yaml"
