@@ -203,7 +203,7 @@ The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`,
 
 Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
 
-Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This adds minimum-release-age and version-comment policy checks without editing files or adding a second reusable-workflow job. Existing callers remain unchanged because the pinact check is opt-in.
+Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the default policy. Existing callers remain unchanged because the pinact check is opt-in.
 
 zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is **read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`, so callers only grant read scopes. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
@@ -237,6 +237,7 @@ Optional inputs:
 - `pin-no-api` (default: `false`) — perform offline pin validation without API-based comment or minimum-age verification
 - `verify-pin-comments` (default: `false`) — verify that semver version comments resolve to the pinned SHA
 - `verify-pin-min-age` (default: `true`) — verify current pins against configured minimum-age rules
+- `pin-min-age` (default: `7`) — default minimum age in days for pinned action commits; caller-local Pinact configuration can override it
 
 ### `reproducible-build`
 

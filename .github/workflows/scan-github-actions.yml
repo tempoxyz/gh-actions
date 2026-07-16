@@ -43,6 +43,11 @@ on:
         required: false
         type: boolean
         default: true
+      pin-min-age:
+        description: Default minimum age in days for pinned action commits.
+        required: false
+        type: number
+        default: 7
 
 permissions: {}
 
@@ -69,8 +74,14 @@ jobs:
         id: pinact-config
         env:
           CONFIG: ${{ inputs.pin-config }}
+          MIN_AGE: ${{ inputs.pin-min-age }}
         run: |
           set -euo pipefail
+
+          policy="$RUNNER_TEMP/pinact-policy.yaml"
+          printf 'version: 3\nmin_age:\n  value: %s\n' "$MIN_AGE" > "$policy"
+          echo "global-config=$policy" >> "$GITHUB_OUTPUT"
+
           if [[ -z "$CONFIG" ]]; then
             echo "config=" >> "$GITHUB_OUTPUT"
           elif [[ -f "$CONFIG" ]]; then
@@ -85,6 +96,8 @@ jobs:
       - name: Check action pin policy
         if: ${{ inputs.pinact }}
         uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        env:
+          PINACT_GLOBAL_CONFIG: ${{ steps.pinact-config.outputs.global-config }}
         with:
           config: ${{ steps.pinact-config.outputs.config }}
           fix: "false"
