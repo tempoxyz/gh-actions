@@ -63,4 +63,5 @@ Supported arguments:
 - `models=...`
 - `run-label=LABEL`
 - `dry-run`
+- `perf`
 - `note="..."`

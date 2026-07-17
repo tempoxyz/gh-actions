@@ -234,6 +234,7 @@ function makeProcessHarness(tmp) {
     pythonEnv: path.join(tmp, "python-env"),
     curlArgs: path.join(tmp, "curl-args"),
     curlEnv: path.join(tmp, "curl-env"),
+    payload: path.join(tmp, "payload.json"),
   };
 
   writeExecutable(path.join(bin, "python3"), `#!/bin/sh
@@ -244,6 +245,11 @@ exec ${shellQuote(pythonPath)} "$@"
   writeExecutable(path.join(bin, "curl"), `#!/bin/sh
 printf '%s\n' "$@" > ${shellQuote(files.curlArgs)}
 env > ${shellQuote(files.curlEnv)}
+for arg in "$@"; do
+  case "$arg" in
+    @*) cp "\${arg#@}" ${shellQuote(files.payload)} ;;
+  esac
+done
 cat >/dev/null
 `);
   writeExecutable(path.join(bin, "jq"), `#!/bin/sh
@@ -576,13 +582,15 @@ test("comment publisher preserves quoted arguments and isolates parser and curl"
     process.chdir(hostile);
     const result = await runScenario({
       mode: "association",
-      body: "cyclops audit note='quoted guidance'",
+      body: "cyclops audit perf note='quoted guidance'",
       permissionToken: "permission-token-canary",
     });
 
     assert.deepEqual(result.core.failures, []);
     assert.equal(result.primary.calls.commentUpdates.length, 1);
     assert.match(result.primary.calls.commentUpdates[0].body, /event published/);
+    assert.match(result.primary.calls.commentUpdates[0].body, /perf: `true`/);
+    assert.equal(JSON.parse(fs.readFileSync(harness.files.payload)).data.perf, true);
     assert.deepEqual(readLines(harness.files.pythonArgs).slice(0, 2), ["-I", "-c"]);
     assert.deepEqual(readLines(harness.files.curlArgs).slice(5, 9), [
       "--url",
