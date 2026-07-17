@@ -301,29 +301,38 @@ module.exports = async ({ github, context, core, getOctokit }) => {
     core.warning(`Could not add acknowledgement reaction: ${error.message}`);
   }
 
-  const { data: comment } = await github.rest.issues.createComment({
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    issue_number: context.issue.number,
-    body: `cc @${actor}\n\nCyclops audit event queued. [View workflow run](${runUrl})\n\n${summary}`,
-  });
-  commentId = comment.id;
+  try {
+    const { data: comment } = await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: context.issue.number,
+      body: `cc @${actor}\n\nCyclops audit event queued. [View workflow run](${runUrl})\n\n${summary}`,
+    });
+    commentId = comment.id;
+  } catch (error) {
+    core.warning(`Could not create queued audit status comment: ${error.message}`);
+  }
 
+  let publishError;
   try {
     publishEvent(buildPayload(context, pr, defaults));
+  } catch (error) {
+    publishError = error;
+    core.setFailed(error.message);
+  }
+
+  if (!commentId) return;
+
+  try {
     await github.rest.issues.updateComment({
       owner: context.repo.owner,
       repo: context.repo.repo,
       comment_id: commentId,
-      body: `cc @${actor}\n\nCyclops audit event published. [View workflow run](${runUrl})\n\n${summary}`,
+      body: publishError
+        ? `cc @${actor}\n\nCyclops audit event failed to publish. [View workflow run](${runUrl})\n\n${summary}`
+        : `cc @${actor}\n\nCyclops audit event published. [View workflow run](${runUrl})\n\n${summary}`,
     });
   } catch (error) {
-    await github.rest.issues.updateComment({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      comment_id: commentId,
-      body: `cc @${actor}\n\nCyclops audit event failed to publish. [View workflow run](${runUrl})\n\n${summary}`,
-    });
-    core.setFailed(error.message);
+    core.warning(`Could not update audit status comment: ${error.message}`);
   }
 };
