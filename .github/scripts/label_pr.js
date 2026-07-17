@@ -59,5 +59,6 @@ module.exports = async ({ github, context }) => {
   } catch (err) {
     console.error("Failed to label PR");
     console.error(err);
+    throw err;
   }
 };
