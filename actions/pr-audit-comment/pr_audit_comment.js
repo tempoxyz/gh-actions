@@ -4,7 +4,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const usage = [
-  '**Usage:** `cyclops audit [fast] [iterations=N] [hours=N] [config=pr-review.yaml] ',
+  '**Usage:** `cyclops audit [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
   '[models="anthropic/claude-opus-4-7,openai/gpt-5.5"] [run-label=LABEL] ',
   '[dry-run] [note="per-run audit guidance"]`',
 ].join("");
@@ -24,11 +24,12 @@ function parseArgs(body, commandRegex) {
     models: "",
     "run-label": "",
     "dry-run": "false",
+    perf: "false",
     note: "",
   };
   const intArgs = new Set(["iterations", "hours"]);
   const stringArgs = new Set(["config", "models", "run-label", "note"]);
-  const boolArgs = new Set(["dry-run"]);
+  const boolArgs = new Set(["dry-run", "perf"]);
   const unknown = [];
   const invalid = [];
 
@@ -167,6 +168,7 @@ function buildPayload(context, pr, defaults) {
   if (defaults.models) data.models = defaults.models;
   if (defaults["run-label"]) data.run_label = defaults["run-label"];
   if (defaults.note) data.audit_note_b64 = Buffer.from(defaults.note, "utf8").toString("base64");
+  if (defaults.perf === "true") data.perf = true;
 
   return {
     repository: `${context.repo.owner}/${context.repo.repo}`,
@@ -184,6 +186,7 @@ function buildSummary(defaults) {
   if (defaults.models) summaryParts.push(`models: \`${defaults.models}\``);
   if (defaults["run-label"]) summaryParts.push(`run-label: \`${defaults["run-label"]}\``);
   if (defaults["dry-run"] === "true") summaryParts.push("dry-run: `true`");
+  if (defaults.perf === "true") summaryParts.push("perf: `true`");
   if (defaults.note) {
     const note = defaults.note.replace(/`/g, "'").slice(0, 160);
     summaryParts.push(`note: \`${note}${defaults.note.length > 160 ? "..." : ""}\``);

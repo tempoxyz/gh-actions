@@ -155,7 +155,7 @@ jobs:
 The comment surface supports:
 
 - comments: `cyclops audit`, `@decofe cyclops audit`, `derek audit`
-- arguments: `fast`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `note="..."`
+- arguments: `fast`, `perf`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `note="..."`
 
 Set `permission-check-mode: org` (with `organization`) for org-membership API
 checks. Use `permission-token` when those checks need a token distinct from the
