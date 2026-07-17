@@ -55,13 +55,17 @@ function makeContext({
 
 function makeCore() {
   const failures = [];
+  const warnings = [];
 
   return {
     failures,
+    warnings,
     setFailed(message) {
       failures.push(String(message));
     },
-    warning() {},
+    warning(message) {
+      warnings.push(String(message));
+    },
     debug() {},
   };
 }
@@ -69,6 +73,8 @@ function makeCore() {
 function makeClient({
   pr,
   checkMembership = async () => ({ status: 204 }),
+  createComment = async () => ({ data: { id: 789 } }),
+  updateComment = async (request) => ({ data: { id: request.comment_id } }),
 }) {
   const calls = {
     pulls: [],
@@ -95,11 +101,11 @@ function makeClient({
       issues: {
         async createComment(request) {
           calls.comments.push(request);
-          return { data: { id: 789 } };
+          return createComment(request);
         },
         async updateComment(request) {
           calls.commentUpdates.push(request);
-          return { data: { id: request.comment_id } };
+          return updateComment(request);
         },
       },
       reactions: {
@@ -162,6 +168,8 @@ async function runScenario({
   permissionToken,
   primaryMembership = async () => ({ status: 204 }),
   permissionMembership = async () => ({ status: 204 }),
+  createComment,
+  updateComment,
 }) {
   const restoreEnvironment = setEnvironment({
     COMMAND_REGEX: "^cyclops\\s+audit\\b",
@@ -173,6 +181,8 @@ async function runScenario({
   const primary = makeClient({
     pr,
     checkMembership: primaryMembership,
+    createComment,
+    updateComment,
   });
 
   const permission = makeClient({
@@ -606,6 +616,119 @@ test("comment publisher preserves quoted arguments and isolates parser and curl"
     process.chdir(previousCwd);
     restoreEnvironment();
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("comment publisher continues when the queued status comment fails", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-create-failure-"));
+  const harness = makeProcessHarness(tmp);
+  const restoreEnvironment = setEnvironment({
+    PATH: `${harness.bin}:${process.env.PATH}`,
+    EVENTS_ARGS: "--url https://events.example",
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+  });
+
+  try {
+    const result = await runScenario({
+      mode: "association",
+      body: "cyclops audit",
+      createComment: async () => {
+        throw new Error("comment creation denied");
+      },
+    });
+
+    assert.deepEqual(result.core.failures, []);
+    assert.match(result.core.warnings[0], /Could not create queued audit status comment/);
+    assert.equal(result.primary.calls.comments.length, 1);
+    assert.equal(result.primary.calls.commentUpdates.length, 0);
+    assert.equal(fs.existsSync(harness.files.curlArgs), true);
+  } finally {
+    restoreEnvironment();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("comment publisher preserves publication failure when the queued status comment also fails", async () => {
+  const restoreEnvironment = setEnvironment({
+    EVENTS_ARGS: "",
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+  });
+
+  try {
+    const result = await runScenario({
+      mode: "association",
+      body: "cyclops audit",
+      createComment: async () => {
+        throw new Error("comment creation denied");
+      },
+    });
+
+    assert.equal(result.core.failures.length, 1);
+    assert.match(result.core.failures[0], /must contain at least one curl argument/);
+    assert.equal(result.core.warnings.length, 1);
+    assert.match(result.core.warnings[0], /Could not create queued audit status comment/);
+    assert.equal(result.primary.calls.comments.length, 1);
+    assert.equal(result.primary.calls.commentUpdates.length, 0);
+  } finally {
+    restoreEnvironment();
+  }
+});
+
+test("comment publisher treats a status update failure after publication as warning-only", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-update-failure-"));
+  const harness = makeProcessHarness(tmp);
+  const restoreEnvironment = setEnvironment({
+    PATH: `${harness.bin}:${process.env.PATH}`,
+    EVENTS_ARGS: "--url https://events.example",
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+  });
+
+  try {
+    const result = await runScenario({
+      mode: "association",
+      body: "cyclops audit",
+      updateComment: async () => {
+        throw new Error("comment update denied");
+      },
+    });
+
+    assert.deepEqual(result.core.failures, []);
+    assert.match(result.core.warnings[0], /Could not update audit status comment/);
+    assert.equal(result.primary.calls.commentUpdates.length, 1);
+    assert.match(result.primary.calls.commentUpdates[0].body, /event published/);
+    assert.equal(fs.existsSync(harness.files.curlArgs), true);
+  } finally {
+    restoreEnvironment();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("comment publisher preserves publication failure when the status update also fails", async () => {
+  const restoreEnvironment = setEnvironment({
+    EVENTS_ARGS: "",
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+  });
+
+  try {
+    const result = await runScenario({
+      mode: "association",
+      body: "cyclops audit",
+      updateComment: async () => {
+        throw new Error("comment update denied");
+      },
+    });
+
+    assert.equal(result.core.failures.length, 1);
+    assert.match(result.core.failures[0], /must contain at least one curl argument/);
+    assert.match(result.core.warnings[0], /Could not update audit status comment/);
+    assert.equal(result.primary.calls.commentUpdates.length, 1);
+    assert.match(result.primary.calls.commentUpdates[0].body, /failed to publish/);
+  } finally {
+    restoreEnvironment();
   }
 });
 
