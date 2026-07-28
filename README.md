@@ -16,6 +16,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
 | [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows | any |
+| [`octo-sts`](actions/octo-sts) | Mint short-lived GitHub App tokens via Octo STS (tailnet join included) | any |
 
 ## Usage
 
