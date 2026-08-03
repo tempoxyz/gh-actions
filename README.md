@@ -11,6 +11,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy | tempo |
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign | tempo |
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems | dev-infra, tempo |
+| [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens | tempo |
 | [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands | tempo, zones |
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
