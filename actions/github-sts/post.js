@@ -12,6 +12,18 @@ function request(url, options = {}) {
   });
 }
 
+function revocationRequestOptions(token) {
+  return {
+    method: "DELETE",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "User-Agent": "tempoxyz-gh-actions-github-sts",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  };
+}
+
 async function main() {
   const token = process.env.STATE_token;
   if (!token) {
@@ -21,14 +33,7 @@ async function main() {
 
   const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
   const status = await retry(
-    () => request(`${apiUrl}/installation/token`, {
-      method: "DELETE",
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${token}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    }),
+    () => request(`${apiUrl}/installation/token`, revocationRequestOptions(token)),
     { label: "GitHub token revocation", isTransient: isTransientStatus },
   );
 
@@ -41,7 +46,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { revocationRequestOptions };

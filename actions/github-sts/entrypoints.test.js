@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const test = require("node:test");
+const { revocationRequestOptions } = require("./post.js");
 
 const actionDirectory = __dirname;
 
@@ -32,4 +33,10 @@ test("post entrypoint executes as CommonJS without a token", () => {
   assert.equal(result.status, 0);
   assert.match(output, /No GitHub App token was minted; skipping revocation/);
   assert.doesNotMatch(output, /ERR_AMBIGUOUS_MODULE_SYNTAX/);
+});
+
+test("revocation request identifies the action to GitHub", () => {
+  const options = revocationRequestOptions("test-token");
+
+  assert.equal(options.headers["User-Agent"], "tempoxyz-gh-actions-github-sts");
 });
