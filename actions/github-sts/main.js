@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const https = require("node:https");
+const { isTransientStatus, retry } = require("./retry.js");
 
 function input(name) {
   const key = name.toUpperCase();
@@ -38,9 +39,12 @@ if (!oidcRequestUrl) throw new Error("GitHub OIDC request URL is unavailable");
 
 const oidcUrl = new URL(oidcRequestUrl);
 oidcUrl.searchParams.set("audience", host);
-const oidcResponse = await request(oidcUrl, {
-  headers: { Authorization: `Bearer ${oidcRequestToken}` },
-});
+const oidcResponse = await retry(
+  () => request(oidcUrl, {
+    headers: { Authorization: `Bearer ${oidcRequestToken}` },
+  }),
+  { label: "GitHub OIDC request", isTransient: (response) => isTransientStatus(response.status) },
+);
 if (oidcResponse.status < 200 || oidcResponse.status >= 300) {
   throw new Error(`GitHub OIDC request failed (HTTP ${oidcResponse.status})`);
 }
@@ -50,11 +54,14 @@ const scope = input("scope") || process.env.GITHUB_REPOSITORY;
 const exchangeUrl = new URL(`https://${host}/sts/exchange`);
 exchangeUrl.searchParams.set("scope", scope);
 exchangeUrl.searchParams.set("identity", input("policy"));
-const exchangeResponse = await request(exchangeUrl, {
-  cert,
-  key,
-  headers: { Authorization: `Bearer ${oidc}` },
-});
+const exchangeResponse = await retry(
+  () => request(exchangeUrl, {
+    cert,
+    key,
+    headers: { Authorization: `Bearer ${oidc}` },
+  }),
+  { label: "STS worker exchange", isTransient: (response) => isTransientStatus(response.status) },
+);
 
 let exchangeBody;
 try {

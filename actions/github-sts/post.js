@@ -1,4 +1,5 @@
 const https = require("node:https");
+const { isTransientStatus, retry } = require("./retry.js");
 
 function request(url, options = {}) {
   return new Promise((resolve, reject) => {
@@ -18,14 +19,17 @@ if (!token) {
 }
 
 const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
-const status = await request(`${apiUrl}/installation/token`, {
-  method: "DELETE",
-  headers: {
-    Accept: "application/vnd.github+json",
-    Authorization: `Bearer ${token}`,
-    "X-GitHub-Api-Version": "2022-11-28",
-  },
-});
+const status = await retry(
+  () => request(`${apiUrl}/installation/token`, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  }),
+  { label: "GitHub token revocation", isTransient: isTransientStatus },
+);
 
 if (status === 204) {
   console.log("GitHub App token revoked.");

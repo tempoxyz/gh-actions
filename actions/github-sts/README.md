@@ -50,3 +50,8 @@ finishes, including after a failed or cancelled job. If the STS exchange is
 rejected, the action prints the HTTP status and the server's safe error
 message (for example, `trust policy: subject did not match`) to make policy
 and configuration problems easier to diagnose.
+
+OIDC requests, STS worker exchanges, and token revocations retry transient
+network errors and HTTP `408`, `425`, `429`, or `5xx` responses up to five
+times after the initial attempt, with exponential backoff (1, 2, 4, 8, and
+16 seconds). Other failures are returned immediately.
