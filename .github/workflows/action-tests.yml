@@ -1,0 +1,50 @@
+name: Action Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  discover:
+    name: Discover action tests
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.tests.outputs.tests }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Find action tests
+        id: tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=$(rg --files actions -g '*.test.js' | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          if [ "$tests" = "[]" ]; then
+            echo "::error::No action tests found"
+            exit 1
+          fi
+          echo "tests=$tests" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: ${{ matrix.test }}
+    needs: discover
+    runs-on: ubuntu-latest
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJSON(needs.discover.outputs.tests) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Run action test
+        run: node --test "${{ matrix.test }}"
