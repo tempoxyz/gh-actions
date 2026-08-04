@@ -28,10 +28,6 @@ const dev = input("dev");
 const host = dev === "true" ? "gh-sts.tehq.dev" : dev === "false" ? "gh-sts.tehq.net" : null;
 if (!host) throw new Error("dev must be either true or false");
 
-const cert = input("client-cert");
-const key = input("client-key");
-if (!cert || !key) throw new Error("client-cert and client-key must be provided");
-
 const oidcRequestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
 const oidcRequestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
 if (!oidcRequestToken) throw new Error("id-token: write permission is required");
@@ -56,8 +52,6 @@ exchangeUrl.searchParams.set("scope", scope);
 exchangeUrl.searchParams.set("identity", input("policy"));
 const exchangeResponse = await retry(
   () => request(exchangeUrl, {
-    cert,
-    key,
     headers: { Authorization: `Bearer ${oidc}` },
   }),
   { label: "STS worker exchange", isTransient: (response) => isTransientStatus(response.status) },

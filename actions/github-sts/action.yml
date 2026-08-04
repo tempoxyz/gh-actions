@@ -12,14 +12,8 @@ inputs:
   policy:
     description: "Trust policy name"
     required: true
-  client-cert:
-    description: "PEM-encoded client certificate"
-    required: true
-  client-key:
-    description: "PEM-encoded client private key"
-    required: true
   dev:
-    description: "(Dev testing only) Use the development STS endpoint and client certificate"
+    description: "(Dev testing only) Use the development STS endpoint"
     required: false
     default: "false"
 
