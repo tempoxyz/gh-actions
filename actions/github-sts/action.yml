@@ -30,6 +30,6 @@ outputs:
     description: "Token expiration timestamp"
 
 runs:
-  using: "node20"
+  using: "node24"
   main: "main.js"
   post: "post.js"
