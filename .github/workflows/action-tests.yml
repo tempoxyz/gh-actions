@@ -47,4 +47,6 @@ jobs:
           persist-credentials: false
 
       - name: Run action test
-        run: node --test "${{ matrix.test }}"
+        env:
+          TEST_FILE: ${{ matrix.test }}
+        run: node --test "$TEST_FILE"
