@@ -30,7 +30,7 @@ permissions:
   id-token: write
 
 steps:
-  - name: Exchange OIDC token
+  - name: Fetch GitHub token via STS
     id: sts
     uses: tempoxyz/gh-actions/actions/github-sts@main
     with:
