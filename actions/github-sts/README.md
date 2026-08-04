@@ -44,9 +44,9 @@ steps:
     run: gh api "repos/${GITHUB_REPOSITORY}"
 ```
 
-The certificate and key are written with restrictive permissions under
-`$RUNNER_TEMP` and removed when the action finishes. Neither token nor
-certificate material is logged. If the STS exchange is rejected, the action
-prints the HTTP status and the server's safe error message (for example,
-`trust policy: subject did not match`) to make policy and configuration
-problems easier to diagnose.
+The certificate and key are held in memory for the exchange and are not
+logged. The minted installation token is revoked automatically when the job
+finishes, including after a failed or cancelled job. If the STS exchange is
+rejected, the action prints the HTTP status and the server's safe error
+message (for example, `trust policy: subject did not match`) to make policy
+and configuration problems easier to diagnose.
