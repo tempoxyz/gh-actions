@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tests=$(rg --files actions -g '*.test.js' | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          tests=$(find actions -type f -name '*.test.js' -print | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')
           if [ "$tests" = "[]" ]; then
             echo "::error::No action tests found"
             exit 1
