@@ -50,3 +50,22 @@ jobs:
         env:
           TEST_FILE: ${{ matrix.test }}
         run: node --test "$TEST_FILE"
+
+  tests-passed:
+    name: tests-passed
+    if: ${{ always() }}
+    needs: [discover, test]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check matrix results
+        env:
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$DISCOVER_RESULT" != "success" || "$TEST_RESULT" != "success" ]]; then
+            echo "::error::Action tests failed (discover=$DISCOVER_RESULT, tests=$TEST_RESULT)"
+            exit 1
+          fi
+          echo "All action tests passed"
