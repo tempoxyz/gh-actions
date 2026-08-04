@@ -46,4 +46,7 @@ steps:
 
 The certificate and key are written with restrictive permissions under
 `$RUNNER_TEMP` and removed when the action finishes. Neither token nor
-certificate material is logged.
+certificate material is logged. If the STS exchange is rejected, the action
+prints the HTTP status and the server's safe error message (for example,
+`trust policy: subject did not match`) to make policy and configuration
+problems easier to diagnose.
