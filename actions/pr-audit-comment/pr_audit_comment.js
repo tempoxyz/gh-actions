@@ -4,7 +4,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const usage = [
-  '**Usage:** `cyclops audit [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
+  '**Usage:** `cyclops audit [super-fast] [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
   '[models="anthropic/claude-opus-4-7,openai/gpt-5.5"] [run-label=LABEL] ',
   '[dry-run] [note="per-run audit guidance"]`',
 ].join("");
@@ -32,8 +32,13 @@ function parseArgs(body, commandRegex) {
   const boolArgs = new Set(["dry-run", "perf"]);
   const unknown = [];
   const invalid = [];
+  let superFast = false;
 
   for (const part of parts) {
+    if (part === "super-fast") {
+      superFast = true;
+      continue;
+    }
     if (part === "fast") {
       defaults.iterations = "1";
       continue;
@@ -78,6 +83,11 @@ function parseArgs(body, commandRegex) {
     } else {
       unknown.push(key);
     }
+  }
+
+  if (superFast) {
+    defaults.config = "pr-review-super-fast.yaml";
+    defaults.iterations = "1";
   }
 
   const errors = [];
@@ -336,3 +346,5 @@ module.exports = async ({ github, context, core, getOctokit }) => {
     core.warning(`Could not update audit status comment: ${error.message}`);
   }
 };
+
+module.exports.parseArgs = parseArgs;
