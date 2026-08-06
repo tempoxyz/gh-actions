@@ -7,6 +7,17 @@ const { spawnSync } = require("node:child_process");
 
 const handle = require("./pr_audit_comment.js");
 
+test("super-fast selects the five-minute config and one iteration", () => {
+  const { defaults, errors } = handle.parseArgs(
+    "cyclops audit super-fast iterations=9 config=pr-review.yaml",
+    "^cyclops\\s+audit\\b",
+  );
+
+  assert.deepEqual(errors, []);
+  assert.equal(defaults.config, "pr-review-super-fast.yaml");
+  assert.equal(defaults.iterations, "1");
+});
+
 function makePr({
   authorAssociation = "MEMBER",
   authorId = 2,
