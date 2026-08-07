@@ -18,6 +18,19 @@ test("super-fast selects the five-minute config and one iteration", () => {
   assert.equal(defaults.iterations, "1");
 });
 
+test("ultrafast is an alias for super-fast", () => {
+  const superFast = handle.parseArgs(
+    "cyclops audit super-fast iterations=9 config=pr-review.yaml",
+    "^cyclops\\s+audit\\b",
+  );
+  const ultrafast = handle.parseArgs(
+    "cyclops audit ultrafast iterations=9 config=pr-review.yaml",
+    "^cyclops\\s+audit\\b",
+  );
+
+  assert.deepEqual(ultrafast, superFast);
+});
+
 function makePr({
   authorAssociation = "MEMBER",
   authorId = 2,
