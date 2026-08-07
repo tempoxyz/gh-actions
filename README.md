@@ -100,6 +100,34 @@ Optional inputs:
 - `required-labels` — comma or newline-separated labels that trigger audit publishing; when set, this overrides `required-label`
 - `environment` — GitHub Environment name, such as `pr-audit`, used to gate audit publishing
 - `branch` / `pr-number` — target for ad-hoc `workflow_dispatch` callers
+- `require-completed-audit` — publish a `Cyclops audit run` merge-gate status (default: `false`)
+
+When `require-completed-audit: true`, internal and non-Dependabot pull requests remain pending until `tempoxyz-bot` posts a completed Cyclops review; fork and Dependabot pull requests are exempt. Completed reviews remain valid after later commits. The caller must add `pull_request_target`, `pull_request_review`, and `merge_group` triggers, grant `pull-requests: read` and `statuses: write`, and require the resulting `Cyclops audit run` status on the protected branch. Reusable workflows cannot declare caller event triggers.
+
+```yaml
+on:
+  pull_request:
+    types: [labeled]
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted]
+  merge_group:
+
+jobs:
+  pr-audit:
+    uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    with:
+      require-completed-audit: true
+    secrets:
+      EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
+      EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
+      EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
+```
 
 Repos that need protected environment gates, such as Zones' `environment: pr-audit` gate for `EVENTS_*`, should pass `environment: pr-audit` so the publish job preserves that approval boundary.
 
