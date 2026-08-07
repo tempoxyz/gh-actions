@@ -55,6 +55,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | Workflow | Description | Source |
 |----------|-------------|--------|
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
+| [`require-pr-audit`](#require-pr-audit) | Require a completed Cyclops review before merge | any |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
@@ -64,6 +65,36 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 
 Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main` (pin to a commit SHA in production — see [Versioning](#versioning)).
+
+### `require-pr-audit`
+
+Publishes the `Cyclops audit run` commit status. Internal and non-Dependabot pull requests remain pending until `tempoxyz-bot` posts a completed Cyclops review; fork and Dependabot pull requests are exempt. Completed reviews remain valid after later commits.
+
+```yaml
+name: Require pull request audit
+
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted]
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  require-pr-audit:
+    uses: tempoxyz/gh-actions/.github/workflows/require-pr-audit.yml@main
+    permissions:
+      pull-requests: read
+      statuses: write
+```
+
+Require the resulting `Cyclops audit run` status on the protected branch. The caller owns the event triggers and concurrency policy because reusable workflows cannot declare them.
 
 ### `pr-audit`
 
