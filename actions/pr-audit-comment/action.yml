@@ -8,6 +8,14 @@ inputs:
   permission-check-mode:
     description: "Use author_association checks or org membership API checks"
     required: true
+  allowed-associations:
+    description: "Comma or whitespace-separated author associations allowed in association mode"
+    required: false
+    default: "OWNER,MEMBER,COLLABORATOR"
+  allow-same-author:
+    description: "Allow a trusted commenter to audit their own external-fork PR"
+    required: false
+    default: "false"
   organization:
     description: "Organization used when permission-check-mode is org"
     required: true
@@ -35,6 +43,8 @@ runs:
       env:
         COMMAND_REGEX: ${{ inputs.command-regex }}
         PERMISSION_CHECK_MODE: ${{ inputs.permission-check-mode }}
+        ALLOWED_ASSOCIATIONS: ${{ inputs.allowed-associations }}
+        ALLOW_SAME_AUTHOR: ${{ inputs.allow-same-author }}
         PERMISSION_TOKEN: ${{ inputs.permission-token }}
         ORGANIZATION: ${{ inputs.organization }}
         EVENTS_KEY: ${{ inputs.events-key }}

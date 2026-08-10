@@ -22,6 +22,8 @@ jobs:
         with:
           command-regex: '^(?:@decofe\s+)?(?:cyclops\s+audit|derek\s+audit)\b'
           permission-check-mode: association
+          allowed-associations: OWNER,MEMBER
+          allow-same-author: "true"
           organization: tempoxyz
           events-key: ${{ secrets.EVENTS_KEY }}
           events-cert: ${{ secrets.EVENTS_CERT }}
@@ -29,12 +31,15 @@ jobs:
           github-token: ${{ github.token }}
 ```
 
-In `association` mode, an owner, member, or collaborator may trigger an audit.
-If that trusted commenter is also the PR author, matching non-null numeric
-GitHub user IDs avoids rejecting them when the fetched author association is
-weaker. For a PR whose head branch belongs to the base repository, the trusted
+In `association` mode, `allowed-associations` controls which GitHub author
+associations may trigger an audit and, for external forks, which PR authors may
+be audited. It accepts comma or whitespace-separated values and defaults to
+`OWNER,MEMBER,COLLABORATOR` for compatibility with existing callers.
+For a PR whose head branch belongs to the base repository, the trusted
 commenter is the authorization boundary. External-fork authors remain subject
-to the association check.
+to the configured association check. Set `allow-same-author: "true"` to let a
+trusted commenter audit their own external-fork PR; identity is established by
+matching non-null numeric GitHub user IDs.
 
 For `permission-check-mode: org`, `permission-token` can provide a token with
 organization membership access independently from `github-token`, which

@@ -108,7 +108,15 @@ async function checkPermission({ github, context, core, getOctokit }) {
   });
 
   if (mode === "association") {
-    const allowed = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+    const associations = (process.env.ALLOWED_ASSOCIATIONS ?? "")
+      .split(/[\s,]+/)
+      .map((association) => association.trim().toUpperCase())
+      .filter(Boolean);
+    if (associations.length === 0) {
+      core.setFailed("allowed-associations must contain at least one association");
+      return null;
+    }
+    const allowed = new Set(associations);
     const commenterAssociation = context.payload.comment.author_association;
     if (!allowed.has(commenterAssociation)) {
       core.setFailed(
@@ -119,9 +127,13 @@ async function checkPermission({ github, context, core, getOctokit }) {
 
     const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
     const sameRepository = pr.head.repo?.full_name === baseRepo;
+    const sameAuthor = commenterUser.id != null && commenterUser.id === pr.user.id;
     // A trusted commenter authorizes audits of repository-local branches.
-    // PR author association is relevant only when the head belongs to a fork.
-    const authorAllowed = sameRepository || allowed.has(pr.author_association);
+    // External-fork authors otherwise remain subject to the association check.
+    const authorAllowed =
+      sameRepository ||
+      (process.env.ALLOW_SAME_AUTHOR === "true" && sameAuthor) ||
+      allowed.has(pr.author_association);
     if (!authorAllowed) {
       core.setFailed(
         `External-fork PR author @${pr.user.login} is not allowed to be audited (${pr.author_association})`,

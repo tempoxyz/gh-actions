@@ -171,6 +171,8 @@ function setEnvironment(values) {
 
 async function runScenario({
   mode,
+  allowedAssociations = "OWNER,MEMBER,COLLABORATOR",
+  allowSameAuthor = "false",
   pr = makePr(),
   commenterAssociation = "MEMBER",
   commenterId = 1,
@@ -185,6 +187,8 @@ async function runScenario({
   const restoreEnvironment = setEnvironment({
     COMMAND_REGEX: "^cyclops\\s+audit\\b",
     PERMISSION_CHECK_MODE: mode,
+    ALLOWED_ASSOCIATIONS: allowedAssociations,
+    ALLOW_SAME_AUTHOR: allowSameAuthor,
     PERMISSION_TOKEN: permissionToken,
     ORGANIZATION: "tempoxyz",
   });
@@ -434,9 +438,27 @@ test("external-fork author cannot bypass a low association by also commenting", 
   assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
 });
 
+test("trusted commenter can audit their own external-fork PR when enabled", async () => {
+  const result = await runScenario({
+    mode: "association",
+    allowedAssociations: "OWNER,MEMBER",
+    allowSameAuthor: "true",
+    commenterId: 7,
+    pr: makePr({
+      authorAssociation: "CONTRIBUTOR",
+      authorId: 7,
+      headRepo: "external/example",
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 1);
+  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
+});
+
 test("untrusted commenter is denied even when they authored the PR", async () => {
   const result = await runScenario({
     mode: "association",
+    allowSameAuthor: "true",
     commenterAssociation: "CONTRIBUTOR",
     commenterId: 7,
     pr: makePr({
@@ -452,6 +474,7 @@ test("untrusted commenter is denied even when they authored the PR", async () =>
 test("different trusted commenter cannot bypass a low author association", async () => {
   const result = await runScenario({
     mode: "association",
+    allowSameAuthor: "true",
     commenterId: 8,
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
@@ -467,6 +490,7 @@ test("different trusted commenter cannot bypass a low author association", async
 test("matching login with different user IDs does not identify the PR author", async () => {
   const result = await runScenario({
     mode: "association",
+    allowSameAuthor: "true",
     commenterId: 8,
     commenterLogin: "same-user",
     pr: makePr({
@@ -484,6 +508,7 @@ test("matching login with different user IDs does not identify the PR author", a
 test("missing user IDs fall back to the fetched author association", async () => {
   const result = await runScenario({
     mode: "association",
+    allowSameAuthor: "true",
     commenterId: null,
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
@@ -522,6 +547,55 @@ test("same-repository PR authors are allowed", async () => {
 
   // Permission succeeded, so processing reached the invalid-command comment.
   assert.equal(result.primary.calls.comments.length, 1);
+});
+
+test("association mode preserves collaborator access by default", async () => {
+  const result = await runScenario({
+    mode: "association",
+    commenterAssociation: "COLLABORATOR",
+  });
+
+  assert.equal(result.primary.calls.comments.length, 1);
+  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
+});
+
+test("association mode can restrict collaborator commenters", async () => {
+  const result = await runScenario({
+    mode: "association",
+    allowedAssociations: "OWNER,MEMBER",
+    commenterAssociation: "COLLABORATOR",
+  });
+
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(result.core.failures[0], /Audit commenter @commenter is not allowed/);
+});
+
+test("association mode can restrict collaborator fork authors", async () => {
+  const result = await runScenario({
+    mode: "association",
+    allowedAssociations: "OWNER MEMBER",
+    pr: makePr({
+      authorAssociation: "COLLABORATOR",
+      headRepo: "external/example",
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
+});
+
+test("association mode rejects an explicitly empty allowed association list", async () => {
+  const result = await runScenario({
+    mode: "association",
+    allowedAssociations: "",
+    commenterAssociation: "COLLABORATOR",
+  });
+
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(
+    result.core.failures[0],
+    /allowed-associations must contain at least one association/,
+  );
 });
 
 test("same-repository exception never permits a fork author", async () => {
