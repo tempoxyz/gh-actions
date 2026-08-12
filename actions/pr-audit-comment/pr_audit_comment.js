@@ -125,21 +125,9 @@ async function checkPermission({ github, context, core, getOctokit }) {
       return null;
     }
 
-    const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
-    const sameRepository = pr.head.repo?.full_name === baseRepo;
-    const sameAuthor = commenterUser.id != null && commenterUser.id === pr.user.id;
-    // A trusted commenter authorizes audits of repository-local branches.
-    // External-fork authors otherwise remain subject to the association check.
-    const authorAllowed =
-      sameRepository ||
-      (process.env.ALLOW_SAME_AUTHOR === "true" && sameAuthor) ||
-      allowed.has(pr.author_association);
-    if (!authorAllowed) {
-      core.setFailed(
-        `External-fork PR author @${pr.user.login} is not allowed to be audited (${pr.author_association})`,
-      );
-      return null;
-    }
+    // The trusted commenter authorizes the audit. The PR author's association
+    // is intentionally irrelevant because external contributors are the
+    // primary subjects of on-demand audits.
     return pr;
   }
 
@@ -166,10 +154,6 @@ async function checkPermission({ github, context, core, getOctokit }) {
 
   if (!await checkMembership(commenter)) {
     core.setFailed(`@${commenter} is not a member of ${org}`);
-    return null;
-  }
-  if (!await checkMembership(pr.user.login)) {
-    core.setFailed(`PR author @${pr.user.login} is not a member of ${org}`);
     return null;
   }
   return pr;
