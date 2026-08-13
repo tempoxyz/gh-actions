@@ -175,7 +175,6 @@ jobs:
           command-regex: '^(?:@decofe\s+)?(?:cyclops\s+audit|derek\s+audit)\b'
           permission-check-mode: association
           allowed-associations: OWNER,MEMBER
-          allow-same-author: "true"
           organization: tempoxyz
           events-key: ${{ secrets.EVENTS_KEY }}
           events-cert: ${{ secrets.EVENTS_CERT }}
@@ -201,12 +200,11 @@ one used for PR reads and status comments:
 
 If `permission-token` is omitted, membership checks use `github-token` as
 before. In `association` mode, `allowed-associations` controls which GitHub
-author associations may trigger an audit and, for external forks, which PR
-authors may be audited. It defaults to `OWNER,MEMBER,COLLABORATOR`. For a PR
-whose head branch belongs to the base repository, the trusted commenter is the
-authorization boundary. Set `allow-same-author: "true"` to let a trusted
-commenter audit their own external-fork PR, identified by matching non-null
-numeric GitHub user IDs.
+commenter associations may trigger an audit. It defaults to
+`OWNER,MEMBER,COLLABORATOR`. In both permission modes, authorization applies to
+the commenter, not the pull request author, so a trusted commenter can audit a
+pull request from an external fork. `allow-same-author` is deprecated, has no
+effect, and remains accepted only for compatibility with existing callers.
 
 ### `label-prs`
 

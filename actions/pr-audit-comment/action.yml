@@ -9,11 +9,11 @@ inputs:
     description: "Use author_association checks or org membership API checks"
     required: true
   allowed-associations:
-    description: "Comma or whitespace-separated author associations allowed in association mode"
+    description: "Comma or whitespace-separated commenter associations allowed in association mode"
     required: false
     default: "OWNER,MEMBER,COLLABORATOR"
   allow-same-author:
-    description: "Allow a trusted commenter to audit their own external-fork PR"
+    description: "Deprecated compatibility input; trusted commenters may audit any PR"
     required: false
     default: "false"
   organization:

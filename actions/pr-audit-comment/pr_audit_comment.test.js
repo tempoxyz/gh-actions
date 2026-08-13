@@ -337,12 +337,12 @@ test("org mode uses a separate client for permission-token", async () => {
     primaryMembership: async () => {
       throw new Error("primary GitHub client must not check membership");
     },
-    permissionMembership: membershipStatuses(204, 204),
+    permissionMembership: membershipStatuses(204),
   });
 
   assert.deepEqual(result.getOctokitTokens, ["membership-token"]);
   assert.equal(result.primary.calls.membership.length, 0);
-  assert.equal(result.permission.calls.membership.length, 2);
+  assert.equal(result.permission.calls.membership.length, 1);
 
   // The token belongs to the secondary client and should not be copied
   // into per-request options.
@@ -360,11 +360,11 @@ test("org mode falls back to github-token when permission-token is omitted", asy
   const result = await runScenario({
     mode: "org",
     permissionToken: undefined,
-    primaryMembership: membershipStatuses(204, 204),
+    primaryMembership: membershipStatuses(204),
   });
 
   assert.deepEqual(result.getOctokitTokens, []);
-  assert.equal(result.primary.calls.membership.length, 2);
+  assert.equal(result.primary.calls.membership.length, 1);
   assert.equal(result.permission.calls.membership.length, 0);
   assert.equal(result.primary.calls.comments.length, 1);
 });
@@ -403,47 +403,25 @@ test("org mode fails closed when permission-token cannot authenticate", async ()
   assert.match(result.core.failures[0], /is not a member/);
 });
 
-test("org mode rejects a non-member PR author", async () => {
-  const notFound = Object.assign(new Error("Not Found"), {
-    status: 404,
-  });
-
-  const result = await runScenario({
-    mode: "org",
-    permissionToken: "membership-token",
-    // Commenter is a member; PR author is not.
-    permissionMembership: membershipStatuses(204, notFound),
-  });
-
-  assert.equal(result.permission.calls.membership.length, 2);
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(
-    result.core.failures[0],
-    /PR author @pr-author is not a member/,
-  );
-});
-
-test("external-fork author cannot bypass a low association by also commenting", async () => {
+test("trusted commenter can audit an external contributor's fork PR", async () => {
   const result = await runScenario({
     mode: "association",
-    commenterId: 7,
+    commenterAssociation: "OWNER",
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
-      authorId: 7,
       headRepo: "external/example",
     }),
   });
 
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
+  assert.equal(result.primary.calls.comments.length, 1);
+  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
 });
 
-test("trusted commenter can audit their own external-fork PR when enabled", async () => {
+test("deprecated allow-same-author input does not restrict trusted commenters", async () => {
   const result = await runScenario({
     mode: "association",
-    allowedAssociations: "OWNER,MEMBER",
-    allowSameAuthor: "true",
-    commenterId: 7,
+    allowSameAuthor: "false",
+    commenterId: 8,
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
       authorId: 7,
@@ -455,98 +433,18 @@ test("trusted commenter can audit their own external-fork PR when enabled", asyn
   assert.match(result.core.failures[0], /Invalid cyclops audit command/);
 });
 
-test("untrusted commenter is denied even when they authored the PR", async () => {
+test("untrusted commenter cannot audit an external contributor's fork PR", async () => {
   const result = await runScenario({
     mode: "association",
-    allowSameAuthor: "true",
     commenterAssociation: "CONTRIBUTOR",
-    commenterId: 7,
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
-      authorId: 7,
+      headRepo: "external/example",
     }),
   });
 
   assert.equal(result.primary.calls.comments.length, 0);
   assert.match(result.core.failures[0], /Audit commenter @commenter is not allowed/);
-});
-
-test("different trusted commenter cannot bypass a low author association", async () => {
-  const result = await runScenario({
-    mode: "association",
-    allowSameAuthor: "true",
-    commenterId: 8,
-    pr: makePr({
-      authorAssociation: "CONTRIBUTOR",
-      authorId: 7,
-      headRepo: "external/example",
-    }),
-  });
-
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
-});
-
-test("matching login with different user IDs does not identify the PR author", async () => {
-  const result = await runScenario({
-    mode: "association",
-    allowSameAuthor: "true",
-    commenterId: 8,
-    commenterLogin: "same-user",
-    pr: makePr({
-      authorAssociation: "CONTRIBUTOR",
-      authorId: 7,
-      authorLogin: "same-user",
-      headRepo: "external/example",
-    }),
-  });
-
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /External-fork PR author @same-user/);
-});
-
-test("missing user IDs fall back to the fetched author association", async () => {
-  const result = await runScenario({
-    mode: "association",
-    allowSameAuthor: "true",
-    commenterId: null,
-    pr: makePr({
-      authorAssociation: "CONTRIBUTOR",
-      authorId: null,
-      headRepo: "external/example",
-    }),
-  });
-
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
-});
-
-test("trusted fetched author association remains allowed when user IDs are missing", async () => {
-  const result = await runScenario({
-    mode: "association",
-    commenterId: null,
-    pr: makePr({
-      authorAssociation: "MEMBER",
-      authorId: null,
-      headRepo: "external/example",
-    }),
-  });
-
-  assert.equal(result.primary.calls.comments.length, 1);
-  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
-});
-
-test("same-repository PR authors are allowed", async () => {
-  const result = await runScenario({
-    mode: "association",
-    pr: makePr({
-      authorAssociation: "CONTRIBUTOR",
-      headRepo: "tempoxyz/example",
-    }),
-  });
-
-  // Permission succeeded, so processing reached the invalid-command comment.
-  assert.equal(result.primary.calls.comments.length, 1);
 });
 
 test("association mode preserves collaborator access by default", async () => {
@@ -570,20 +468,6 @@ test("association mode can restrict collaborator commenters", async () => {
   assert.match(result.core.failures[0], /Audit commenter @commenter is not allowed/);
 });
 
-test("association mode can restrict collaborator fork authors", async () => {
-  const result = await runScenario({
-    mode: "association",
-    allowedAssociations: "OWNER MEMBER",
-    pr: makePr({
-      authorAssociation: "COLLABORATOR",
-      headRepo: "external/example",
-    }),
-  });
-
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(result.core.failures[0], /External-fork PR author @pr-author/);
-});
-
 test("association mode rejects an explicitly empty allowed association list", async () => {
   const result = await runScenario({
     mode: "association",
@@ -598,39 +482,7 @@ test("association mode rejects an explicitly empty allowed association list", as
   );
 });
 
-test("same-repository exception never permits a fork author", async () => {
-  const result = await runScenario({
-    mode: "association",
-    pr: makePr({
-      authorAssociation: "CONTRIBUTOR",
-      headRepo: "external/example",
-    }),
-  });
-
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(
-    result.core.failures[0],
-    /External-fork PR author @pr-author/,
-  );
-});
-
-test("same-repository exception fails closed for a deleted fork", async () => {
-  const result = await runScenario({
-    mode: "association",
-    pr: makePr({
-      authorAssociation: "CONTRIBUTOR",
-      headRepo: null,
-    }),
-  });
-
-  assert.equal(result.primary.calls.comments.length, 0);
-  assert.match(
-    result.core.failures[0],
-    /External-fork PR author @pr-author/,
-  );
-});
-
-test("untrusted commenter is rejected before the author exception", async () => {
+test("untrusted commenter is rejected regardless of the PR author", async () => {
   const result = await runScenario({
     mode: "association",
     commenterAssociation: "CONTRIBUTOR",
