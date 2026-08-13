@@ -30,19 +30,24 @@ jobs:
           github-token: ${{ github.token }}
 ```
 
-In `association` mode, `allowed-associations` controls which GitHub comment
-authors may trigger an audit. It accepts comma or whitespace-separated values
-and defaults to `OWNER,MEMBER,COLLABORATOR` for compatibility with existing
-callers. The trusted commenter is the authorization boundary; the PR author's
-association is not checked, including for external forks.
+## Authorization
+
+Authorization applies to the user who posts the audit command, not the author
+of the pull request. A trusted commenter can therefore request an audit for any
+pull request, including one opened from an external fork by a contributor.
+
+In `association` mode, `allowed-associations` controls which commenters may
+trigger an audit. It accepts comma- or whitespace-separated values and defaults
+to `OWNER,MEMBER,COLLABORATOR` for compatibility with existing callers.
+
 `allow-same-author` remains accepted for compatibility with existing callers,
-but is deprecated and has no effect.
+but is deprecated and has no effect. It can be removed from caller workflows.
 
 For `permission-check-mode: org`, `permission-token` can provide a token with
 organization membership access independently from `github-token`, which
 continues to handle PR reads and status comments. If `permission-token` is not
-set, membership checks use `github-token` as before. Only the commenter must be
-an organization member; the PR author is not checked.
+set, membership checks use `github-token` as before. This mode checks whether
+the commenter is an organization member; it does not check the PR author.
 
 ```yaml
           permission-check-mode: org
