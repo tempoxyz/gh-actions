@@ -12,6 +12,10 @@ inputs:
     description: "Comma or whitespace-separated commenter associations allowed in association mode"
     required: false
     default: "OWNER,MEMBER,COLLABORATOR"
+  allow-same-author:
+    description: "Deprecated compatibility input; trusted commenters may audit any PR"
+    required: false
+    default: "false"
   organization:
     description: "Organization used when permission-check-mode is org"
     required: true
@@ -40,6 +44,7 @@ runs:
         COMMAND_REGEX: ${{ inputs.command-regex }}
         PERMISSION_CHECK_MODE: ${{ inputs.permission-check-mode }}
         ALLOWED_ASSOCIATIONS: ${{ inputs.allowed-associations }}
+        ALLOW_SAME_AUTHOR: ${{ inputs.allow-same-author }}
         PERMISSION_TOKEN: ${{ inputs.permission-token }}
         ORGANIZATION: ${{ inputs.organization }}
         EVENTS_KEY: ${{ inputs.events-key }}

@@ -172,6 +172,7 @@ function setEnvironment(values) {
 async function runScenario({
   mode,
   allowedAssociations = "OWNER,MEMBER,COLLABORATOR",
+  allowSameAuthor = "false",
   pr = makePr(),
   commenterAssociation = "MEMBER",
   commenterId = 1,
@@ -187,6 +188,7 @@ async function runScenario({
     COMMAND_REGEX: "^cyclops\\s+audit\\b",
     PERMISSION_CHECK_MODE: mode,
     ALLOWED_ASSOCIATIONS: allowedAssociations,
+    ALLOW_SAME_AUTHOR: allowSameAuthor,
     PERMISSION_TOKEN: permissionToken,
     ORGANIZATION: "tempoxyz",
   });
@@ -407,6 +409,22 @@ test("trusted commenter can audit an external contributor's fork PR", async () =
     commenterAssociation: "OWNER",
     pr: makePr({
       authorAssociation: "CONTRIBUTOR",
+      headRepo: "external/example",
+    }),
+  });
+
+  assert.equal(result.primary.calls.comments.length, 1);
+  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
+});
+
+test("deprecated allow-same-author input does not restrict trusted commenters", async () => {
+  const result = await runScenario({
+    mode: "association",
+    allowSameAuthor: "false",
+    commenterId: 8,
+    pr: makePr({
+      authorAssociation: "CONTRIBUTOR",
+      authorId: 7,
       headRepo: "external/example",
     }),
   });

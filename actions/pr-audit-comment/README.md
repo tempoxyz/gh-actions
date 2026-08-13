@@ -35,6 +35,8 @@ authors may trigger an audit. It accepts comma or whitespace-separated values
 and defaults to `OWNER,MEMBER,COLLABORATOR` for compatibility with existing
 callers. The trusted commenter is the authorization boundary; the PR author's
 association is not checked, including for external forks.
+`allow-same-author` remains accepted for compatibility with existing callers,
+but is deprecated and has no effect.
 
 For `permission-check-mode: org`, `permission-token` can provide a token with
 organization membership access independently from `github-token`, which
