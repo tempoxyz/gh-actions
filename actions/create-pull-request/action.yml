@@ -1,0 +1,203 @@
+name: "Create Pull Request"
+description: >-
+  Commit working-tree changes to a branch and open a pull request using
+  only git and gh — a bare-minimum replacement for
+  peter-evans/create-pull-request
+
+# Expects the caller to have checked out the repository at the commit the
+# branch should start from (normally the tip of `base`) and to have edited
+# the working tree in place. The action then:
+#
+#   1. Creates the head branch at HEAD — or force-resets it if a stale
+#      branch survived an earlier failed run (callers are expected to
+#      delete the branch on merge).
+#   2. Stages `add-paths` and commits the staged changes via the GraphQL
+#      createCommitOnBranch mutation. Nothing is pushed from the runner:
+#      the commit is created server-side, so it is authored by the
+#      token's actor (e.g. a GitHub App bot) and signed by GitHub —
+#      commits never show as "Unverified", without any signing key
+#      handling. Additions, modifications, and deletions are supported;
+#      renames become delete + add; anything else (e.g. type changes)
+#      fails the action. File modes are not preserved — created files
+#      are regular (non-executable) files.
+#   3. Opens a pull request for the branch, or reuses the branch's
+#      existing open PR (refreshing its title and body) if one survived
+#      an earlier failed run.
+#
+# The token must have contents: write (branch + commit) and
+# pull-requests: write (PR create/edit, labels). Any `labels` must
+# already exist in the repository.
+#
+# The action fails if there are no changes to commit: it is built for
+# callers that just generated changes and expect them to exist, so an
+# empty diff means something upstream went wrong.
+
+inputs:
+  token:
+    description: >-
+      Token used for all API calls (branch, commit, PR). Needs
+      contents: write and pull-requests: write. The commit is authored
+      by this token's actor, so pass a GitHub App installation token
+      (e.g. from the github-sts action) to avoid github-actions[bot].
+    required: true
+  branch:
+    description: "Head branch to create (force-reset if it exists)"
+    required: true
+  base:
+    description: "Base branch the pull request targets"
+    required: false
+    default: "main"
+  commit-message:
+    description: "Commit message headline"
+    required: true
+  title:
+    description: "Pull request title"
+    required: true
+  body:
+    description: "Pull request body (Markdown)"
+    required: false
+    default: ""
+  add-paths:
+    description: >-
+      Newline-separated git pathspecs to stage (as `git add -A --
+      <pathspec>...`). Defaults to all changes in the working tree.
+    required: false
+    default: "."
+  labels:
+    description: >-
+      Newline- or comma-separated labels to add to the pull request.
+      Labels must already exist in the repository.
+    required: false
+    default: ""
+
+outputs:
+  pull-request-number:
+    description: "Number of the created (or reused) pull request"
+    value: ${{ steps.create.outputs.pull-request-number }}
+  head-sha:
+    description: "OID of the commit created on the head branch"
+    value: ${{ steps.create.outputs.head-sha }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Commit changes and open pull request
+      id: create
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        BRANCH: ${{ inputs.branch }}
+        BASE: ${{ inputs.base }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        ADD_PATHS: ${{ inputs.add-paths }}
+        LABELS: ${{ inputs.labels }}
+      run: |
+        set -euo pipefail
+
+        BASE_SHA="$(git rev-parse HEAD)"
+
+        # Point the head branch at the checked-out commit, force-resetting
+        # a leftover branch from an earlier failed run.
+        if gh api "repos/$GH_REPO/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+          gh api -X PATCH "repos/$GH_REPO/git/refs/heads/$BRANCH" \
+            -f sha="$BASE_SHA" -F force=true
+        else
+          gh api "repos/$GH_REPO/git/refs" \
+            -f ref="refs/heads/$BRANCH" -f sha="$BASE_SHA"
+        fi
+
+        mapfile -t PATHSPECS < <(printf '%s\n' "$ADD_PATHS" | sed '/^[[:space:]]*$/d')
+        git add -A -- "${PATHSPECS[@]}"
+
+        # Classify the staged changes into the GraphQL fileChanges shape.
+        # --no-renames so a rename surfaces as D + A; any status other
+        # than A/M/D (e.g. T for a type change) is unsupported and fails.
+        ADDITIONS='[]'
+        DELETIONS='[]'
+        CHANGE_COUNT=0
+        while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+          case "$status" in
+            A|M)
+              ADDITIONS="$(
+                jq --arg path "$path" --arg contents "$(base64 -w0 < "$path")" \
+                  '. + [{path: $path, contents: $contents}]' <<<"$ADDITIONS"
+              )"
+              ;;
+            D)
+              DELETIONS="$(
+                jq --arg path "$path" '. + [{path: $path}]' <<<"$DELETIONS"
+              )"
+              ;;
+            *)
+              echo "::error::unsupported change type '$status' for '$path'" >&2
+              exit 1
+              ;;
+          esac
+          CHANGE_COUNT=$((CHANGE_COUNT + 1))
+        done < <(git diff --cached --name-status --no-renames -z)
+        if [[ "$CHANGE_COUNT" -eq 0 ]]; then
+          echo "::error::nothing to commit: no staged changes under: $ADD_PATHS" >&2
+          exit 1
+        fi
+
+        # The $input below is a GraphQL variable, not shell.
+        # shellcheck disable=SC2016
+        QUERY='mutation($input: CreateCommitOnBranchInput!) {
+          createCommitOnBranch(input: $input) { commit { oid } }
+        }'
+        jq -n \
+          --arg query "$QUERY" \
+          --arg repo "$GH_REPO" \
+          --arg branch "$BRANCH" \
+          --arg oid "$BASE_SHA" \
+          --arg headline "$COMMIT_MESSAGE" \
+          --argjson additions "$ADDITIONS" \
+          --argjson deletions "$DELETIONS" \
+          '{query: $query, variables: {input: {
+              branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+              expectedHeadOid: $oid,
+              message: {headline: $headline},
+              fileChanges: {additions: $additions, deletions: $deletions}}}}' \
+          > "$RUNNER_TEMP/create-commit.json"
+        HEAD_SHA="$(
+          gh api graphql --input "$RUNNER_TEMP/create-commit.json" \
+            --jq '.data.createCommitOnBranch.commit.oid'
+        )"
+        echo "Committed $HEAD_SHA to $BRANCH"
+
+        BODY_FILE="$(mktemp "$RUNNER_TEMP/pr-body-XXXXXX")"
+        printf '%s\n' "$BODY" > "$BODY_FILE"
+
+        LABEL_ARGS=()
+        while IFS= read -r label; do
+          [[ -z "$label" ]] && continue
+          LABEL_ARGS+=(--label "$label")
+        done < <(
+          printf '%s\n' "$LABELS" | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+        )
+
+        # Reuse the branch's open PR if an earlier failed run left one
+        # behind — the branch was force-reset to the fresh commit above,
+        # so only the title/body need refreshing.
+        PR_NUMBER="$(
+          gh pr list --repo "$GH_REPO" --head "$BRANCH" --base "$BASE" \
+            --state open --json number --jq '.[0].number // empty'
+        )"
+        if [[ -z "$PR_NUMBER" ]]; then
+          PR_URL="$(
+            gh pr create --repo "$GH_REPO" --base "$BASE" --head "$BRANCH" \
+              --title "$TITLE" --body-file "$BODY_FILE" "${LABEL_ARGS[@]}"
+          )"
+          PR_NUMBER="${PR_URL##*/}"
+        else
+          gh pr edit --repo "$GH_REPO" "$PR_NUMBER" \
+            --title "$TITLE" --body-file "$BODY_FILE"
+        fi
+
+        echo "pull-request-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+        echo "head-sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+        echo "Pull request #$PR_NUMBER"
