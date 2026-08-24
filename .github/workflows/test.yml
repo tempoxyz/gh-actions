@@ -100,14 +100,16 @@ jobs:
           echo "composite correctly failed on the broken fixture"
 
       # The reusable scanner supplies a seven-day global policy even when the
-      # caller has no local Pinact config. A fixed public commit and deliberately
-      # large test threshold keep this check deterministic as the PR ages.
+      # caller has no local Pinact config. The workflow run's own commit is
+      # always recent, keeping this check deterministic without an artificial
+      # threshold that produces misleading century-old cutoff dates.
       - name: Stage recent pin without caller config
         id: recent-pin
         env:
-          ACTION_REPOSITORY: actions/checkout
-          ACTION_SHA: 9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-          MIN_AGE: "36500"
+          ACTION_NAME: ${{ github.repository }}/actions/scan-github-actions
+          ACTION_REPOSITORY: ${{ github.repository }}
+          ACTION_SHA: ${{ github.sha }}
+          MIN_AGE: "7"
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -121,10 +123,10 @@ jobs:
             echo "::error::test pin is not newer than the configured threshold"
             exit 1
           fi
-          printf 'name: recent pin\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: %s@%s # v7.0.0\n' \
-            "$ACTION_REPOSITORY" "$ACTION_SHA" > "$fixture"
+          printf 'name: recent pin\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: %s@%s # v0.0.0\n' \
+            "$ACTION_NAME" "$ACTION_SHA" > "$fixture"
           printf 'version: 3\nmin_age:\n  value: %s\n' "$MIN_AGE" > "$policy"
-          echo "include=^${ACTION_REPOSITORY}$" >> "$GITHUB_OUTPUT"
+          echo "include=^${ACTION_NAME}$" >> "$GITHUB_OUTPUT"
           echo "policy=$policy" >> "$GITHUB_OUTPUT"
       - name: Check recent pin without minimum-age policy
         id: recent-pin-no-policy
