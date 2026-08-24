@@ -4,20 +4,20 @@ Reusable GitHub Actions for the Tempo organization.
 
 ## Actions
 
-| Action | Description | Source |
-|--------|-------------|--------|
-| [`docker-login`](actions/docker-login) | Log in to GHCR and optionally Docker Hub | dev-infra, tempo |
-| [`docker-build-push`](actions/docker-build-push) | Build and push Docker images | dev-infra |
-| [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy | tempo |
-| [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign | tempo |
-| [`publish-event`](actions/publish-event) | POST webhook events to downstream systems | dev-infra, tempo |
-| [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens | tempo |
-| [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR with gh only | voight-kampff |
-| [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands | tempo, zones |
-| [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache | tempo |
-| [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain | tempo |
-| [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI | helm-charts |
-| [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows | any |
+| Action | Description |
+|--------|-------------|
+| [`docker-login`](actions/docker-login) | Log in to GHCR and optionally Docker Hub
+| [`docker-build-push`](actions/docker-build-push) | Build and push Docker images
+| [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy
+| [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign
+| [`publish-event`](actions/publish-event) | POST webhook events to downstream systems
+| [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
+| [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR
+| [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands
+| [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache
+| [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain
+| [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI
+| [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows
 
 ## Usage
 
