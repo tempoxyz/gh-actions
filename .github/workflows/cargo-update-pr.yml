@@ -74,9 +74,20 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Checked out at the reusable workflow's own revision (the label-prs
+      # pattern), so the github-sts action always matches this workflow and
+      # needs no separate SHA pin.
+      - name: Checkout shared actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .gh-actions
+          persist-credentials: false
+
       - name: Fetch GitHub token via STS
         id: sts
-        uses: tempoxyz/gh-actions/actions/github-sts@183a02178c660ce295e9a262edc5857cb7135f06 # main
+        uses: ./.gh-actions/actions/github-sts
         with:
           policy: cargo-update-pr
 
