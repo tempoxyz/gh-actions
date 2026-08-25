@@ -390,14 +390,29 @@ Optional inputs:
 
 ### `cargo-update-pr`
 
-Runs `cargo update` and opens or updates a pull request for `Cargo.lock`.
+Runs `cargo update` and opens or updates a pull request for `Cargo.lock`. The
+branch push and PR use a short-lived GitHub App token minted via
+[`github-sts`](actions/github-sts) — the built-in `GITHUB_TOKEN` is not
+allowed to create pull requests.
 
 ```yaml
 jobs:
   cargo-update-pr:
     uses: tempoxyz/gh-actions/.github/workflows/cargo-update-pr.yml@main
-    secrets:
-      token: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: read
+      id-token: write
+```
+
+The calling repository must carry a trust policy at
+`.github/sts/cargo-update-pr.sts.yaml` that grants its own workflow
+`contents: write` and `pull_requests: write`, for example:
+
+```yaml
+subject: repo:tempoxyz@<org-id>/<repo>@<repo-id>:ref:refs/heads/main
+permissions:
+  contents: write
+  pull_requests: write
 ```
 
 Optional inputs:
