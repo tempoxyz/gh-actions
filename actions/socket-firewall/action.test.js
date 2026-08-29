@@ -15,6 +15,7 @@ test("composes the migrated Socket STS and pinned Firewall actions", () => {
     /SocketDev\/action@be1f253a41351d59095f8d7f1425985097dd1054/,
   );
   assert.match(manifest, /mode: firewall-enterprise/);
+  assert.match(manifest, /dev: \$\{\{ inputs\.dev \}\}/);
   assert.match(manifest, /socket-token: \$\{\{ steps\.socket-token\.outputs\.token \}\}/);
 });
 
