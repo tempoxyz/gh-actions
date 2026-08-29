@@ -8,13 +8,14 @@ const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 test("composes the migrated Socket STS and pinned Firewall actions", () => {
   assert.match(
     manifest,
-    /tempoxyz\/gh-actions\/actions\/socket-firewall\/sts@17877c44e0a14b6fc634f69fbdee575d940c7386/,
+    /tempoxyz\/gh-actions\/actions\/socket-firewall\/sts@18832acecd3af6bd2ab87500fa888c664637077c/,
   );
   assert.match(
     manifest,
     /SocketDev\/action@be1f253a41351d59095f8d7f1425985097dd1054/,
   );
   assert.match(manifest, /mode: firewall-enterprise/);
+  assert.match(manifest, /dev: \$\{\{ inputs\.dev \}\}/);
   assert.match(manifest, /socket-token: \$\{\{ steps\.socket-token\.outputs\.token \}\}/);
 });
 

@@ -8,6 +8,12 @@ GitHub actor.
 The caller must grant `id-token: write`. The generated token is revoked when
 the job finishes and is also covered by the STS lease expiration.
 
+## Inputs
+
+| Name | Description | Required | Default |
+|------|-------------|----------|---------|
+| `dev` | Use the development Socket STS endpoint for integration testing | No | `false` |
+
 ## Outputs
 
 | Name | Description |

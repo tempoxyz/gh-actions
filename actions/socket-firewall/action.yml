@@ -1,6 +1,12 @@
 name: "Socket Firewall"
 description: >-
-  Install Socket Firewall Enterprise with a short-lived, repository-scoped API token
+  Install Socket Firewall Enterprise with a short-lived API token
+
+inputs:
+  dev:
+    description: "Use the development Socket STS endpoint"
+    required: false
+    default: "false"
 
 outputs:
   firewall-path-binary:
@@ -15,7 +21,9 @@ runs:
   steps:
     - name: Exchange GitHub OIDC token for a Socket token
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@17877c44e0a14b6fc634f69fbdee575d940c7386
+      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@18832acecd3af6bd2ab87500fa888c664637077c
+      with:
+        dev: ${{ inputs.dev }}
 
     - name: Install Socket Firewall Enterprise
       id: firewall
