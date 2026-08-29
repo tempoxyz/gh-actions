@@ -9,6 +9,11 @@ rules:
   - ignore: true
     conditions:
       - expr: ActionName == "tempoxyz/socket-sts/action"
+  # The shim-capable Socket action revision is not tagged yet. Keep its
+  # immutable pin while exempting only this action from comment/min-age checks.
+  - ignore: true
+    conditions:
+      - expr: ActionName == "SocketDev/action"
   - ignore: true
     conditions:
       - expr: ActionName == "dtolnay/rust-toolchain"

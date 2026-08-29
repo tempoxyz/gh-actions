@@ -15,7 +15,7 @@ runs:
   steps:
     - name: Exchange GitHub OIDC token for a Socket token
       id: socket-token
-      uses: tempoxyz/socket-sts/action@540c9801eba546d518feae68ce7b2fb6e315704d # main
+      uses: tempoxyz/socket-sts/action@540c9801eba546d518feae68ce7b2fb6e315704d # zizmor: ignore[impostor-commit] Private first-party action pinned by SHA.
 
     - name: Install Socket Firewall Enterprise
       id: firewall
