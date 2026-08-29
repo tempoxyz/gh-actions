@@ -1,0 +1,29 @@
+---
+name: "Cloudflare STS"
+description: >-
+  Exchange the workflow OIDC token for a short-lived Cloudflare API token
+
+inputs:
+  policy:
+    description: "Trust policy name"
+    required: true
+  ttl:
+    description: "Token lifetime (for example 45s, 5m, or 1h; maximum 1h)"
+    required: false
+    default: "15m"
+  dev:
+    description: "(Dev testing only) Use the development STS endpoint"
+    required: false
+    default: "false"
+
+outputs:
+  token:
+    description: "Short-lived Cloudflare API token"
+  expires-at:
+    description: "Token expiration timestamp"
+  account-id:
+    description: "Cloudflare account ID for the selected environment"
+
+runs:
+  using: "node24"
+  main: "main.js"

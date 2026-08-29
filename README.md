@@ -12,6 +12,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems
 | [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
+| [`cloudflare-sts`](actions/cloudflare-sts) | Exchange GitHub OIDC tokens for short-lived Cloudflare API tokens
 | [`socket-firewall`](actions/socket-firewall) | Install Socket Firewall with a short-lived, repository-scoped token
 | [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR
 | [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands
