@@ -40,6 +40,10 @@ steps:
     run: gh api "repos/${GITHUB_REPOSITORY}"
 ```
 
+The action only runs for repositories owned by `tempoxyz`. It checks the
+repository owner before requesting a GitHub OIDC token or contacting the STS
+service, so copies outside the organization fail locally.
+
 The minted installation token is revoked automatically when the job finishes,
 including after a failed or cancelled job. If the STS exchange is rejected,
 the action prints the HTTP status and the server's safe error message (for

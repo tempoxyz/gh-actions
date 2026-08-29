@@ -25,6 +25,11 @@ function output(name, value) {
 }
 
 async function main() {
+  const repositoryOwner = process.env.GITHUB_REPOSITORY_OWNER || "";
+  if (repositoryOwner.toLowerCase() !== "tempoxyz") {
+    throw new Error("github-sts only supports repositories owned by tempoxyz");
+  }
+
   const dev = input("dev");
   const host = dev === "true" ? "gh-sts.tehq.dev" : dev === "false" ? "gh-sts.tehq.net" : null;
   if (!host) throw new Error("dev must be either true or false");
