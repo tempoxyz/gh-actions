@@ -4,6 +4,11 @@ min_age:
   value: 7
   always: true
 rules:
+  # First-party STS revisions are consumed immediately after review and remain
+  # pinned by SHA, so they cannot satisfy the third-party soak period.
+  - ignore: true
+    conditions:
+      - expr: ActionName == "tempoxyz/socket-sts/action"
   - ignore: true
     conditions:
       - expr: ActionName == "dtolnay/rust-toolchain"

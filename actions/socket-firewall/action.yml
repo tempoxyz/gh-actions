@@ -1,0 +1,25 @@
+name: "Socket Firewall"
+description: >-
+  Install Socket Firewall Enterprise with a short-lived, repository-scoped API token
+
+outputs:
+  firewall-path-binary:
+    description: "Path to the installed Socket Firewall binary"
+    value: ${{ steps.firewall.outputs.firewall-path-binary }}
+  firewall-path-report:
+    description: "Path to the Socket Firewall report JSON"
+    value: ${{ steps.firewall.outputs.firewall-path-report }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Exchange GitHub OIDC token for a Socket token
+      id: socket-token
+      uses: tempoxyz/socket-sts/action@540c9801eba546d518feae68ce7b2fb6e315704d # main
+
+    - name: Install Socket Firewall Enterprise
+      id: firewall
+      uses: SocketDev/action@be1f253a41351d59095f8d7f1425985097dd1054 # main
+      with:
+        mode: firewall-enterprise
+        socket-token: ${{ steps.socket-token.outputs.token }}
