@@ -5,10 +5,10 @@ const test = require("node:test");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
-test("composes the pinned Socket STS and Firewall actions", () => {
+test("composes the migrated Socket STS and pinned Firewall actions", () => {
   assert.match(
     manifest,
-    /tempoxyz\/socket-sts\/action@540c9801eba546d518feae68ce7b2fb6e315704d/,
+    /tempoxyz\/gh-actions\/actions\/socket-firewall\/sts@17877c44e0a14b6fc634f69fbdee575d940c7386/,
   );
   assert.match(
     manifest,

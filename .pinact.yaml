@@ -4,11 +4,11 @@ min_age:
   value: 7
   always: true
 rules:
-  # First-party STS revisions are consumed immediately after review and remain
-  # pinned by SHA, so they cannot satisfy the third-party soak period.
+  # First-party Socket STS revisions are consumed by the wrapper immediately
+  # after review and remain pinned by SHA, so they cannot satisfy the soak period.
   - ignore: true
     conditions:
-      - expr: ActionName == "tempoxyz/socket-sts/action"
+      - expr: ActionName == "tempoxyz/gh-actions/actions/socket-firewall/sts"
   # The shim-capable Socket action revision is not tagged yet. Keep its
   # immutable pin while exempting only this action from comment/min-age checks.
   - ignore: true
