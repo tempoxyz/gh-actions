@@ -12,6 +12,22 @@ function append(file, name, value) {
   fs.appendFileSync(file, `${name}=${value}\n`);
 }
 
+function maskSecret(value) {
+  const escaped = value
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+  console.log(`::add-mask::${escaped}`);
+}
+
+function publishToken(token, expiresAt) {
+  // Register the token before writing it anywhere GitHub may expose as output.
+  maskSecret(token);
+  append(required("GITHUB_OUTPUT"), "token", token);
+  append(required("GITHUB_OUTPUT"), "expires-at", expiresAt);
+  append(required("GITHUB_STATE"), "token", token);
+}
+
 async function main() {
   const endpoint = host(process.env.INPUT_DEV || "false");
   const oidcRequestToken = required("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
@@ -65,10 +81,7 @@ async function main() {
   ) {
     throw new Error("Socket STS response is invalid");
   }
-  console.log(`::add-mask::${result.token}`);
-  append(required("GITHUB_OUTPUT"), "token", result.token);
-  append(required("GITHUB_OUTPUT"), "expires-at", result.expires_at);
-  append(required("GITHUB_STATE"), "token", result.token);
+  publishToken(result.token, result.expires_at);
   append(required("GITHUB_STATE"), "dev", process.env.INPUT_DEV || "false");
 }
 
@@ -79,4 +92,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main };
+module.exports = { main, maskSecret, publishToken };

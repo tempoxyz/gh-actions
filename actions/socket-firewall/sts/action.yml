@@ -9,7 +9,7 @@ inputs:
 
 outputs:
   token:
-    description: "Short-lived Socket API token"
+    description: "Sensitive: short-lived Socket API token, registered with GitHub's secret masker"
   expires-at:
     description: "Time when Socket STS will revoke the token"
 
