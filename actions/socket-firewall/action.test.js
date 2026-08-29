@@ -8,7 +8,7 @@ const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 test("composes the migrated Socket STS and pinned Firewall actions", () => {
   assert.match(
     manifest,
-    /tempoxyz\/gh-actions\/actions\/socket-firewall\/sts@18832acecd3af6bd2ab87500fa888c664637077c/,
+    /tempoxyz\/gh-actions\/actions\/socket-firewall\/sts@09c541105b7d4e1b23343560e2438f48d874d3bb/,
   );
   assert.match(
     manifest,
