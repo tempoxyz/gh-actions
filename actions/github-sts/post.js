@@ -35,10 +35,6 @@ function stsRevocationRequestOptions(token) {
   };
 }
 
-function errorMessage(error) {
-  return error instanceof Error ? error.message : "request failed";
-}
-
 async function revokeToken(token, stsHost, dependencies = {}) {
   const send = dependencies.request || request;
   const withRetry = dependencies.retry || retry;
@@ -53,8 +49,8 @@ async function revokeToken(token, stsHost, dependencies = {}) {
         () => send(stsUrl, stsRevocationRequestOptions(token)),
         { label: "STS token revocation", isTransient: isTransientStatus },
       );
-    } catch (error) {
-      log.warn(`STS token revocation failed (${errorMessage(error)}); falling back to GitHub.`);
+    } catch {
+      log.warn("STS token revocation could not reach STS; falling back to GitHub.");
     }
     if (stsStatus === 204) {
       log.log("GitHub App token revoked and STS ledger updated.");
@@ -85,13 +81,15 @@ async function revokeToken(token, stsHost, dependencies = {}) {
         log.log("GitHub App token revoked and STS ledger updated.");
         return;
       }
-    } catch (error) {
-      log.warn(`STS ledger reconciliation failed: ${errorMessage(error)}.`);
+    } catch {
+      log.warn("STS ledger reconciliation could not reach STS.");
     }
   }
 
   const outcome = providerStatus === 204 ? "revoked" : "was already invalid or expired";
-  log.warn(`GitHub App token ${outcome}; STS ledger reconciliation remains pending.`);
+  log.warn(
+    `GitHub App token ${outcome}; its STS ledger row is already clear or reconciliation remains pending.`,
+  );
 }
 
 async function main() {
