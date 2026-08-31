@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const test = require("node:test");
+const { buildExchangeUrl } = require("./main.js");
 const {
   revocationRequestOptions,
   revokeToken,
@@ -9,6 +10,16 @@ const {
 } = require("./post.js");
 
 const actionDirectory = __dirname;
+
+test("exchange request forwards ttl only when specified", () => {
+  const withTtl = buildExchangeUrl("gh-sts.tehq.net", "tempoxyz/example", "deploy", "30s");
+  assert.equal(withTtl.searchParams.get("scope"), "tempoxyz/example");
+  assert.equal(withTtl.searchParams.get("identity"), "deploy");
+  assert.equal(withTtl.searchParams.get("ttl"), "30s");
+
+  const defaultTtl = buildExchangeUrl("gh-sts.tehq.net", "tempoxyz/example", "deploy", "");
+  assert.equal(defaultTtl.searchParams.has("ttl"), false);
+});
 
 test("main entrypoint executes as CommonJS", () => {
   const result = spawnSync(process.execPath, [path.join(actionDirectory, "main.js")], {

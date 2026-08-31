@@ -12,6 +12,11 @@ inputs:
   policy:
     description: "Trust policy name"
     required: true
+  ttl:
+    description: >-
+      Requested maximum token lifetime (for example 30s, 5m, or 1h)
+    required: false
+    default: ""
   dev:
     description: "(Dev testing only) Use the development STS endpoint"
     required: false

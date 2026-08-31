@@ -12,6 +12,7 @@ against the trust policy in the target repository.
 |------|-------------|----------|---------|
 | `scope` | Repository (`org/repo`) or organization whose trust policy to use | No | Current repository |
 | `policy` | Trust policy name (fetches file in `.github/sts/<policy>.sts.yaml` within `scope` repo) | Yes | |
+| `ttl` | Requested maximum lifetime (`30s`, `5m`, or `1h`) | No | Service/policy maximum |
 
 ## Outputs
 
@@ -33,12 +34,19 @@ steps:
     uses: tempoxyz/gh-actions/actions/github-sts@main
     with:
       policy: deploy # Uses .github/sts/deploy.sts.yaml as the permissions policy
+      ttl: 15m
 
   - name: Use the token
     env:
       GH_TOKEN: ${{ steps.sts.outputs.token }}
     run: gh api "repos/${GITHUB_REPOSITORY}"
 ```
+
+`ttl` is parsed and enforced by the STS. It must be a positive integer followed
+by `s`, `m`, or `h`, resolve to no more than one hour, and cannot exceed the
+policy's optional `max_ttl`. The effective lifetime is the shortest of the
+requested TTL, the policy maximum, and GitHub's one-hour installation-token
+limit. The `expires-at` output reports that effective deadline.
 
 The action only runs for repositories owned by `tempoxyz`. It checks the
 repository owner before requesting a GitHub OIDC token or contacting the STS

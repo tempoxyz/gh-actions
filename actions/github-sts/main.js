@@ -24,6 +24,14 @@ function output(name, value) {
   fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
+function buildExchangeUrl(host, scope, policy, ttl) {
+  const url = new URL(`https://${host}/sts/exchange`);
+  url.searchParams.set("scope", scope);
+  url.searchParams.set("identity", policy);
+  if (ttl) url.searchParams.set("ttl", ttl);
+  return url;
+}
+
 async function main() {
   const repositoryOwner = process.env.GITHUB_REPOSITORY_OWNER || "";
   if (repositoryOwner.toLowerCase() !== "tempoxyz") {
@@ -53,9 +61,9 @@ async function main() {
   const oidc = JSON.parse(oidcResponse.body).value;
 
   const scope = input("scope") || process.env.GITHUB_REPOSITORY;
-  const exchangeUrl = new URL(`https://${host}/sts/exchange`);
-  exchangeUrl.searchParams.set("scope", scope);
-  exchangeUrl.searchParams.set("identity", input("policy"));
+  // TTL parsing and bounds enforcement are deliberately server-side so a
+  // modified or older action cannot bypass policy constraints.
+  const exchangeUrl = buildExchangeUrl(host, scope, input("policy"), input("ttl"));
   const exchangeResponse = await retry(
     () => request(exchangeUrl, {
       headers: { Authorization: `Bearer ${oidc}` },
@@ -86,7 +94,11 @@ async function main() {
   fs.appendFileSync(process.env.GITHUB_STATE, `token=${token}\nsts_host=${host}\n`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { buildExchangeUrl };
