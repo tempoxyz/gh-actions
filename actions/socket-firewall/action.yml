@@ -21,7 +21,7 @@ runs:
   steps:
     - name: Exchange GitHub OIDC token for a Socket token
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@8a8533cc2124501ad42a63a8c9375ff27b15f816
+      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@d39e8866ecee5b7fd360986c7d74eee485146055
       with:
         dev: ${{ inputs.dev }}
 
