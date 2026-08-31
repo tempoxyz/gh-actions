@@ -5,6 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { host } = require("./http.cjs");
 const { publishToken } = require("./main.cjs");
+const { buildRevokeRequest } = require("./post.cjs");
 
 test("selects the fixed development and production endpoints", () => {
   assert.equal(host("true"), "socket-sts.tehq.dev");
@@ -65,6 +66,16 @@ test("masks the token before publishing it as output or state", () => {
       "token=socket%token-with-sensitive-value\n",
     ],
   ]);
+});
+
+test("revokes tokens by deleting the exchange resource", () => {
+  const token = "sktsec_test_short_lived_token_api";
+  const revoke = buildRevokeRequest(token, "true");
+
+  assert.equal(revoke.url, "https://socket-sts.tehq.dev/sts/exchange");
+  assert.equal(revoke.options.method, "DELETE");
+  assert.equal(revoke.options.headers["content-type"], "application/json");
+  assert.deepEqual(JSON.parse(revoke.body), { token });
 });
 
 test("post is a no-op when no token was minted", () => {
