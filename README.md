@@ -19,6 +19,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI
 | [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows
+| [`sitf-org-audit`](actions/sitf-org-audit) | Organization and repository SDLC audit mapped to Wiz SITF
 
 ## Usage
 
