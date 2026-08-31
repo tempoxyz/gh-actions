@@ -44,8 +44,10 @@ The action only runs for repositories owned by `tempoxyz`. It checks the
 repository owner before requesting a GitHub OIDC token or contacting the STS
 service, so copies outside the organization fail locally.
 
-The minted installation token is revoked automatically when the job finishes,
-including after a failed or cancelled job. If the STS exchange is rejected,
+The minted installation token is revoked through STS when the job finishes,
+so its provider credential and STS ownership-ledger row are cleared together,
+including after a failed or cancelled job. Direct GitHub revocation remains a
+fail-safe if STS cleanup is unavailable. If the STS exchange is rejected,
 the action prints the HTTP status and the server's safe error message (for
 example, `trust policy: subject did not match`) to make policy and
 configuration problems easier to diagnose.

@@ -83,7 +83,7 @@ async function main() {
   console.log(`::add-mask::${token}`);
   output("token", token);
   output("expires-at", expiresAt);
-  fs.appendFileSync(process.env.GITHUB_STATE, `token=${token}\n`);
+  fs.appendFileSync(process.env.GITHUB_STATE, `token=${token}\nsts_host=${host}\n`);
 }
 
 main().catch((error) => {
