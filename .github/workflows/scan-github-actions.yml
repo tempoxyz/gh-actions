@@ -9,7 +9,7 @@ on:
         type: string
         default: "."
       config:
-        description: "Path to a zizmor configuration file for overrides"
+        description: "Path to a zizmor configuration file for overrides. When empty and the repository has no zizmor config of its own, a default that disables the ref-version-mismatch audit is used (pins to tempoxyz/gh-actions cannot carry a matching version comment)."
         required: false
         type: string
         default: ""
@@ -148,6 +148,33 @@ jobs:
           [[ "$VERIFY_MIN_AGE" == "true" ]] && args+=(--verify-min-age)
           pinact run "${args[@]}"
 
+      # Default zizmor policy when the caller ships no zizmor config. Pins to this repository
+      # can never carry a version comment that matches a tag (gh-actions publishes none), so
+      # zizmor's ref-version-mismatch audit reports every commented pin as mismatched, a
+      # medium-severity finding that fails the scan. Comment correctness for third-party pins is
+      # pinact's job (`verify-pin-comments`). A repo that wants the audit back adds its own
+      # .github/zizmor.yml or passes `config`.
+      - name: Resolve zizmor config
+        id: zizmor-config
+        env:
+          CONFIG: ${{ inputs.config }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$CONFIG" ]]; then
+            echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          for f in .github/zizmor.yml .github/zizmor.yaml zizmor.yml zizmor.yaml; do
+            if [[ -f "$f" ]]; then
+              echo "using the repository's own $f"
+              echo "config=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          cfg="$RUNNER_TEMP/zizmor-default.yml"
+          printf 'rules:\n  ref-version-mismatch:\n    disable: true\n' > "$cfg"
+          echo "config=$cfg" >> "$GITHUB_OUTPUT"
+
       - name: Scan GitHub Actions
         if: ${{ !cancelled() }}
         uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
@@ -157,7 +184,7 @@ jobs:
           online-audits: true
           advanced-security: false
           annotations: true
-          config: ${{ inputs.config }}
+          config: ${{ steps.zizmor-config.outputs.config }}
           token: ${{ github.token }}
 
       - name: Lint GitHub Actions
