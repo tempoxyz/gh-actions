@@ -7,6 +7,6 @@
   "readme_url": "https://github.com/astral-sh/setup-uv/blob/ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d/README.md",
   "description": "Set up your GitHub Actions workflow with a specific version of uv.",
   "consume_as": "tempoxyz/gh-actions/vendor/astral-sh/setup-uv@<gh-actions-sha>",
-  "files_removed": 109,
+  "files_removed": 108,
   "nested_rewrites": []
 }
