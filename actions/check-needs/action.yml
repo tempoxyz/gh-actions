@@ -1,0 +1,26 @@
+name: "Check needs"
+description: "Fail unless every job in `needs` succeeded, allowing listed jobs to be skipped or to fail"
+
+inputs:
+  jobs:
+    description: "JSON of the needs context: pass toJSON(needs)"
+    required: true
+  allowed-skips:
+    description: "Job names that may be skipped (comma, space or newline separated)"
+    required: false
+    default: ""
+  allowed-failures:
+    description: "Job names that may fail (comma, space or newline separated)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check needed job results
+      shell: bash
+      env:
+        JOBS: ${{ inputs.jobs }}
+        ALLOWED_SKIPS: ${{ inputs.allowed-skips }}
+        ALLOWED_FAILURES: ${{ inputs.allowed-failures }}
+      run: node "$GITHUB_ACTION_PATH/main.mjs"

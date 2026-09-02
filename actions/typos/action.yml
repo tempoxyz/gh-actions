@@ -1,0 +1,65 @@
+name: "typos"
+description: "Spell-check source with typos, installed from an attested release"
+
+inputs:
+  version:
+    description: "typos release tag (e.g., v1.49.0). Mutable 'latest' is rejected."
+    required: false
+    default: "v1.49.0"
+  files:
+    description: "Paths to check (space separated)"
+    required: false
+    default: "."
+  config:
+    description: "Path to a typos config file (defaults to auto-discovery of typos.toml / _typos.toml)"
+    required: false
+    default: ""
+  extra-args:
+    description: "Additional typos arguments"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install typos
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
+        set -euo pipefail
+        if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::typos requires an immutable release tag such as v1.49.0 (got '$VERSION')"
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64|aarch64) ARCH="$(uname -m)" ;;
+          *) echo "::error::typos: unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+        ASSET="typos-${VERSION}-${ARCH}-unknown-linux-musl.tar.gz"
+        INSTALL_DIR="${RUNNER_TEMP:?}/typos-bin"
+        mkdir -p "$INSTALL_DIR"
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$ASSET" "https://github.com/crate-ci/typos/releases/download/${VERSION}/${ASSET}"
+        # typos publishes no build provenance, but its releases are immutable and GitHub attests
+        # every asset: this proves the tarball is the one attached to the release.
+        gh release verify-asset "$VERSION" "$INSTALL_DIR/$ASSET" --repo crate-ci/typos
+        tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" ./typos
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Check for typos
+      shell: bash
+      env:
+        FILES: ${{ inputs.files }}
+        CONFIG: ${{ inputs.config }}
+        EXTRA: ${{ inputs.extra-args }}
+      run: |
+        set -euo pipefail
+        args=()
+        [[ -n "$CONFIG" ]] && args+=(--config "$CONFIG")
+        # shellcheck disable=SC2206  # extra-args and files are intentionally word-split
+        args+=($EXTRA $FILES)
+        typos "${args[@]}" --format json \
+          | jq --raw-output 'select(.type == "typo") | "::warning file=\(.path | ltrimstr("./")),line=\(.line_num),col=\(.byte_offset + 1)::\"\(.typo)\" should be \"" + ((.corrections // []) | join("\" or \"")) + "\"."' \
+          || true
+        typos "${args[@]}"

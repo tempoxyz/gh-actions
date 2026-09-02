@@ -1,0 +1,54 @@
+name: "Slack notify"
+description: "Call a Slack Web API method (default chat.postMessage) or an incoming webhook with a JSON payload"
+
+inputs:
+  token:
+    description: "Slack bot token (xoxb-...). Required unless `webhook` is set."
+    required: false
+    default: ""
+  webhook:
+    description: "Incoming webhook URL. When set, `payload` is POSTed to it and `method` is ignored."
+    required: false
+    default: ""
+  method:
+    description: "Slack Web API method"
+    required: false
+    default: "chat.postMessage"
+  payload:
+    description: "JSON payload (e.g., {\"channel\": \"#ops\", \"text\": \"hello\"})"
+    required: true
+
+outputs:
+  ts:
+    description: "Message timestamp returned by the API (empty for webhooks)"
+    value: ${{ steps.send.outputs.ts }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Send
+      id: send
+      shell: bash
+      env:
+        SLACK_TOKEN: ${{ inputs.token }}
+        WEBHOOK: ${{ inputs.webhook }}
+        METHOD: ${{ inputs.method }}
+        PAYLOAD: ${{ inputs.payload }}
+      run: |
+        set -euo pipefail
+        printf '%s' "$PAYLOAD" | jq -e . >/dev/null || { echo "::error::slack-notify: payload is not valid JSON"; exit 1; }
+        if [[ -n "$WEBHOOK" ]]; then
+          out="$(curl -fsS -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK")"
+          [[ "$out" == "ok" ]] || { echo "::error::slack-notify: webhook returned '$out'"; exit 1; }
+          echo "ts=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        [[ -n "$SLACK_TOKEN" ]] || { echo "::error::slack-notify: set token or webhook"; exit 1; }
+        out="$(curl -fsS -X POST "https://slack.com/api/${METHOD}" \
+          -H "Authorization: Bearer ${SLACK_TOKEN}" -H 'Content-type: application/json; charset=utf-8' \
+          --data "$PAYLOAD")"
+        if [[ "$(jq -r '.ok' <<< "$out")" != "true" ]]; then
+          echo "::error::slack-notify: ${METHOD} failed: $(jq -r '.error // "unknown error"' <<< "$out")"
+          exit 1
+        fi
+        echo "ts=$(jq -r '.ts // ""' <<< "$out")" >> "$GITHUB_OUTPUT"

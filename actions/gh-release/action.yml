@@ -1,0 +1,125 @@
+name: "GitHub release"
+description: "Create or update a GitHub release and upload assets with the gh CLI"
+
+inputs:
+  token:
+    description: "Token with contents: write"
+    required: false
+    default: ${{ github.token }}
+  tag:
+    description: "Release tag; created at `target` if it does not exist"
+    required: false
+    default: ${{ github.ref_name }}
+  target:
+    description: "Commit or branch to tag when the tag does not exist yet"
+    required: false
+    default: ""
+  name:
+    description: "Release title (defaults to the tag)"
+    required: false
+    default: ""
+  body:
+    description: "Release notes (Markdown). Ignored when `body-path` is set."
+    required: false
+    default: ""
+  body-path:
+    description: "File with the release notes"
+    required: false
+    default: ""
+  generate-release-notes:
+    description: "Let GitHub generate release notes (only when creating)"
+    required: false
+    default: "false"
+  draft:
+    description: "Create as a draft"
+    required: false
+    default: "false"
+  prerelease:
+    description: "Mark as a pre-release"
+    required: false
+    default: "false"
+  make-latest:
+    description: "Mark as the latest release: true, false or legacy"
+    required: false
+    default: ""
+  files:
+    description: "Newline-separated glob patterns of files to upload (existing assets are replaced)"
+    required: false
+    default: ""
+  fail-on-unmatched-files:
+    description: "Fail when a `files` pattern matches nothing"
+    required: false
+    default: "true"
+
+outputs:
+  url:
+    description: "Release URL"
+    value: ${{ steps.release.outputs.url }}
+  id:
+    description: "Release ID"
+    value: ${{ steps.release.outputs.id }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create or update release
+      id: release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        TARGET: ${{ inputs.target }}
+        TITLE: ${{ inputs.name }}
+        BODY: ${{ inputs.body }}
+        BODY_PATH: ${{ inputs.body-path }}
+        GENERATE_NOTES: ${{ inputs.generate-release-notes }}
+        DRAFT: ${{ inputs.draft }}
+        PRERELEASE: ${{ inputs.prerelease }}
+        MAKE_LATEST: ${{ inputs.make-latest }}
+        FILES: ${{ inputs.files }}
+        FAIL_UNMATCHED: ${{ inputs.fail-on-unmatched-files }}
+      run: |
+        set -euo pipefail
+        [[ -n "$TAG" ]] || { echo "::error::gh-release: tag is empty"; exit 1; }
+        notes=()
+        if [[ -n "$BODY_PATH" ]]; then notes=(--notes-file "$BODY_PATH")
+        elif [[ -n "$BODY" ]]; then notes=(--notes "$BODY"); fi
+        common=()
+        [[ -n "$TITLE" ]] && common+=(--title "$TITLE")
+        [[ "$DRAFT" == "true" ]] && common+=(--draft) || common+=(--draft=false)
+        [[ "$PRERELEASE" == "true" ]] && common+=(--prerelease) || common+=(--prerelease=false)
+        [[ -n "$MAKE_LATEST" ]] && common+=(--latest="$MAKE_LATEST")
+
+        if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+          echo "release $TAG exists; updating"
+          gh release edit "$TAG" --repo "$REPO" "${common[@]}" "${notes[@]}" >/dev/null
+        else
+          create=("${common[@]}" "${notes[@]}")
+          [[ -n "$TARGET" ]] && create+=(--target "$TARGET")
+          if [[ "$GENERATE_NOTES" == "true" ]]; then create+=(--generate-notes); elif [[ ${#notes[@]} -eq 0 ]]; then create+=(--notes ""); fi
+          gh release create "$TAG" --repo "$REPO" "${create[@]}" >/dev/null
+          echo "created release $TAG"
+        fi
+
+        if [[ -n "$FILES" ]]; then
+          shopt -s nullglob globstar
+          matched=()
+          while IFS= read -r pattern; do
+            pattern="${pattern%"${pattern##*[![:space:]]}"}"; pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+            [[ -z "$pattern" ]] && continue
+            # shellcheck disable=SC2206  # the pattern is meant to glob
+            hits=($pattern)
+            if [[ ${#hits[@]} -eq 0 ]]; then
+              if [[ "$FAIL_UNMATCHED" == "true" ]]; then echo "::error::gh-release: no files match '$pattern'"; exit 1; fi
+              echo "::warning::gh-release: no files match '$pattern'"
+            fi
+            matched+=("${hits[@]}")
+          done <<< "$FILES"
+          if [[ ${#matched[@]} -gt 0 ]]; then
+            gh release upload "$TAG" --repo "$REPO" --clobber "${matched[@]}"
+            echo "uploaded ${#matched[@]} asset(s)"
+          fi
+        fi
+
+        gh release view "$TAG" --repo "$REPO" --json url,id --jq '"url=\(.url)\nid=\(.id)"' >> "$GITHUB_OUTPUT"

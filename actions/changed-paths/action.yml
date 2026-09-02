@@ -1,0 +1,42 @@
+name: "Changed paths"
+description: "Set one boolean output per named path filter based on the files changed in the push or pull request"
+
+inputs:
+  filters:
+    description: "YAML map of filter name to a list of globs (`!` negates), or a path to such a file"
+    required: true
+  base:
+    description: "Base commit (defaults to the PR base, the push's `before`, or the merge group base)"
+    required: false
+    default: ""
+  head:
+    description: "Head commit (defaults to the PR head or `github.sha`)"
+    required: false
+    default: ""
+  token:
+    description: "Token used for the compare API (needs contents: read)"
+    required: false
+    default: ${{ github.token }}
+  list-files:
+    description: "`json` to also emit `<filter>_files` outputs with the matched paths"
+    required: false
+    default: "none"
+
+outputs:
+  changes:
+    description: "JSON array of filter names that matched"
+    value: ${{ steps.filter.outputs.changes }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Evaluate path filters
+      id: filter
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        FILTERS: ${{ inputs.filters }}
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+        LIST_FILES: ${{ inputs.list-files }}
+      run: node "$GITHUB_ACTION_PATH/main.mjs"

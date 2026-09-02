@@ -93,7 +93,7 @@ jobs:
           echo "ok: attestation signer -> ${rs#--signer-workflow }"
           # mold: the inline installs in the reusable workflows must pin the same version and
           # digests as actions/setup-rust-build.
-          for wf in .github/workflows/rust-build-binaries.yml .github/workflows/rust-lint.yml; do
+          for wf in .github/workflows/rust-build-binaries.yml .github/workflows/rust-lint.yml actions/setup-mold/action.yml; do
             for var in MOLD_VERSION MOLD_SHA256_X86_64 MOLD_SHA256_AARCH64; do
               r=$(grep -oE "$var: \"?[0-9a-f.]+\"?" "$wf" | head -1 | tr -d '"')
               c=$(grep -oE "$var: \"?[0-9a-f.]+\"?" actions/setup-rust-build/action.yml | head -1 | tr -d '"')
@@ -104,6 +104,14 @@ jobs:
             done
           done
           echo "ok: mold -> $(grep -oE 'MOLD_VERSION: "?[0-9.]+"?' actions/setup-rust-build/action.yml | tr -d '"' | awk '{print $2}')"
+          # typos: the inline install in rust-lint must pin the same release as actions/typos.
+          tr_=$(grep -oE 'TYPOS_VERSION: v[0-9.]+' .github/workflows/rust-lint.yml | head -1 | awk '{print $2}')
+          tc=$(yq -r '.inputs.version.default' actions/typos/action.yml)
+          if [ -z "$tr_" ] || [ "$tr_" != "$tc" ]; then
+            echo "::error::typos version differs (rust-lint='$tr_' composite='$tc')"
+            exit 1
+          fi
+          echo "ok: typos -> $tr_"
 
       # Positive: composite on a staged known-good workflow must pass. Covers
       # composite wiring (zizmor + actionlint) and acts as the control for the
@@ -220,6 +228,51 @@ jobs:
         uses: ./actions/setup-helm
         with:
           version: v4.1.1
+      - name: Smoke test setup-mold (digest-pinned install)
+        uses: ./actions/setup-mold
+        with:
+          make-default: "false"
+      # Scoped to the new first-party actions: older files in actions/ contain test fixtures and
+      # identifiers that typos flags, and adopting typos repo-wide is a separate decision.
+      - name: Smoke test typos (release attestation) on the first-party action sources
+        uses: ./actions/typos
+        with:
+          files: actions/check-needs actions/pr-comment actions/typos actions/gh-release actions/changed-paths actions/cargo-install actions/slack-notify actions/setup-mold
+      - name: Smoke test cargo-install (cached binary)
+        uses: ./actions/cargo-install
+        with:
+          tool: cargo-hack
+      - name: Smoke test changed-paths (compare API)
+        id: changed
+        uses: ./actions/changed-paths
+        with:
+          filters: |
+            workflows:
+              - '.github/workflows/**'
+            actions:
+              - 'actions/**'
+              - '!actions/**/*.md'
+      - name: "Smoke test check-needs (fixture: passes with an allowed skip)"
+        uses: ./actions/check-needs
+        with:
+          jobs: '{"build":{"result":"success"},"lint":{"result":"skipped"}}'
+          allowed-skips: lint
+      - name: "Smoke test check-needs (fixture: must fail on a failure)"
+        id: check-needs-fail
+        continue-on-error: true
+        uses: ./actions/check-needs
+        with:
+          jobs: '{"build":{"result":"failure"}}'
+      - name: Assert composite smoke results
+        env:
+          CHANGES: ${{ steps.changed.outputs.changes }}
+          NEEDS_FAIL: ${{ steps.check-needs-fail.outcome }}
+        run: |
+          set -euo pipefail
+          echo "$CHANGES" | jq -e 'type == "array"' >/dev/null || { echo "::error::changed-paths did not emit a JSON array of changes: '$CHANGES'"; exit 1; }
+          [ "$NEEDS_FAIL" = "failure" ] || { echo "::error::check-needs should fail on a failed job (outcome=$NEEDS_FAIL)"; exit 1; }
+          cargo hack --version
+          echo "composite smoke tests ok (changes=$CHANGES)"
       - name: Report resolved Foundry tags
         env:
           STABLE: ${{ steps.foundry-stable.outputs.tag }}
