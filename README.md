@@ -6,6 +6,7 @@ Reusable GitHub Actions for the Tempo organization.
 
 | Action | Description |
 |--------|-------------|
+| [`actionlint`](actions/actionlint) | Lint GitHub Actions workflows with the digest-pinned actionlint image
 | [`docker-login`](actions/docker-login) | Log in to GHCR and optionally Docker Hub
 | [`docker-build-push`](actions/docker-build-push) | Build and push Docker images
 | [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy
