@@ -232,10 +232,12 @@ jobs:
         uses: ./actions/setup-mold
         with:
           make-default: "false"
-      - name: Smoke test typos (release attestation) on this repository's actions
+      # Scoped to the new first-party actions: older files in actions/ contain test fixtures and
+      # identifiers that typos flags, and adopting typos repo-wide is a separate decision.
+      - name: Smoke test typos (release attestation) on the first-party action sources
         uses: ./actions/typos
         with:
-          files: actions vendor-manifest.yml
+          files: actions/check-needs actions/pr-comment actions/typos actions/gh-release actions/changed-paths actions/cargo-install actions/slack-notify actions/setup-mold
       - name: Smoke test cargo-install (cached binary)
         uses: ./actions/cargo-install
         with:
