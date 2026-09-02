@@ -18,6 +18,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI
+| [`setup-pinact`](actions/setup-pinact) | Install pinact from a checksum-verified release
 | [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows
 
 ## Usage
