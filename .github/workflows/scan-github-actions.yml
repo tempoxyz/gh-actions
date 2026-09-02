@@ -171,8 +171,10 @@ jobs:
               exit 0
             fi
           done
-          cfg="$RUNNER_TEMP/zizmor-default.yml"
-          printf 'rules:\n  ref-version-mismatch:\n    disable: true\n' > "$cfg"
+          # zizmor-action runs zizmor in a container that mounts only the workspace (read-only,
+          # at /workspace), so the file has to live inside the checkout and be passed relatively.
+          cfg=".zizmor-default.yml"
+          printf 'rules:\n  ref-version-mismatch:\n    disable: true\n' > "$GITHUB_WORKSPACE/$cfg"
           echo "config=$cfg" >> "$GITHUB_OUTPUT"
 
       - name: Scan GitHub Actions
