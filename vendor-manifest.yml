@@ -11,19 +11,16 @@
 # upstream pins by tag (the org policy requires full SHAs). Trees under vendor/ are generated:
 # edit this file and re-run the sync instead of editing them.
 org: tempoxyz/gh-actions
-
 vendor_dir: vendor
-
 # Nested `uses:` lines pointing at these owners are left in place; the org policy allows them.
 # Every other nested third-party reference is rewritten to $/vendor/<owner>/<repo>, which
 # resolves to this repository at the commit the caller pinned (runner 2.336.0 or newer).
 allowed_upstreams:
   - actions/
   - github/
-
 # Removed from every vendored tree. Nothing listed here is read by a running action: repository
-# docs and images, upstream CI, editor and VCS metadata. action.yml, package.json and LICENSE
-# files are always kept. Source maps are consulted only to pretty-print a stack trace after a
+# docs and images, upstream CI, editor and VCS metadata. action.yml, package.json, LICENSE and
+# .github/*.json files (problem matchers, release manifests) are always kept. Source maps are consulted only to pretty-print a stack trace after a
 # failure, so dropping them changes error output, not behaviour. Patterns are anchored at the
 # vendored tree root; use **/ for any depth.
 default_exclude:
@@ -60,7 +57,6 @@ default_exclude:
   - .pre-commit-config.yaml
   - .markdownlint*
   - .yamllint*
-
 actions:
   - name: 1password/install-cli-action
     ref: v1.0.0
@@ -76,10 +72,14 @@ actions:
     ref_type: tag
     sha: f22792bfac16f3e14eb9fbea76f4a48e9cc22b93
     exclude:
-      - '**'
+      - examples/
+      - .prettierrc*
+      - CHANGELOG*
+      - .codspeed-runner-installer-hashes.json
+      - scripts/
     notes: >-
-      Composite action; every step is inline, only action.yml is loaded. excluded: everything except
-      action.yml and LICENSE
+      Composite action; loads .codspeed-runner-version from the action directory. excluded:
+      examples/, .prettierrc*, CHANGELOG*, .codspeed-runner-installer-hashes.json, scripts/
 
   - name: EmbarkStudios/cargo-deny-action
     ref: v2.1.1

@@ -12,7 +12,9 @@ export const MANIFEST_FILE = "vendor-manifest.yml";
 export const MANIFEST_PATH = join(ROOT, MANIFEST_FILE);
 
 // Files every vendored tree keeps regardless of exclude patterns.
-export const ALWAYS_KEEP = ["action.yml", "action.yaml", "LICENSE*", "LICENCE*", "NOTICE*", "COPYING*", "package.json", ".vendored.json"];
+// .github/*.json files are problem matchers and release manifests that actions load at run time
+// (astral-sh/setup-uv registers .github/python.json via ::add-matcher), so they are never excluded.
+export const ALWAYS_KEEP = ["action.yml", "action.yaml", "LICENSE*", "LICENCE*", "NOTICE*", "COPYING*", "package.json", ".vendored.json", ".github/*.json"];
 
 export const NODE_BUILTINS = new Set(["assert", "async_hooks", "buffer", "child_process", "cluster", "console", "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain", "events", "fs", "http", "http2", "https", "inspector", "module", "net", "os", "path", "perf_hooks", "process", "punycode", "querystring", "readline", "repl", "stream", "string_decoder", "sys", "test", "timers", "tls", "trace_events", "tty", "url", "util", "v8", "vm", "wasi", "worker_threads", "zlib"]);
 
@@ -251,7 +253,7 @@ export function analyzeTree(dest, { subPaths = [] } = {}) {
     if (!existsSync(abs) || statSync(abs).isDirectory() || statSync(abs).size > 8 * 1024 * 1024) return new Set();
     const src = readFileSync(abs, "utf8");
     const bundled = BUNDLE_MARKERS.test(src) || src.split("\n").some((l) => l.length > 5000);
-    for (const m of src.matchAll(/(?:\$\{\{\s*github\.action_path\s*\}\}|\$\{?GITHUB_ACTION_PATH\}?)\/([A-Za-z0-9_][A-Za-z0-9_./-]*)/g)) addRef(m[1]);
+    for (const m of src.matchAll(/(?:\$\{\{\s*github\.action_path\s*\}\}|\$\{?GITHUB_ACTION_PATH\}?)\/([A-Za-z0-9_.][A-Za-z0-9_./-]*)/g)) addRef(m[1]);
     if (/\$\{?GITHUB_ACTION_PATH\}?(?![\/A-Za-z0-9_])|github\.action_path\s*\}\}(?!\/)/.test(src)) dynamic ??= `${rel} uses the action path dynamically`;
     if (/\.(sh|bash)$/.test(rel) && (/dirname\s+"?\$(?:0|\{?BASH_SOURCE)/.test(src) || /\$\{?BASH_SOURCE/.test(src))) dynamic ??= `${rel} resolves paths from its own location at run time`;
     // relative path literals that escape the file's directory and exist in the tree are loaded; a bare ".." means "the whole tree"
@@ -297,7 +299,7 @@ export function analyzeTree(dest, { subPaths = [] } = {}) {
         if (step.uses?.startsWith("./")) addRef(dir + step.uses.slice(2));
         // every string in the step counts: run bodies, env values (PYTHONPATH etc.), with: inputs, working-directory
         const text = JSON.stringify(step).replace(/\\"/g, '"');
-        for (const m of text.matchAll(/(?:\$\{\{\s*github\.action_path\s*\}\}|\$\{?GITHUB_ACTION_PATH\}?)\/([A-Za-z0-9_][A-Za-z0-9_./-]*)/g)) addRef(m[1]);
+        for (const m of text.matchAll(/(?:\$\{\{\s*github\.action_path\s*\}\}|\$\{?GITHUB_ACTION_PATH\}?)\/([A-Za-z0-9_.][A-Za-z0-9_./-]*)/g)) addRef(m[1]);
         if (/\$\{?GITHUB_ACTION_PATH\}?(?![\/A-Za-z0-9_])|github\.action_path\s*\}\}(?!\/)/.test(text)) dynamic ??= `${af} uses the action directory itself (working directory, module path or similar)`;
       }
       // follow referenced scripts one level

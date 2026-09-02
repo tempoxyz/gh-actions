@@ -31,7 +31,7 @@ Requirements: Node 20+, git, tar, `yq` (GitHub-hosted runners ship all four; loc
    File modes are preserved, so Docker entrypoints and shell scripts stay executable.
 3. **Apply excludes.** Repo-wide `default_exclude` (docs, images, upstream CI, VCS and editor
    metadata, source maps) plus the entry's own `exclude`, minus `keep`. `action.yml`, `package.json`
-   and `LICENSE*` are always kept.
+   and `LICENSE*` are always kept, as are `.github/*.json` files (problem matchers and release manifests that actions load at run time).
 4. **Rewrite nested `uses:`.** Third-party references inside composite actions become
    `$/vendor/<owner>/<repo>`, which resolves to this repository at the commit the caller pinned
    (runner 2.336.0 or newer). References to `actions/*` and `github/*` stay and, if upstream pinned
