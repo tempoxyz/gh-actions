@@ -22,8 +22,16 @@ steps:
     run: pinact run -fix=false --verify-min-age
 ```
 
-The action downloads `pinact_linux_<arch>.tar.gz` and verifies it against
-`pinact_<version>_checksums.txt` from the same release before installing it. Flags map
+The action downloads `pinact_linux_<arch>.tar.gz`, checks it against
+`pinact_<version>_checksums.txt` from the same release, and then verifies the tarball's GitHub
+artifact attestation with `gh attestation verify`: SLSA provenance signed through Sigstore,
+checked against GitHub's trust roots, and required to come from the `suzuki-shunsuke/pinact`
+repository at the requested tag, built by its shared
+`suzuki-shunsuke/go-release-workflow` release workflow. The checksum alone would not catch a
+release compromised end to end; the attestation binds the file to the publisher's workflow
+identity. `gh` is preinstalled on GitHub-hosted runners and the check takes a few seconds, so
+no extra tooling (such as cosign) is downloaded. It needs a token with access to public
+attestations; `github.token` is used. Flags map
 one-to-one onto the old action's inputs: `fix: "false"` is `-fix=false`, `no_api` is
 `--no-api`, `verify` is `--verify`, `verify_min_age` is `--verify-min-age`, `includes` is
 `-i <regex>`, `config` is `-c <path>`, and `github_token` is the `GITHUB_TOKEN` environment
