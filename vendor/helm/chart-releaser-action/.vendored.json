@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/helm/chart-releaser-action",
+  "ref": "v1.7.0",
+  "ref_type": "tag",
+  "sha": "cae68fefc6b5f367a0275617c9f83181ba54714f",
+  "upstream_commit_date": "2025-01-20T11:54:23+01:00",
+  "readme_url": "https://github.com/helm/chart-releaser-action/blob/cae68fefc6b5f367a0275617c9f83181ba54714f/README.md",
+  "description": "Host a Helm charts repo on GitHub Pages",
+  "consume_as": "tempoxyz/gh-actions/vendor/helm/chart-releaser-action@<gh-actions-sha>",
+  "files_removed": 5,
+  "nested_rewrites": []
+}

@@ -1,0 +1,40 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "node build.cjs",
+    "fmt": "prettier --write .",
+    "fmt:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@actions/core": "3.0.0",
+    "@actions/exec": "3.0.0",
+    "@actions/github": "9.0.0",
+    "@actions/http-client": "4.0.0",
+    "@actions/io": "3.0.2",
+    "@actions/tool-cache": "4.0.0",
+    "@depot/actions-public-oidc-client": "^1.0.0",
+    "csv-parse": "^5.5.2",
+    "execa": "^8.0.1",
+    "handlebars": "^4.7.8"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "24.0.4",
+    "@types/node": "24.1.0",
+    "esbuild": "^0.19.5",
+    "prettier": "^3.0.3",
+    "prettier-plugin-organize-imports": "^3.2.3",
+    "prettier-plugin-pkg": "^0.18.0",
+    "typescript": "5.9.3"
+  },
+  "prettier": {
+    "bracketSpacing": false,
+    "printWidth": 120,
+    "semi": false,
+    "singleQuote": true,
+    "trailingComma": "all",
+    "plugins": [
+      "prettier-plugin-pkg",
+      "prettier-plugin-organize-imports"
+    ]
+  }
+}

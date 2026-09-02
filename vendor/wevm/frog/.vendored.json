@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/wevm/frog",
+  "ref": "v1",
+  "ref_type": "tag",
+  "sha": "702c4eadefe175a208290a99c36e7f4ac1390e53",
+  "upstream_commit_date": "2026-08-04T19:03:20+10:00",
+  "readme_url": "https://github.com/wevm/frog/blob/702c4eadefe175a208290a99c36e7f4ac1390e53/README.md",
+  "description": "",
+  "consume_as": "tempoxyz/gh-actions/vendor/wevm/frog@<gh-actions-sha>",
+  "files_removed": 147,
+  "nested_rewrites": []
+}

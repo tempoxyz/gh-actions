@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/anchore/sbom-action",
+  "ref": "v0.24.0",
+  "ref_type": "tag",
+  "sha": "e22c389904149dbc22b58101806040fa8d37a610",
+  "upstream_commit_date": "2026-03-19T16:20:39-04:00",
+  "readme_url": "https://github.com/anchore/sbom-action/blob/e22c389904149dbc22b58101806040fa8d37a610/README.md",
+  "description": "Creates an SBOM (Software Bill Of Materials) from your code and container images",
+  "consume_as": "tempoxyz/gh-actions/vendor/anchore/sbom-action@<gh-actions-sha>",
+  "files_removed": 67,
+  "nested_rewrites": []
+}

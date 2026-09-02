@@ -1,0 +1,3 @@
+# Vendored copies of upstream actions must stay byte-identical to the pinned upstream commit
+# (vendor/sync.mjs --check rebuilds them and diffs); never normalize their line endings.
+vendor/** -text

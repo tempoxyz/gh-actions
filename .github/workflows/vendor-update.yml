@@ -1,0 +1,140 @@
+name: Vendor Update
+
+# Weekly: look for newer upstream versions of the third-party actions vendored under
+# vendor/ (see vendor-manifest.yml) and open one pull request per action. Each PR carries
+# the full source diff of the upstream change plus a link to the upstream compare view.
+# Upstream commits younger than the cooldown are skipped, matching the pin policy in
+# .pinact.yaml. Branches are pushed with git (not the GraphQL commit API) so executable
+# bits on vendored scripts and Docker entrypoints survive.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      min-age-days:
+        description: Ignore upstream commits younger than this many days
+        required: false
+        default: "7"
+        type: string
+
+permissions: {}
+
+jobs:
+  discover:
+    name: Find updates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      updates: ${{ steps.find.outputs.updates }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Find newer upstream versions
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIN_AGE: ${{ inputs.min-age-days || '7' }}
+        run: |
+          set -euo pipefail
+          node vendor/update.mjs --json --min-age-days "$MIN_AGE" > "$RUNNER_TEMP/updates.json"
+          jq -r '.[] | "\(.name): \(.current_ref) -> \(.new_ref) (\(.age_days)d old)"' "$RUNNER_TEMP/updates.json"
+          echo "updates=$(jq -c '[.[] | .name]' "$RUNNER_TEMP/updates.json")" >> "$GITHUB_OUTPUT"
+
+  propose:
+    name: ${{ matrix.name }}
+    needs: discover
+    if: ${{ needs.discover.outputs.updates != '[]' }}
+    runs-on: ubuntu-latest
+    # The branch is pushed and the PR opened with a short-lived GitHub App token minted
+    # via github-sts (trust policy: .github/sts/vendor-update.sts.yaml), not GITHUB_TOKEN.
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        name: ${{ fromJSON(needs.discover.outputs.updates) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Apply the update
+        id: apply
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ matrix.name }}
+          MIN_AGE: ${{ inputs.min-age-days || '7' }}
+        run: |
+          set -euo pipefail
+          old_ref=$(yq -r ".actions[] | select(.name == \"$NAME\") | .ref" vendor-manifest.yml)
+          old_sha=$(yq -r ".actions[] | select(.name == \"$NAME\") | .sha" vendor-manifest.yml)
+          node vendor/update.mjs --min-age-days "$MIN_AGE" --apply "$NAME" | tee "$RUNNER_TEMP/apply.log"
+          new_ref=$(yq -r ".actions[] | select(.name == \"$NAME\") | .ref" vendor-manifest.yml)
+          new_sha=$(yq -r ".actions[] | select(.name == \"$NAME\") | .sha" vendor-manifest.yml)
+          if [ "$new_sha" = "$old_sha" ]; then
+            echo "::notice::$NAME: nothing to apply"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          slug=$(printf '%s-%s' "$NAME" "$new_ref" | tr '/' '-' | tr -c 'A-Za-z0-9._-\n' '-')
+          {
+            echo "changed=true"
+            echo "branch=vendor/$slug"
+            echo "old_ref=$old_ref"; echo "old_sha=$old_sha"
+            echo "new_ref=$new_ref"; echo "new_sha=$new_sha"
+            echo "notes=$(yq -r ".actions[] | select(.name == \"$NAME\") | .notes" vendor-manifest.yml | head -c 600)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Fetch GitHub token via STS
+        if: ${{ steps.apply.outputs.changed == 'true' }}
+        id: sts
+        uses: ./actions/github-sts
+        with:
+          policy: vendor-update
+
+      - name: Push branch and open pull request
+        if: ${{ steps.apply.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.sts.outputs.token }}
+          NAME: ${{ matrix.name }}
+          BRANCH: ${{ steps.apply.outputs.branch }}
+          OLD_REF: ${{ steps.apply.outputs.old_ref }}
+          OLD_SHA: ${{ steps.apply.outputs.old_sha }}
+          NEW_REF: ${{ steps.apply.outputs.new_ref }}
+          NEW_SHA: ${{ steps.apply.outputs.new_sha }}
+          NOTES: ${{ steps.apply.outputs.notes }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config user.name 'tempo-github-sts[bot]'
+          git config user.email '312736176+tempo-github-sts[bot]@users.noreply.github.com'
+          git checkout -B "$BRANCH"
+          git add -A -- vendor-manifest.yml vendor README.md
+          git commit -q -m "chore(vendor): bump $NAME to $NEW_REF" -m "Upstream $OLD_REF ($OLD_SHA) -> $NEW_REF ($NEW_SHA)."
+          git push --force-with-lease "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/$BRANCH"
+          body=$(cat <<MD
+          Bumps the vendored copy of [\`$NAME\`](https://github.com/$NAME) from \`$OLD_REF\` to \`$NEW_REF\`.
+
+          - Upstream compare: https://github.com/$NAME/compare/$OLD_SHA...$NEW_SHA
+          - Upstream release: https://github.com/$NAME/releases/tag/$NEW_REF
+          - Manifest notes: $NOTES
+
+          The diff below is the full source change to the vendored tree. Review the upstream compare
+          view for compiled bundles (\`dist/\`), where the source diff is not readable.
+          MD
+          )
+          existing=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo "$REPO" --title "chore(vendor): bump $NAME to $NEW_REF" --body "$body"
+          else
+            gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "chore(vendor): bump $NAME to $NEW_REF" --body "$body" --label dependencies || \
+            gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "chore(vendor): bump $NAME to $NEW_REF" --body "$body"
+          fi

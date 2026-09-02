@@ -52,6 +52,70 @@ wall-clock cost.
 | [`gh-release`](actions/gh-release) | Create or update a GitHub release and upload assets
 | [`slack-notify`](actions/slack-notify) | Post a JSON payload to a Slack API method or webhook
 
+### 3rd Party Actions
+
+Copies of outside actions, vendored under [`vendor/`](vendor/) so they count as
+tempoxyz-owned under the org's Actions policy. Each copy is an exact upstream commit
+recorded in [`vendor-manifest.yml`](vendor-manifest.yml); the version column links to the
+upstream README at that commit. Reference them as
+`tempoxyz/gh-actions/vendor/<owner>/<repo>[/<path>]@<commit-sha>` (see [Versioning](#versioning)),
+with the same inputs and outputs as upstream. To add or update one, edit the manifest with
+`node vendor/add.mjs owner/repo@<tag>` or bump `ref`/`sha`, run `node vendor/sync.mjs`, and
+commit the result; CI fails if `vendor/` or this table drift from the manifest. Details of
+what is excluded from each copy and why are in the manifest `notes`.
+
+<!-- vendored-actions:begin -->
+| Action | Version | Description |
+|--------|---------|-------------|
+| [`1password/install-cli-action`](https://github.com/1password/install-cli-action/blob/143a85f84a90555d121cde2ff5872e393a47ab9f/README.md) | v1.0.0 (`143a85f`) | Install 1Password CLI in your pipeline |
+| [`CodSpeedHQ/action`](https://github.com/CodSpeedHQ/action/blob/f22792bfac16f3e14eb9fbea76f4a48e9cc22b93/README.md) | v4.19.1 (`f22792b`) | Continuous benchmarking and performance checks |
+| [`EmbarkStudios/cargo-deny-action`](https://github.com/EmbarkStudios/cargo-deny-action/blob/3c6349835b2b7b196a839186cb8b78e02f7b5f25/README.md) | v2.1.1 (`3c63498`) | Help manage Cargo crate dependencies and validate licenses |
+| [`SocketDev/action`](https://github.com/SocketDev/action/blob/be1f253a41351d59095f8d7f1425985097dd1054/README.md) | main (`be1f253`) | GitHub Action to run Socket in CLI or Firewall mode |
+| [`Swatinem/rust-cache`](https://github.com/Swatinem/rust-cache/blob/6323deb102c322ba6fcbdcafc7e3dddab59af2b6/README.md) | v2.9.2 (`6323deb`) | A GitHub Action that implements smart caching for rust/cargo projects with sensible defaults. |
+| [`anchore/sbom-action`](https://github.com/anchore/sbom-action/blob/e22c389904149dbc22b58101806040fa8d37a610/README.md) | v0.24.0 (`e22c389`) | Creates an SBOM (Software Bill Of Materials) from your code and container images |
+| [`aquasecurity/setup-trivy`](https://github.com/aquasecurity/setup-trivy/blob/81e514348e19b6112ce2a7e3ecbafe19c1e1f567/README.md) | v0.3.1 (`81e5143`) | Install Trivy binary from release page |
+| [`aquasecurity/trivy-action`](https://github.com/aquasecurity/trivy-action/blob/ed142fd0673e97e23eac54620cfb913e5ce36c25/README.md) | v0.36.0 (`ed142fd`) | Scans container images for vulnerabilities with Trivy |
+| [`astral-sh/setup-uv`](https://github.com/astral-sh/setup-uv/blob/ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d/README.md) | v10.0.0 (`ae62891`) | Set up your GitHub Actions workflow with a specific version of uv. |
+| [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials/blob/e6de054238d6b7531b4efff3b6587d9aade6a06c/README.md) | v6.2.3 (`e6de054`) | Configures AWS credentials for use in subsequent steps in a GitHub Action workflow |
+| [`biomejs/setup-biome`](https://github.com/biomejs/setup-biome/blob/9edb642ea71f227041b81b805d3b36421b94529f/README.md) | main (`9edb642`) | Setup the Biome CLI in GitHub Actions |
+| [`changesets/action`](https://github.com/changesets/action/blob/a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d/README.md) | v1.9.0 (`a45c4d5`) | A GitHub action to automate releases with Changesets |
+| [`cloudflare/wrangler-action`](https://github.com/cloudflare/wrangler-action) | v4.0.0 (`ebbaa15`) | Deploy your Cloudflare projects from GitHub using Wrangler |
+| [`depot/bake-action`](https://github.com/depot/bake-action/blob/1d58c2668346981089b088b7ef36755b206b20e9/README.md) | v1.13.0 (`1d58c26`) | GitHub Action to build Docker images via Bake with Depot |
+| [`depot/build-push-action`](https://github.com/depot/build-push-action/blob/98e78adca7817480b8185f474a400b451d74e287/README.md) | v1.18.0 (`98e78ad`) | Build and push Docker images with Depot |
+| [`depot/pull-action`](https://github.com/depot/pull-action/blob/a913e06772c98ecd2361a8cc49bec81592dc6600/README.md) | v1.3.1 (`a913e06`) | Pull images from the Depot ephemeral registry. |
+| [`depot/setup-action`](https://github.com/depot/setup-action/blob/91bc8495a33ebfc504ffc89e5674379ccf23c29c/README.md) | v1.7.2 (`91bc849`) | Installs the Depot CLI into the GitHub Actions environment |
+| [`docker/build-push-action`](https://github.com/docker/build-push-action/blob/53b7df96c91f9c12dcc8a07bcb9ccacbed38856a/README.md) | v7.3.0 (`53b7df9`) | Build and push Docker images with Buildx |
+| [`docker/login-action`](https://github.com/docker/login-action/blob/dbcb813823bdd20940b903addbd779551569679f/README.md) | v4.6.0 (`dbcb813`) | GitHub Action to login against a Docker registry |
+| [`docker/metadata-action`](https://github.com/docker/metadata-action/blob/dc802804100637a589fabce1cb79ff13a1411302/README.md) | v6.2.0 (`dc80280`) | GitHub Action to extract metadata (tags, labels) for Docker |
+| [`docker/setup-buildx-action`](https://github.com/docker/setup-buildx-action/blob/37fe631027851001ddb9b187196cc803df7f5f0e/README.md) | v4.3.0 (`37fe631`) | Set up Docker Buildx |
+| [`docker/setup-docker-action`](https://github.com/docker/setup-docker-action/blob/e43656e248c0bd0647d3f5c195d116aacf6fcaf4/README.md) | v4.7.0 (`e43656e`) | Set up Docker for use in GitHub Actions by downloading and installing a version of Docker CE |
+| [`dtolnay/rust-toolchain`](https://github.com/dtolnay/rust-toolchain/blob/4360b52568e2003a75bf9bc1d59f33a8e3fc893c/README.md) | stable (`4360b52`) | Install the Rust toolchain |
+| [`expo/expo-github-action`](https://github.com/expo/expo-github-action/blob/eab7a230208c952974db8c3245cfd78402c7b385/README.md) | 9.0.0 (`eab7a23`) | Publish, build or manage your Expo app with GitHub Actions |
+| [`google-github-actions/auth`](https://github.com/google-github-actions/auth/blob/7c6bc770dae815cd3e89ee6cdf493a5fab2cc093/README.md) | v3.0.0 (`7c6bc77`) | Authenticate to Google Cloud from GitHub Actions via Workload Identity Federation or service account keys. |
+| [`google-github-actions/setup-gcloud`](https://github.com/google-github-actions/setup-gcloud/blob/aa5489c8933f4cc7a4f7d45035b3b1440c9c10db/README.md) | v3.0.1 (`aa5489c`) | Downloads, installs, and configures a Google Cloud SDK environment. Adds the `gcloud` CLI command to the $PATH. |
+| [`goreleaser/goreleaser-action`](https://github.com/goreleaser/goreleaser-action/blob/e435ccd777264be153ace6237001ef4d979d3a7a/README.md) | v6.4.0 (`e435ccd`) | GitHub Action for GoReleaser, a release automation tool for Go projects |
+| [`helm/chart-releaser-action`](https://github.com/helm/chart-releaser-action/blob/cae68fefc6b5f367a0275617c9f83181ba54714f/README.md) | v1.7.0 (`cae68fe`) | Host a Helm charts repo on GitHub Pages |
+| [`helm/chart-testing-action`](https://github.com/helm/chart-testing-action/blob/6ec842c01de15ebb84c8627d2744a0c2f2755c9f/README.md) | v2.8.0 (`6ec842c`) | Install the Helm chart-testing tool |
+| [`imjasonh/setup-crane`](https://github.com/imjasonh/setup-crane/blob/feee3b6bb0d4c68370f256a4502498c9227e5c6b/README.md) | v0.7 (`feee3b6`) | Install and authorize crane |
+| [`jakebailey/pyright-action`](https://github.com/jakebailey/pyright-action/blob/8ec14b5cfe41f26e5f41686a31eb6012758217ef/README.md) | v3.0.2 (`8ec14b5`) | Run pyright |
+| [`jayanta525/github-pages-directory-listing`](https://github.com/jayanta525/github-pages-directory-listing/blob/624ac8c4e56893256d3772f61a88e3b14d54314e/README.md) | v4.0.0 (`624ac8c`) | Github Action to generate directory listing index for Github Pages |
+| [`lycheeverse/lychee-action`](https://github.com/lycheeverse/lychee-action/blob/e7477775783ea5526144ba13e8db5eec57747ce8/README.md) | v2.9.0 (`e747777`) | Quickly check links in Markdown, HTML, and text files |
+| [`mobile-dev-inc/action-maestro-cloud`](https://github.com/mobile-dev-inc/action-maestro-cloud/blob/34906065ba3e85fd57ed533b178187eefb042aed/README.md) | v2.0.2 (`3490606`) | Upload your app to Maestro Cloud to run your Flows in CI |
+| [`mozilla-actions/sccache-action`](https://github.com/mozilla-actions/sccache-action/blob/fc920bf0ec8de6ee65d409111f7ec508035751ba/README.md) | v0.0.11 (`fc920bf`) | Setup sccache action |
+| [`oven-sh/setup-bun`](https://github.com/oven-sh/setup-bun/blob/0c5077e51419868618aeaa5fe8019c62421857d6/README.md) | v2.2.0 (`0c5077e`) | Download, install, and setup Bun to your path. |
+| [`peaceiris/actions-gh-pages`](https://github.com/peaceiris/actions-gh-pages/blob/84c30a85c19949d7eee79c4ff27748b70285e453/README.md) | v4.1.0 (`84c30a8`) | GitHub Actions for GitHub Pages 🚀 Deploy static files and publish your site easily. Static-Site-Generators-friendly. |
+| [`planetscale/setup-pscale-action`](https://github.com/planetscale/setup-pscale-action/blob/b6a50ee45b4b24944e1d8de6e57b3a5f6476a1af/README.md) | v1 (`b6a50ee`) | Installs the PlanetScale CLI |
+| [`pnpm/action-setup`](https://github.com/pnpm/action-setup/blob/0977fd99725f1db4007ccb2928dbb4e90d06cc86/README.md) | v6.0.10 (`0977fd9`) | Install pnpm package manager |
+| [`rust-lang/crates-io-auth-action`](https://github.com/rust-lang/crates-io-auth-action/blob/b7e9a28eded4986ec6b1fa40eeee8f8f165559ec/README.md) | v1.0.3 (`b7e9a28`) | Retrieve a temporary crates.io access token using trusted publishing. |
+| [`shallwefootball/upload-s3-action`](https://github.com/shallwefootball/upload-s3-action/blob/4350529f410221787ccf424e50133cbc1b52704e/README.md) | v1.3.3 (`4350529`) | Upload directory to S3 |
+| [`sigstore/cosign-installer`](https://github.com/sigstore/cosign-installer/blob/6f9f17788090df1f26f669e9d70d6ae9567deba6/README.md) | v4.1.2 (`6f9f177`) | Installs cosign and includes it in your path |
+| [`taiki-e/install-action`](https://github.com/taiki-e/install-action/blob/52fa4b339a202e373b2179c5278f8161d5f8e9cc/README.md) | `52fa4b3` | GitHub Action for installing development tools |
+| [`tailscale/github-action`](https://github.com/tailscale/github-action/blob/6cae46e2d796f265265cfcf628b72a32b4d7cade/README.md) | v3.3.0 (`6cae46e`) | Connect your GitHub Action workflow to Tailscale |
+| [`tailscale/gitops-acl-action`](https://github.com/tailscale/gitops-acl-action/blob/4105afd651aa659e0eec9031a10360c39fbc0804/README.md) | v1.5.1 (`4105afd`) | Push changes to Tailscale and run ACL tests in CI |
+| [`wevm/frog`](https://github.com/wevm/frog/blob/702c4eadefe175a208290a99c36e7f4ac1390e53/README.md) | v1 (`702c4ea`) |  |
+| [`zizmorcore/zizmor-action`](https://github.com/zizmorcore/zizmor-action/blob/3dc1ecc9bcb9e94e9b2c709687979e1298497054/README.md) | v0.6.2 (`3dc1ecc`) | Run zizmor from GitHub Actions 🌈 |
+<!-- vendored-actions:end -->
+
 ## Usage
 
 Reference actions using `tempoxyz/gh-actions/actions/<name>@main` (pin to a commit SHA in production — see [Versioning](#versioning)):

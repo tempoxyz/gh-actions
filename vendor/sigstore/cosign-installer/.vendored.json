@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/sigstore/cosign-installer",
+  "ref": "v4.1.2",
+  "ref_type": "tag",
+  "sha": "6f9f17788090df1f26f669e9d70d6ae9567deba6",
+  "upstream_commit_date": "2026-05-06T18:25:05-07:00",
+  "readme_url": "https://github.com/sigstore/cosign-installer/blob/6f9f17788090df1f26f669e9d70d6ae9567deba6/README.md",
+  "description": "Installs cosign and includes it in your path",
+  "consume_as": "tempoxyz/gh-actions/vendor/sigstore/cosign-installer@<gh-actions-sha>",
+  "files_removed": 4,
+  "nested_rewrites": []
+}

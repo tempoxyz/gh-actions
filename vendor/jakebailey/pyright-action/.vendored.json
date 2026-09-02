@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/jakebailey/pyright-action",
+  "ref": "v3.0.2",
+  "ref_type": "tag",
+  "sha": "8ec14b5cfe41f26e5f41686a31eb6012758217ef",
+  "upstream_commit_date": "2026-02-15T15:07:57-08:00",
+  "readme_url": "https://github.com/jakebailey/pyright-action/blob/8ec14b5cfe41f26e5f41686a31eb6012758217ef/README.md",
+  "description": "Run pyright",
+  "consume_as": "tempoxyz/gh-actions/vendor/jakebailey/pyright-action@<gh-actions-sha>",
+  "files_removed": 29,
+  "nested_rewrites": []
+}

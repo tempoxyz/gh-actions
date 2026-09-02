@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/docker/build-push-action",
+  "ref": "v7.3.0",
+  "ref_type": "tag",
+  "sha": "53b7df96c91f9c12dcc8a07bcb9ccacbed38856a",
+  "upstream_commit_date": "2026-07-01T16:11:18+02:00",
+  "readme_url": "https://github.com/docker/build-push-action/blob/53b7df96c91f9c12dcc8a07bcb9ccacbed38856a/README.md",
+  "description": "Build and push Docker images with Buildx",
+  "consume_as": "tempoxyz/gh-actions/vendor/docker/build-push-action@<gh-actions-sha>",
+  "files_removed": 68,
+  "nested_rewrites": []
+}

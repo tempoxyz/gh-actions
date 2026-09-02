@@ -1,0 +1,72 @@
+{
+  "scripts": {
+    "build": "zile",
+    "changeset:publish": "zile publish:prepare && changeset publish && zile publish:post",
+    "changeset:version": "changeset version",
+    "check": "vp check --fix",
+    "check:docs": "node --import tsx scripts/docs.ts",
+    "check:types": "tsc",
+    "dev": "zile dev",
+    "frog": "node --import tsx src/bin.ts",
+    "schema": "node --import tsx scripts/schema.ts",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@changesets/cli": "catalog:",
+    "@testcontainers/postgresql": "catalog:",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "zile": "catalog:"
+  },
+  "packageManager": "pnpm@11.15.0",
+  "[!start-pkg]": "",
+  "name": "frog",
+  "type": "module",
+  "version": "1.1.0",
+  "license": "MIT",
+  "description": "Automated friction logging for agents.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wevm/frog"
+  },
+  "keywords": [
+    "agents",
+    "dx",
+    "friction-log",
+    "github-issues",
+    "mcp"
+  ],
+  "bin": {
+    "frog": "./dist/bin.js",
+    "frog.src": "./src/bin.ts"
+  },
+  "files": [
+    "dist",
+    "src",
+    "schema.json"
+  ],
+  "exports": {
+    ".": {
+      "src": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@clack/prompts": "catalog:",
+    "@octokit/rest": "catalog:",
+    "incur": "catalog:",
+    "postgres": "catalog:",
+    "yaml": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

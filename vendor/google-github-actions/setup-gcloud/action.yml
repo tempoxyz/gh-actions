@@ -1,0 +1,100 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: 'Set up gcloud Cloud SDK environment'
+author: 'Google LLC'
+description: |-
+  Downloads, installs, and configures a Google Cloud SDK environment.
+  Adds the `gcloud` CLI command to the $PATH.
+
+inputs:
+  version:
+    description: |-
+      A string representing the version or version constraint of the Cloud SDK
+      (`gcloud`) to install (e.g. `"290.0.1"` or `">= 197.0.1"`). The default
+      value is `"latest"`, which will always download and install the latest
+      available Cloud SDK version.
+
+          - uses: $/vendor/google-github-actions/setup-gcloud # vendored google-github-actions/setup-gcloud@v3
+            with:
+              version: '>= 416.0.0'
+
+      If there is no installed `gcloud` version that matches the given
+      constraint, this GitHub Action will download and install the latest
+      available version that still matches the constraint.
+
+      Authenticating via Workload Identity Federation requires version
+      [363.0.0](https://cloud.google.com/sdk/docs/release-notes#36300_2021-11-02)
+      or newer. If you need support for Workload Identity Federation, specify
+      your version constraint as such:
+
+          - uses: $/vendor/google-github-actions/setup-gcloud # vendored google-github-actions/setup-gcloud@v3
+            with:
+              version: '>= 363.0.0'
+
+      You are responsible for ensuring the `gcloud` version matches the features
+      and components required.
+    default: 'latest'
+    required: false
+
+  project_id:
+    description: |-
+      ID of the Google Cloud project. If provided, this will configure gcloud to
+      use this project ID by default for commands. Individual commands can still
+      override the project using the `--project` flag which takes precedence. If
+      unspecified, the action attempts to find the "best" project ID by looking
+      at other inputs and environment variables.
+    required: false
+
+  install_components:
+    description: |-
+      List of additional [gcloud
+      components](https://cloud.google.com/sdk/docs/components) to install,
+      specified as a comma-separated list of strings:
+
+          install_components: 'alpha,cloud-datastore-emulator'
+    required: false
+
+  skip_install:
+    description: |-
+      Skip installation of gcloud and use the [system-supplied
+      version](https://github.com/actions/runner-images) instead. If specified,
+      the `version` input is ignored.
+
+      ⚠️ You will not be able to install additional gcloud components, because the
+      system installation is locked.
+    default: false
+    required: false
+
+  cache:
+    description: |-
+      Transfer the downloaded artifacts into the runner's tool cache. On
+      GitHub-managed runners, this have very little impact since runneres are
+      ephemeral. On self-hosted runners, this could improve future runs by
+      skipping future gcloud installations.
+    default: false
+    required: false
+
+outputs:
+  version:
+    description: |-
+      Version of gcloud that was installed.
+
+branding:
+  icon: 'terminal'
+  color: 'blue'
+
+runs:
+  using: 'node24'
+  main: 'dist/index.js'
