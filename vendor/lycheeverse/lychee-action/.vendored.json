@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/lycheeverse/lychee-action",
+  "ref": "v2.9.0",
+  "ref_type": "tag",
+  "sha": "e7477775783ea5526144ba13e8db5eec57747ce8",
+  "upstream_commit_date": "2026-06-23T19:03:18+02:00",
+  "readme_url": "https://github.com/lycheeverse/lychee-action/blob/e7477775783ea5526144ba13e8db5eec57747ce8/README.md",
+  "description": "Quickly check links in Markdown, HTML, and text files",
+  "consume_as": "tempoxyz/gh-actions/vendor/lycheeverse/lychee-action@<gh-actions-sha>",
+  "files_removed": 16,
+  "nested_rewrites": []
+}

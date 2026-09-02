@@ -129,6 +129,8 @@ jobs:
         run: cp testdata/fixtures/clean.yml .github/workflows/zz-clean-fixture.yml
       - name: Run composite on clean fixture (expected to pass)
         uses: ./actions/scan-github-actions
+        with:
+          paths: ".github actions"
 
       # Negative: swapping in a broken workflow must make the composite fail.
       - name: Swap clean fixture for broken fixture
@@ -139,6 +141,8 @@ jobs:
         id: scan
         continue-on-error: true
         uses: ./actions/scan-github-actions
+        with:
+          paths: ".github actions"
       - name: Assert the scan failed
         env:
           OUTCOME: ${{ steps.scan.outcome }}

@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/pnpm/action-setup",
+  "ref": "v6.0.10",
+  "ref_type": "tag",
+  "sha": "0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+  "upstream_commit_date": "2026-08-03T13:44:13+02:00",
+  "readme_url": "https://github.com/pnpm/action-setup/blob/0977fd99725f1db4007ccb2928dbb4e90d06cc86/README.md",
+  "description": "Install pnpm package manager",
+  "consume_as": "tempoxyz/gh-actions/vendor/pnpm/action-setup@<gh-actions-sha>",
+  "files_removed": 29,
+  "nested_rewrites": []
+}

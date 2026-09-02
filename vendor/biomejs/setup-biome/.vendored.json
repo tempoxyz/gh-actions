@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/biomejs/setup-biome",
+  "ref": "main",
+  "ref_type": "branch",
+  "sha": "9edb642ea71f227041b81b805d3b36421b94529f",
+  "upstream_commit_date": "2026-08-31T19:26:31Z",
+  "readme_url": "https://github.com/biomejs/setup-biome/blob/9edb642ea71f227041b81b805d3b36421b94529f/README.md",
+  "description": "Setup the Biome CLI in GitHub Actions",
+  "consume_as": "tempoxyz/gh-actions/vendor/biomejs/setup-biome@<gh-actions-sha>",
+  "files_removed": 43,
+  "nested_rewrites": []
+}

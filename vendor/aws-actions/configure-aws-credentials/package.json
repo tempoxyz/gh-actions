@@ -1,0 +1,57 @@
+{
+  "name": "configure-aws-credentials",
+  "description": "A GitHub Action to configure AWS credentials",
+  "version": "6.2.3",
+  "scripts": {
+    "build": "tsc",
+    "lint": "biome check --error-on-warnings ./src ./test && markdownlint -i node_modules -i CHANGELOG.md '**/*.md'",
+    "lint:fix": "biome check --write ./src ./test && markdownlint -i node_modules -i CHANGELOG.md -f '**/*.md'",
+    "package": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js && esbuild src/cleanup/index.ts --bundle --platform=node --target=node24 --outfile=dist/cleanup/index.js && npm run license",
+    "test": "npm run lint && vitest run && npm run build",
+    "clean": "del-cli coverage test-reports node_modules",
+    "license": "generate-license-file --config ./.generatelicensefile.json"
+  },
+  "author": {
+    "name": "Amazon.com, Inc. or its affiliates",
+    "url": "https://aws.amazon.com",
+    "organization": true
+  },
+  "devDependencies": {
+    "@aws-sdk/credential-provider-env": "^3.972.59",
+    "@biomejs/biome": "2.5.4",
+    "@smithy/property-provider": "^4.4.11",
+    "@types/node": "^26.1.1",
+    "@vitest/coverage-v8": "4.1.10",
+    "aws-sdk-client-mock": "^4.1.0",
+    "esbuild": "^0.28.1",
+    "generate-license-file": "^4.2.1",
+    "json-schema": "^0.4.0",
+    "markdownlint-cli": "^0.49.1",
+    "memfs": "^4.64.0",
+    "standard-version": "^9.5.0",
+    "typescript": "^7.0.2",
+    "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@aws-sdk/client-sts": "^3.1091.0",
+    "@smithy/node-http-handler": "^4.9.8",
+    "proxy-agent": "^8.0.2"
+  },
+  "keywords": [
+    "aws",
+    "github",
+    "github-action"
+  ],
+  "engines": {
+    "node": ">= 16.3.0"
+  },
+  "main": "build/index.js",
+  "license": "MIT",
+  "homepage": "https://github.com/aws-actions/configure-aws-credentials",
+  "bugs": {
+    "url": "https://github.com/aws-actions/configure-aws-credentials/issues"
+  },
+  "types": "build/index.d.ts",
+  "private": true
+}

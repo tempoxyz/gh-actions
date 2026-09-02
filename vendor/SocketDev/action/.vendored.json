@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/SocketDev/action",
+  "ref": "main",
+  "ref_type": "branch",
+  "sha": "be1f253a41351d59095f8d7f1425985097dd1054",
+  "upstream_commit_date": "2026-08-18T17:32:57-04:00",
+  "readme_url": "https://github.com/SocketDev/action/blob/be1f253a41351d59095f8d7f1425985097dd1054/README.md",
+  "description": "GitHub Action to run Socket in CLI or Firewall mode",
+  "consume_as": "tempoxyz/gh-actions/vendor/SocketDev/action@<gh-actions-sha>",
+  "files_removed": 2567,
+  "nested_rewrites": []
+}

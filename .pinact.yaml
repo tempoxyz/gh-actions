@@ -1,5 +1,12 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/suzuki-shunsuke/pinact/refs/heads/main/json-schema/pinact.json
 version: 3
+# Only first-party files are subject to the pin policy. Trees under vendor/ are copies of
+# upstream actions managed by vendor-manifest.yml; their nested pins are handled by the sync.
+files:
+  - pattern: .github/workflows/*.yml
+  - pattern: .github/workflows/*.yaml
+  - pattern: actions/*/action.yml
+  - pattern: actions/*/*/action.yml
 min_age:
   value: 7
   always: true

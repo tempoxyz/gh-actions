@@ -1,0 +1,57 @@
+{
+  "name": "docker-metadata-action",
+  "description": "GitHub Action to extract metadata (tags, labels) for Docker",
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/index.cjs --sourcemap --minify --keep-names && yarn run license",
+    "lint": "eslint --max-warnings=0 .",
+    "format": "eslint --fix .",
+    "test": "vitest run",
+    "license": "generate-license-file --input package.json --output dist/licenses.txt --overwrite --ci --no-spinner --eol lf"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/docker/metadata-action.git"
+  },
+  "keywords": [
+    "actions",
+    "docker",
+    "metadata",
+    "tag",
+    "label"
+  ],
+  "author": "Docker Inc.",
+  "license": "Apache-2.0",
+  "packageManager": "yarn@4.15.0",
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@actions/github": "^9.1.1",
+    "@docker/actions-toolkit": "^0.92.0",
+    "@renovate/pep440": "^1.0.0",
+    "csv-parse": "^7.0.0",
+    "handlebars": "^4.7.9",
+    "moment": "^2.30.1",
+    "moment-timezone": "^0.6.2",
+    "semver": "^7.8.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.3",
+    "@types/node": "^24.11.0",
+    "@types/semver": "^7.7.1",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/eslint-plugin": "^1.6.9",
+    "dotenv": "^17.3.1",
+    "esbuild": "^0.28.0",
+    "eslint": "^9.39.3",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "generate-license-file": "^4.1.1",
+    "globals": "^17.3.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

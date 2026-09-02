@@ -15,4 +15,26 @@ jobs:
       actions: read
       contents: read
     with:
+      # vendor/ holds copies of upstream actions; they are reviewed via vendor-manifest.yml,
+      # not linted to this repo's standards.
+      paths: ".github actions"
       pinact: true
+
+  vendor-check:
+    name: Vendor check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Rebuilds every vendored action from vendor-manifest.yml into a temp dir (fetching the
+      # pinned upstream commits) and fails on any difference to vendor/ or the README table.
+      - name: Verify vendor/ matches vendor-manifest.yml
+        run: node vendor/sync.mjs --check
+
+      - name: Run vendor tooling tests
+        run: node --test vendor/lib.test.js

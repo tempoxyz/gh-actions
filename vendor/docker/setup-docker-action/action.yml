@@ -1,0 +1,51 @@
+# https://help.github.com/en/articles/metadata-syntax-for-github-actions
+name: Docker Setup Docker
+description: Set up Docker for use in GitHub Actions by downloading and installing a version of Docker CE
+author: docker
+branding:
+  icon: 'anchor'
+  color: 'blue'
+
+inputs:
+  version:
+    description: 'Docker CE version. (e.g, v24.0.9)'
+    required: false
+    default: 'latest'
+  channel:
+    description: 'Docker CE channel. (e.g, stable, edge or test)'
+    required: false
+  daemon-config:
+    description: 'Docker daemon JSON configuration'
+    required: false
+  tcp-port:
+    description: 'TCP port to expose the Docker API locally'
+    required: false
+  context:
+    description: 'Docker context name. (default setup-docker-action)'
+    required: false
+  set-host:
+    description: 'Set DOCKER_HOST environment variable to docker socket path'
+    default: 'false'
+    required: false
+  rootless:
+    description: 'Enable Docker rootless mode'
+    default: 'false'
+    required: false
+  runtime-basedir:
+    description: 'Docker runtime base directory'
+    required: false
+  github-token:
+    description: "GitHub Token used to get releases and download assets"
+    default: ${{ github.token }}
+    required: false
+
+outputs:
+  sock:
+    description: "Docker socket path"
+  tcp:
+    description: "Docker TCP address if tcp-port is set"
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+  post: 'dist/index.js'

@@ -1,0 +1,14 @@
+{
+  "upstream": "https://github.com/aquasecurity/trivy-action",
+  "ref": "v0.36.0",
+  "ref_type": "tag",
+  "sha": "ed142fd0673e97e23eac54620cfb913e5ce36c25",
+  "upstream_commit_date": "2026-04-22T15:20:48+06:00",
+  "readme_url": "https://github.com/aquasecurity/trivy-action/blob/ed142fd0673e97e23eac54620cfb913e5ce36c25/README.md",
+  "description": "Scans container images for vulnerabilities with Trivy",
+  "consume_as": "tempoxyz/gh-actions/vendor/aquasecurity/trivy-action@<gh-actions-sha>",
+  "files_removed": 6,
+  "nested_rewrites": [
+    "aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 -> $/vendor/aquasecurity/setup-trivy"
+  ]
+}

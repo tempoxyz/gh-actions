@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/mobile-dev-inc/action-maestro-cloud",
+  "ref": "v2.0.2",
+  "ref_type": "tag",
+  "sha": "34906065ba3e85fd57ed533b178187eefb042aed",
+  "upstream_commit_date": "2026-02-23T11:29:15Z",
+  "readme_url": "https://github.com/mobile-dev-inc/action-maestro-cloud/blob/34906065ba3e85fd57ed533b178187eefb042aed/README.md",
+  "description": "Upload your app to Maestro Cloud to run your Flows in CI",
+  "consume_as": "tempoxyz/gh-actions/vendor/mobile-dev-inc/action-maestro-cloud@<gh-actions-sha>",
+  "files_removed": 21,
+  "nested_rewrites": []
+}

@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/astral-sh/setup-uv",
+  "ref": "v10.0.0",
+  "ref_type": "tag",
+  "sha": "ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d",
+  "upstream_commit_date": "2026-08-12T13:23:43+02:00",
+  "readme_url": "https://github.com/astral-sh/setup-uv/blob/ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d/README.md",
+  "description": "Set up your GitHub Actions workflow with a specific version of uv.",
+  "consume_as": "tempoxyz/gh-actions/vendor/astral-sh/setup-uv@<gh-actions-sha>",
+  "files_removed": 109,
+  "nested_rewrites": []
+}

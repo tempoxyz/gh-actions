@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/depot/bake-action",
+  "ref": "v1.13.0",
+  "ref_type": "tag",
+  "sha": "1d58c2668346981089b088b7ef36755b206b20e9",
+  "upstream_commit_date": "2026-02-03T10:34:38+01:00",
+  "readme_url": "https://github.com/depot/bake-action/blob/1d58c2668346981089b088b7ef36755b206b20e9/README.md",
+  "description": "GitHub Action to build Docker images via Bake with Depot",
+  "consume_as": "tempoxyz/gh-actions/vendor/depot/bake-action@<gh-actions-sha>",
+  "files_removed": 14,
+  "nested_rewrites": []
+}

@@ -1,0 +1,15 @@
+{
+  "upstream": "https://github.com/google-github-actions/setup-gcloud",
+  "ref": "v3.0.1",
+  "ref_type": "tag",
+  "sha": "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db",
+  "upstream_commit_date": "2025-08-28T13:37:35Z",
+  "readme_url": "https://github.com/google-github-actions/setup-gcloud/blob/aa5489c8933f4cc7a4f7d45035b3b1440c9c10db/README.md",
+  "description": "Downloads, installs, and configures a Google Cloud SDK environment.\nAdds the `gcloud` CLI command to the $PATH.",
+  "consume_as": "tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@<gh-actions-sha>",
+  "files_removed": 18,
+  "nested_rewrites": [
+    "google-github-actions/setup-gcloud@v3 -> $/vendor/google-github-actions/setup-gcloud",
+    "google-github-actions/setup-gcloud@v3 -> $/vendor/google-github-actions/setup-gcloud"
+  ]
+}

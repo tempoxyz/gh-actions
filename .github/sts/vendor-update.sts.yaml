@@ -1,0 +1,10 @@
+# Allow the Vendor Update workflow (schedule/workflow_dispatch on main) to mint a
+# short-lived token that pushes one vendor/<action>-<version> branch per updated
+# third-party action and opens its pull request. Replaces the built-in GITHUB_TOKEN
+# so the org can keep "Allow GitHub Actions to create and approve pull requests" off.
+subject: repo:tempoxyz@211589300/gh-actions@1156436742:ref:refs/heads/main
+claim_pattern:
+  job_workflow_ref: tempoxyz/gh-actions/\.github/workflows/vendor-update\.yml@refs/heads/main
+permissions:
+  contents: write
+  pull_requests: write

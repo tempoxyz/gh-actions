@@ -1,0 +1,26 @@
+name: Depot Pull
+description: Pull images from the Depot ephemeral registry.
+author: Depot
+branding:
+  icon: package
+  color: gray-dark
+runs:
+  using: node24
+  main: dist/index.js
+inputs:
+  build-id:
+    description: The build ID to pull.
+    required: true
+  platform:
+    description: The platform to pull (defaults to the current platform).
+    required: false
+  tags:
+    description: A list of tags to apply to the pulled image
+    required: false
+  token:
+    description: If set, will populate the `DEPOT_TOKEN` environment variable.
+    default: ''
+    required: false
+  targets:
+    description: Pull specific bake targets rather than all.
+    required: false

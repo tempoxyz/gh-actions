@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/tailscale/gitops-acl-action",
+  "ref": "v1.5.1",
+  "ref_type": "tag",
+  "sha": "4105afd651aa659e0eec9031a10360c39fbc0804",
+  "upstream_commit_date": "2026-01-30T18:59:54-07:00",
+  "readme_url": "https://github.com/tailscale/gitops-acl-action/blob/4105afd651aa659e0eec9031a10360c39fbc0804/README.md",
+  "description": "Push changes to Tailscale and run ACL tests in CI",
+  "consume_as": "tempoxyz/gh-actions/vendor/tailscale/gitops-acl-action@<gh-actions-sha>",
+  "files_removed": 2,
+  "nested_rewrites": []
+}

@@ -1,0 +1,70 @@
+name: Socket Security (Action)
+
+description: GitHub Action to run Socket in CLI or Firewall mode
+
+author: Socket Inc.
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  firewall-version:
+    description: Specify the firewall version number
+    default: latest
+
+  github-token:
+    description: GitHub API Token used for downloading binaries
+    required: true
+    default: ${{ github.server_url == 'https://github.com' && github.token || '' }}
+
+  job-summary:
+    description: Create a job summary
+    default: all
+
+  mode:
+    description: Operation mode firewall, patch, or cli
+    required: true
+
+  patch-cwd:
+    description: Working directory for socket-patch apply
+    default: ''
+
+  patch-dry-run:
+    description: Verify patches without modifying files
+    default: 'false'
+
+  patch-ecosystems:
+    description: Comma-separated list of ecosystems to patch (npm, pypi, cargo)
+    default: ''
+
+  patch-version:
+    description: Specify the socket-patch version number
+    default: latest
+
+  shims:
+    description: Create shims so package manager commands are automatically routed through sfw
+    default: 'true'
+
+  socket-token:
+    description: The Socket API Token
+
+  socket_api_key:
+    description: Socket API key mapped to the SOCKET_API_KEY environment variable
+
+  use-cache:
+    description: Cache the Socket binaries
+    default: 'true'
+
+outputs:
+  firewall-path-report:
+    description: Path to the generated firewall report JSON
+  firewall-path-binary:
+    description: Path to the installed binary
+  patch-path-binary:
+    description: Path to the installed socket-patch binary
+
+runs:
+  using: node24
+  main: 'dist/main.js'
+  post: 'dist/post.js'

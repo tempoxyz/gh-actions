@@ -1,0 +1,31 @@
+name: "Helm Chart Testing"
+description: "Install the Helm chart-testing tool"
+author: "The Helm authors"
+branding:
+  color: blue
+  icon: anchor
+inputs:
+  version:
+    description: "The chart-testing version to install (default: 3.12.0)"
+    required: false
+    default: '3.14.0'
+  yamllint_version:
+    description: "The yamllint version to install (default: 1.27.1)"
+    required: false
+    default: '1.33.0'
+  yamale_version:
+    description: "The yamale version to install (default: 6.0.0)"
+    required: false
+    default: '6.0.0'
+runs:
+  using: composite
+  steps:
+    - uses: $/vendor/sigstore/cosign-installer # vendored sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad
+    - uses: $/vendor/astral-sh/setup-uv # vendored astral-sh/setup-uv@eb1897b8dc4b5d5bfe39a428a8f2304605e0983c
+    - run: |
+        cd $GITHUB_ACTION_PATH \
+        && ./ct.sh \
+            --version ${{ inputs.version }} \
+            --yamllint-version ${{ inputs.yamllint_version }} \
+            --yamale-version ${{ inputs.yamale_version }}
+      shell: bash

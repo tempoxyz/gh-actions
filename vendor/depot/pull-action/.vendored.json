@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/depot/pull-action",
+  "ref": "v1.3.1",
+  "ref_type": "tag",
+  "sha": "a913e06772c98ecd2361a8cc49bec81592dc6600",
+  "upstream_commit_date": "2026-02-04T14:48:05Z",
+  "readme_url": "https://github.com/depot/pull-action/blob/a913e06772c98ecd2361a8cc49bec81592dc6600/README.md",
+  "description": "Pull images from the Depot ephemeral registry.",
+  "consume_as": "tempoxyz/gh-actions/vendor/depot/pull-action@<gh-actions-sha>",
+  "files_removed": 14,
+  "nested_rewrites": []
+}

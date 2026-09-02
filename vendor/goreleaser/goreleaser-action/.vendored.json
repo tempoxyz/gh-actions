@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/goreleaser/goreleaser-action",
+  "ref": "v6.4.0",
+  "ref_type": "tag",
+  "sha": "e435ccd777264be153ace6237001ef4d979d3a7a",
+  "upstream_commit_date": "2025-08-06T22:28:41-03:00",
+  "readme_url": "https://github.com/goreleaser/goreleaser-action/blob/e435ccd777264be153ace6237001ef4d979d3a7a/README.md",
+  "description": "GitHub Action for GoReleaser, a release automation tool for Go projects",
+  "consume_as": "tempoxyz/gh-actions/vendor/goreleaser/goreleaser-action@<gh-actions-sha>",
+  "files_removed": 36,
+  "nested_rewrites": []
+}

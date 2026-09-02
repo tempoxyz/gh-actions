@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/docker/setup-buildx-action",
+  "ref": "v4.3.0",
+  "ref_type": "tag",
+  "sha": "37fe631027851001ddb9b187196cc803df7f5f0e",
+  "upstream_commit_date": "2026-08-17T14:27:36+02:00",
+  "readme_url": "https://github.com/docker/setup-buildx-action/blob/37fe631027851001ddb9b187196cc803df7f5f0e/README.md",
+  "description": "Set up Docker Buildx",
+  "consume_as": "tempoxyz/gh-actions/vendor/docker/setup-buildx-action@<gh-actions-sha>",
+  "files_removed": 38,
+  "nested_rewrites": []
+}
