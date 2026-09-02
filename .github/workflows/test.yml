@@ -271,7 +271,7 @@ jobs:
           set -euo pipefail
           echo "$CHANGES" | jq -e 'type == "array"' >/dev/null || { echo "::error::changed-paths did not emit a JSON array of changes: '$CHANGES'"; exit 1; }
           [ "$NEEDS_FAIL" = "failure" ] || { echo "::error::check-needs should fail on a failed job (outcome=$NEEDS_FAIL)"; exit 1; }
-          cargo-hack --version
+          cargo hack --version
           echo "composite smoke tests ok (changes=$CHANGES)"
       - name: Report resolved Foundry tags
         env:
