@@ -54,6 +54,15 @@ jobs:
               echo "ok: ${tool} -> $r"
             fi
           done
+          # The standalone actionlint composite must run the same image digest.
+          a=$(grep -oE "docker://rhysd/actionlint@[^ ]+" actions/actionlint/action.yml | sort -u || true)
+          c=$(grep -oE "docker://rhysd/actionlint@[^ ]+" "$composite" | sort -u || true)
+          if [ "$a" != "$c" ]; then
+            echo "::error::actionlint image differs (actionlint='$a' scan-github-actions='$c')"
+            status=1
+          else
+            echo "ok: actions/actionlint -> $a"
+          fi
           exit "$status"
 
       # Guard the reusable workflow wiring that the integration steps below
@@ -234,6 +243,8 @@ jobs:
           make-default: "false"
       # Scoped to the new first-party actions: older files in actions/ contain test fixtures and
       # identifiers that typos flags, and adopting typos repo-wide is a separate decision.
+      - name: Smoke test actionlint (digest-pinned image) on this repository's workflows
+        uses: ./actions/actionlint
       - name: Smoke test typos (release attestation) on the first-party action sources
         uses: ./actions/typos
         with:

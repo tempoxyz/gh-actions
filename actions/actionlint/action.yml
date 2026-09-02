@@ -1,0 +1,16 @@
+name: "actionlint"
+description: "Lint GitHub Actions workflows with actionlint (syntax, expressions, shellcheck and pyflakes checks)"
+
+inputs:
+  args:
+    description: "Arguments passed to actionlint. The default lints every workflow under .github/workflows."
+    required: false
+    default: "-color"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Lint GitHub Actions workflows
+      uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+      with:
+        args: ${{ inputs.args }}
