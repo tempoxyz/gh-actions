@@ -93,18 +93,53 @@ jobs:
             exit 1
           fi
 
+      # pinact is installed from its GitHub release and verified against the release checksums,
+      # the same way actions/setup-pinact does it (test.yml keeps the two versions identical).
+      # The composite cannot be used from here: a reusable workflow would have to check this
+      # repository out into the caller's workspace, and the scanners below would then scan it.
+      - name: Install pinact
+        if: ${{ inputs.pinact }}
+        env:
+          PINACT_VERSION: v4.1.1
+        run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) ARCH=amd64 ;;
+            aarch64|arm64) ARCH=arm64 ;;
+            *) echo "::error::unsupported architecture $(uname -m)"; exit 1 ;;
+          esac
+          ASSET="pinact_linux_${ARCH}.tar.gz"
+          CHECKSUMS="pinact_${PINACT_VERSION#v}_checksums.txt"
+          BASE_URL="https://github.com/suzuki-shunsuke/pinact/releases/download/${PINACT_VERSION}"
+          INSTALL_DIR="$RUNNER_TEMP/pinact-bin"
+          mkdir -p "$INSTALL_DIR"
+          curl -fsSL -o "$INSTALL_DIR/$ASSET" "$BASE_URL/$ASSET"
+          curl -fsSL -o "$INSTALL_DIR/$CHECKSUMS" "$BASE_URL/$CHECKSUMS"
+          grep "  $ASSET$" "$INSTALL_DIR/$CHECKSUMS" > "$INSTALL_DIR/$ASSET.sha256"
+          (cd "$INSTALL_DIR" && sha256sum -c "$ASSET.sha256")
+          tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" pinact
+          chmod +x "$INSTALL_DIR/pinact"
+          echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+      # Flags mirror the former pinact-action inputs: fix=false, no_api, verify, verify_min_age,
+      # config. GITHUB_TOKEN drives the API-based comment and minimum-age verification.
       - name: Check action pin policy
         if: ${{ inputs.pinact }}
-        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PINACT_GLOBAL_CONFIG: ${{ steps.pinact-config.outputs.global-config }}
-        with:
-          config: ${{ steps.pinact-config.outputs.config }}
-          fix: "false"
-          github_token: ${{ github.token }}
-          no_api: ${{ inputs.pin-no-api }}
-          verify: ${{ !inputs.pin-no-api && inputs.verify-pin-comments }}
-          verify_min_age: ${{ !inputs.pin-no-api && inputs.verify-pin-min-age }}
+          CONFIG: ${{ steps.pinact-config.outputs.config }}
+          NO_API: ${{ inputs.pin-no-api }}
+          VERIFY: ${{ !inputs.pin-no-api && inputs.verify-pin-comments }}
+          VERIFY_MIN_AGE: ${{ !inputs.pin-no-api && inputs.verify-pin-min-age }}
+        run: |
+          set -euo pipefail
+          args=(-fix=false)
+          [[ -n "$CONFIG" ]] && args+=(-c "$CONFIG")
+          [[ "$NO_API" == "true" ]] && args+=(--no-api)
+          [[ "$VERIFY" == "true" ]] && args+=(--verify)
+          [[ "$VERIFY_MIN_AGE" == "true" ]] && args+=(--verify-min-age)
+          pinact run "${args[@]}"
 
       - name: Scan GitHub Actions
         if: ${{ !cancelled() }}

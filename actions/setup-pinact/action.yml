@@ -1,0 +1,46 @@
+name: "Setup pinact"
+description: "Install pinact, the GitHub Actions pin checker, from a checksum-verified release"
+
+inputs:
+  version:
+    description: "pinact release tag (e.g., v4.1.1). Mutable 'latest' is rejected."
+    required: false
+    default: "v4.1.1"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install pinact
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
+        set -euo pipefail
+        if [ "$VERSION" = "latest" ]; then
+          echo "::error::setup-pinact requires an immutable pinact release tag, not 'latest'"
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64) ARCH=amd64 ;;
+          aarch64|arm64) ARCH=arm64 ;;
+          *) echo "::error::setup-pinact: unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+
+        ASSET="pinact_linux_${ARCH}.tar.gz"
+        CHECKSUMS="pinact_${VERSION#v}_checksums.txt"
+        BASE_URL="https://github.com/suzuki-shunsuke/pinact/releases/download/${VERSION}"
+        INSTALL_DIR="${RUNNER_TEMP:-/tmp}/pinact-bin"
+        mkdir -p "$INSTALL_DIR"
+
+        curl -fsSL -o "$INSTALL_DIR/$ASSET" "$BASE_URL/$ASSET"
+        curl -fsSL -o "$INSTALL_DIR/$CHECKSUMS" "$BASE_URL/$CHECKSUMS"
+        grep "  $ASSET$" "$INSTALL_DIR/$CHECKSUMS" > "$INSTALL_DIR/$ASSET.sha256"
+        (cd "$INSTALL_DIR" && sha256sum -c "$ASSET.sha256")
+
+        tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" pinact
+        chmod +x "$INSTALL_DIR/pinact"
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Show pinact version
+      shell: bash
+      run: pinact --version
