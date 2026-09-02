@@ -56,19 +56,26 @@ jobs:
         # Remove first line that always just says "Updating crates.io index"
         run: cargo update --color never --verbose 2>&1 | sed '/crates.io index/d' | tee -a cargo_update.log
 
-      - name: Craft commit message and PR body
+      # The first-party PR action below fails when there is nothing to commit, so skip the
+      # remaining steps when `cargo update` left Cargo.lock untouched.
+      - name: Detect Cargo.lock changes
+        id: changes
+        run: |
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock is already up to date; no pull request needed"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Craft PR body
+        if: steps.changes.outputs.changed == 'true'
         id: msg
-        env:
-          PR_TITLE: ${{ inputs.title }}
         run: |
           cargo_update_log="$(cat cargo_update.log)"
           export cargo_update_log
 
           {
-            echo "commit_message<<EOF"
-            printf "%s\n\n%s\n" "$PR_TITLE" "$cargo_update_log"
-            echo "EOF"
-
             echo "body<<EOF"
             echo "$BODY" | envsubst
             echo "EOF"
@@ -78,6 +85,7 @@ jobs:
       # pattern), so the github-sts action always matches this workflow and
       # needs no separate SHA pin.
       - name: Checkout shared actions
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
@@ -86,19 +94,23 @@ jobs:
           persist-credentials: false
 
       - name: Fetch GitHub token via STS
+        if: steps.changes.outputs.changed == 'true'
         id: sts
         uses: ./.gh-actions/actions/github-sts
         with:
           policy: cargo-update-pr
 
+      # First-party replacement for peter-evans/create-pull-request, from the same checkout of
+      # this repository the STS step uses. The commit is created server-side, authored by the STS
+      # App and signed by GitHub, so author/committer inputs are not needed. The composite takes a
+      # single-line commit headline; the cargo update log stays in the PR body.
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        if: steps.changes.outputs.changed == 'true'
+        uses: ./.gh-actions/actions/create-pull-request
         with:
           token: ${{ steps.sts.outputs.token }}
-          author: tempo-github-sts[bot] <312736176+tempo-github-sts[bot]@users.noreply.github.com>
-          committer: tempo-github-sts[bot] <312736176+tempo-github-sts[bot]@users.noreply.github.com>
-          add-paths: ./Cargo.lock
-          commit-message: ${{ steps.msg.outputs.commit_message }}
+          branch: ${{ env.BRANCH }}
+          commit-message: ${{ inputs.title }}
           title: ${{ inputs.title }}
           body: ${{ steps.msg.outputs.body }}
-          branch: ${{ env.BRANCH }}
+          add-paths: Cargo.lock
