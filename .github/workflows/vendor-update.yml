@@ -1,17 +1,21 @@
 name: Vendor Update
 
-# Weekly: look for newer upstream versions of the third-party actions vendored under
-# vendor/ (see vendor-manifest.yml) and open one pull request per action. Each PR carries
-# the full source diff of the upstream change plus a link to the upstream compare view.
-# Upstream commits younger than the cooldown are skipped, matching the pin policy in
-# .pinact.yaml. Branches are pushed with git (not the GraphQL commit API) so executable
-# bits on vendored scripts and Docker entrypoints survive.
+# Run manually: look for newer upstream versions of the third-party actions vendored under
+# vendor/ (see vendor-manifest.yml) and open one pull request per action, or only for the
+# single action named in the `action` input. Each PR carries the full source diff of the
+# upstream change plus a link to the upstream compare view. Upstream commits younger than
+# the cooldown are skipped, matching the pin policy in .pinact.yaml. Branches are pushed
+# with git (not the GraphQL commit API) so executable bits on vendored scripts and Docker
+# entrypoints survive.
 
 on:
-  schedule:
-    - cron: "17 6 * * 1"
   workflow_dispatch:
     inputs:
+      action:
+        description: Only update this vendored action (owner/repo as named in vendor-manifest.yml). Leave empty to check every entry.
+        required: false
+        default: ""
+        type: string
       min-age-days:
         description: Ignore upstream commits younger than this many days
         required: false
@@ -39,9 +43,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MIN_AGE: ${{ inputs.min-age-days || '7' }}
+          ONLY: ${{ inputs.action }}
         run: |
           set -euo pipefail
-          node vendor/update.mjs --json --min-age-days "$MIN_AGE" > "$RUNNER_TEMP/updates.json"
+          if [ -n "$ONLY" ]; then
+            if ! yq -e ".actions[] | select(.name == \"$ONLY\") | .name" vendor-manifest.yml >/dev/null 2>&1; then
+              echo "::error::'$ONLY' is not an entry in vendor-manifest.yml (use the owner/repo name exactly as listed)"
+              exit 1
+            fi
+          fi
+          node vendor/update.mjs --json --min-age-days "$MIN_AGE" > "$RUNNER_TEMP/all-updates.json"
+          if [ -n "$ONLY" ]; then
+            jq --arg n "$ONLY" '[.[] | select(.name == $n)]' "$RUNNER_TEMP/all-updates.json" > "$RUNNER_TEMP/updates.json"
+            [ "$(jq length "$RUNNER_TEMP/updates.json")" != 0 ] || echo "::notice::$ONLY: no update available (already current, or the newer upstream commit is younger than $MIN_AGE days)"
+          else
+            cp "$RUNNER_TEMP/all-updates.json" "$RUNNER_TEMP/updates.json"
+          fi
           jq -r '.[] | "\(.name): \(.current_ref) -> \(.new_ref) (\(.age_days)d old)"' "$RUNNER_TEMP/updates.json"
           echo "updates=$(jq -c '[.[] | .name]' "$RUNNER_TEMP/updates.json")" >> "$GITHUB_OUTPUT"
 
