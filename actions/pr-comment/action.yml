@@ -1,0 +1,84 @@
+name: "PR comment"
+description: "Create or update a single pull request (or issue) comment identified by a hidden marker"
+
+inputs:
+  token:
+    description: "Token with pull-requests: write (issues: write for issues)"
+    required: false
+    default: ${{ github.token }}
+  number:
+    description: "Pull request or issue number. Defaults to the PR of the current event."
+    required: false
+    default: ${{ github.event.pull_request.number || github.event.issue.number }}
+  header:
+    description: "Marker that identifies the comment; one comment per header is kept up to date"
+    required: false
+    default: ${{ github.workflow }}
+  message:
+    description: "Comment body (Markdown). Ignored when `path` is set."
+    required: false
+    default: ""
+  path:
+    description: "File whose contents are the comment body"
+    required: false
+    default: ""
+  mode:
+    description: "`replace` the existing comment body, `append` to it, or `delete` it"
+    required: false
+    default: "replace"
+
+outputs:
+  comment-id:
+    description: "ID of the created or updated comment (empty after delete)"
+    value: ${{ steps.upsert.outputs.comment-id }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Upsert comment
+      id: upsert
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        NUMBER: ${{ inputs.number }}
+        HEADER: ${{ inputs.header }}
+        MESSAGE: ${{ inputs.message }}
+        BODY_PATH: ${{ inputs.path }}
+        MODE: ${{ inputs.mode }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        [[ -n "$NUMBER" ]] || { echo "::error::pr-comment: no pull request or issue number"; exit 1; }
+        marker="<!-- pr-comment: ${HEADER} -->"
+        body_file="$(mktemp "$RUNNER_TEMP/pr-comment-XXXXXX")"
+        if [[ -n "$BODY_PATH" ]]; then cat "$BODY_PATH" > "$body_file"; else printf '%s' "$MESSAGE" > "$body_file"; fi
+
+        # Find the existing comment carrying this marker (newest last).
+        existing="$(gh api "repos/${REPO}/issues/${NUMBER}/comments" --paginate \
+          --jq --arg m "$marker" '.[] | select(.body | contains($m)) | .id' | tail -1 || true)"
+
+        case "$MODE" in
+          delete)
+            if [[ -n "$existing" ]]; then gh api -X DELETE "repos/${REPO}/issues/comments/${existing}" >/dev/null; echo "deleted comment $existing"; fi
+            echo "comment-id=" >> "$GITHUB_OUTPUT"
+            exit 0 ;;
+          append)
+            if [[ -n "$existing" ]]; then
+              gh api "repos/${REPO}/issues/comments/${existing}" --jq .body > "$body_file.prev"
+              { cat "$body_file.prev"; printf '\n\n'; cat "$body_file"; } > "$body_file.new"
+              mv "$body_file.new" "$body_file"
+            fi ;;
+          replace) ;;
+          *) echo "::error::pr-comment: mode must be replace, append or delete (got '$MODE')"; exit 1 ;;
+        esac
+
+        # Marker goes at the end so it never disturbs Markdown at the top of the body.
+        if ! grep -qF "$marker" "$body_file"; then printf '\n\n%s\n' "$marker" >> "$body_file"; fi
+        if [[ -n "$existing" ]]; then
+          gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" -F body=@"$body_file" --jq .id > "$body_file.id"
+          echo "updated comment $(cat "$body_file.id")"
+        else
+          gh api -X POST "repos/${REPO}/issues/${NUMBER}/comments" -F body=@"$body_file" --jq .id > "$body_file.id"
+          echo "created comment $(cat "$body_file.id")"
+        fi
+        echo "comment-id=$(cat "$body_file.id")" >> "$GITHUB_OUTPUT"
