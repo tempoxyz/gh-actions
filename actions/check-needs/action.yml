@@ -3,7 +3,7 @@ description: "Fail unless every job in `needs` succeeded, allowing listed jobs t
 
 inputs:
   jobs:
-    description: "Pass `${{ toJSON(needs) }}`"
+    description: "JSON of the needs context: pass toJSON(needs)"
     required: true
   allowed-skips:
     description: "Job names that may be skipped (comma, space or newline separated)"
