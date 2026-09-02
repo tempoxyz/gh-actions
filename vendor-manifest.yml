@@ -4,21 +4,23 @@
 #   node vendor/add.mjs <owner/repo>@<tag|sha> [--label v1.2.3] [--path <sub>] [--with-deps]
 #   node vendor/sync.mjs            rebuild every tree from this file and refresh the README table
 #   node vendor/sync.mjs --check    CI: fail if vendor/ or the README table drifted from this file
-#
+
 # Per action: `ref` is the upstream tag or branch for humans, `sha` is the commit that is vendored,
 # `exclude` lists paths shown to be unused at run time (the reasoning is in `notes`), `keep` wins
 # over any exclude, and `pin_nested` records commits for nested GitHub-authored `uses:` lines that
 # upstream pins by tag (the org policy requires full SHAs). Trees under vendor/ are generated:
 # edit this file and re-run the sync instead of editing them.
-version: 1
 org: tempoxyz/gh-actions
+
 vendor_dir: vendor
+
 # Nested `uses:` lines pointing at these owners are left in place; the org policy allows them.
 # Every other nested third-party reference is rewritten to $/vendor/<owner>/<repo>, which
 # resolves to this repository at the commit the caller pinned (runner 2.336.0 or newer).
 allowed_upstreams:
   - actions/
   - github/
+
 # Removed from every vendored tree. Nothing listed here is read by a running action: repository
 # docs and images, upstream CI, editor and VCS metadata. action.yml, package.json and LICENSE
 # files are always kept. Source maps are consulted only to pretty-print a stack trace after a
@@ -58,6 +60,7 @@ default_exclude:
   - .pre-commit-config.yaml
   - .markdownlint*
   - .yamllint*
+
 actions:
   - name: 1password/install-cli-action
     ref: v1.0.0
@@ -67,6 +70,7 @@ actions:
       - test/
     notes: >-
       Composite action; loads install-cli.sh from the action directory. excluded: test/
+
   - name: CodSpeedHQ/action
     ref: v4.19.1
     ref_type: tag
@@ -76,6 +80,7 @@ actions:
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+
   - name: EmbarkStudios/cargo-deny-action
     ref: v2.1.1
     ref_type: tag
@@ -89,6 +94,7 @@ actions:
     notes: >-
       Docker action built from Dockerfile; copies Dockerfile, entrypoint.sh. excluded: src/, test/,
       .cargo/, Cargo.toml, tag.sh
+
   - name: SocketDev/action
     ref: main
     ref_type: branch
@@ -113,6 +119,7 @@ actions:
       Node action; runs dist/main.js, dist/post.js. excluded: src/, test/, assets/, docs/,
       tsconfig*.json, pnpm-lock.yaml, .npmrc, .node-version, **/*.test.*, .claude/, .config/,
       .mcp.json, patches/, pnpm-workspace.yaml, scripts/
+
   - name: Swatinem/rust-cache
     ref: v2.9.2
     ref_type: tag
@@ -127,6 +134,7 @@ actions:
     notes: >-
       Node action; runs dist/restore.js, dist/save.js. excluded: src/, tests/, tsconfig*.json,
       rollup.config.*, package-lock.json, CHANGELOG*
+
   - name: anchore/sbom-action
     ref: v0.24.0
     ref_type: tag
@@ -146,6 +154,7 @@ actions:
       Node action; runs dist/index.cjs. download-syft kept: named as a path in the code publish-sbom
       kept: named as a path in the code excluded: src/, tests/, tsconfig*.json, eslint.config.*,
       .prettierrc*, .prettierignore, package-lock.json, .nvmrc, **/*.test.*, llms.txt
+
   - name: aquasecurity/setup-trivy
     ref: v0.3.1
     ref_type: tag
@@ -155,6 +164,7 @@ actions:
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+
   - name: aquasecurity/trivy-action
     ref: v0.36.0
     ref_type: tag
@@ -163,6 +173,7 @@ actions:
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yaml uses the action directory
       itself (working directory, module path or similar)
+
   - name: astral-sh/setup-uv
     ref: v10.0.0
     ref_type: tag
@@ -186,6 +197,7 @@ actions:
       Node action; runs dist/setup/index.cjs, dist/save-cache/index.cjs. excluded: src/, __tests__/,
       docs/, tsconfig*.json, jest.config.*, package-lock.json, .nvmrc, **/*.test.*, **/*.ts,
       .agents/, action-types.yml, biome.json, scripts/, dist/update-known-checksums/
+
   - name: aws-actions/configure-aws-credentials
     ref: v6.2.3
     ref_type: tag
@@ -209,6 +221,7 @@ actions:
       tsconfig*.json, vitest.config.*, package-lock.json, CHANGELOG*, **/*.test.*,
       .generatelicensefile.json, .release-please-manifest.json, THIRD-PARTY, biome.jsonc,
       release-please-config.json kept although usually excludable: test/ (referenced)
+
   - name: biomejs/setup-biome
     ref: main
     ref_type: branch
@@ -227,6 +240,7 @@ actions:
       Node action; runs dist/index.mjs. biome.json kept: named as a path in the code bun.lock kept:
       named as a path in the code scripts kept: named as a path in the code excluded: src/, test/,
       tsconfig*.json, bun.lock, .npmrc, **/*.test.*, **/*.ts, .bun-version, lefthook.yml
+
   - name: changesets/action
     ref: v1.9.0
     ref_type: tag
@@ -249,6 +263,7 @@ actions:
       pnpm-workspace.yaml kept: named as a path in the code excluded: src/, tsconfig*.json,
       pnpm-lock.yaml, .node-version, CHANGELOG*, **/*.test.*, **/*.ts, .oxfmtrc.json, pr-comment/,
       pr-status/, rolldown.config.js, scripts/
+
   - name: cloudflare/wrangler-action
     ref: v4.0.0
     ref_type: tag
@@ -256,6 +271,7 @@ actions:
     exclude: []
     notes: >-
       Node action; runs dist/index.mjs.
+
   - name: depot/bake-action
     ref: v1.13.0
     ref_type: tag
@@ -269,6 +285,7 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: src/, tsconfig*.json, .prettierignore,
       pnpm-lock.yaml, build.cjs
+
   - name: depot/build-push-action
     ref: v1.18.0
     ref_type: tag
@@ -284,6 +301,7 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: src/, docs/, tsconfig*.json, .prettierrc*,
       .prettierignore, pnpm-lock.yaml, build.cjs
+
   - name: depot/pull-action
     ref: v1.3.1
     ref_type: tag
@@ -297,6 +315,7 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: src/, tsconfig*.json, .prettierignore,
       pnpm-lock.yaml, build.cjs
+
   - name: depot/setup-action
     ref: v1.7.2
     ref_type: tag
@@ -311,6 +330,7 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: src/, tsconfig*.json, .prettierignore,
       pnpm-lock.yaml, build.cjs, pnpm-workspace.yaml
+
   - name: docker/build-push-action
     ref: v7.3.0
     ref_type: tag
@@ -335,6 +355,7 @@ actions:
       Node action; runs dist/index.cjs. excluded: src/, __tests__/, test/, tsconfig*.json,
       vitest.config.*, eslint.config.*, .prettierrc*, .prettierignore, yarn.lock, .yarnrc*,
       .dockerignore, codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
+
   - name: docker/login-action
     ref: v4.6.0
     ref_type: tag
@@ -358,6 +379,7 @@ actions:
       Node action; runs dist/index.cjs. excluded: src/, __tests__/, tsconfig*.json, vitest.config.*,
       eslint.config.*, .prettierrc*, .prettierignore, yarn.lock, .yarnrc*, .dockerignore,
       codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
+
   - name: docker/metadata-action
     ref: v6.2.0
     ref_type: tag
@@ -383,6 +405,7 @@ actions:
       Node action; runs dist/index.cjs. excluded: src/, __tests__/, test/, tsconfig*.json,
       vitest.config.*, eslint.config.*, .prettierrc*, .prettierignore, yarn.lock, .yarnrc*,
       .dockerignore, codecov.yml, **/*.d.ts, **/*.test.*, *.Dockerfile, docker-bake.hcl
+
   - name: docker/setup-buildx-action
     ref: v4.3.0
     ref_type: tag
@@ -406,6 +429,7 @@ actions:
       Node action; runs dist/index.cjs. excluded: src/, __tests__/, tsconfig*.json, vitest.config.*,
       eslint.config.*, .prettierrc*, .prettierignore, yarn.lock, .yarnrc*, .dockerignore,
       codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
+
   - name: docker/setup-docker-action
     ref: v4.7.0
     ref_type: tag
@@ -431,6 +455,7 @@ actions:
       Node action; runs dist/index.js. excluded: src/, __tests__/, test/, .yarn/, tsconfig*.json,
       jest.config.*, eslint.config.*, .prettierrc*, .prettierignore, yarn.lock, .yarnrc*,
       .dockerignore, codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
+
   - name: dtolnay/rust-toolchain
     ref: stable
     ref_type: branch
@@ -440,6 +465,7 @@ actions:
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+
   - name: expo/expo-github-action
     ref: 9.0.0
     ref_type: tag
@@ -474,6 +500,7 @@ actions:
       preview-build/, preview-comment/, build/command/, build/continuous-deploy-fingerprint-info/,
       build/fingerprint/, build/fingerprint-post/, build/preview/, build/preview-build/,
       build/preview-comment/
+
   - name: google-github-actions/auth
     ref: v3.0.0
     ref_type: tag
@@ -491,6 +518,7 @@ actions:
     notes: >-
       Node action; runs dist/main/index.js, dist/post/index.js. excluded: src/, tests/, docs/,
       tsconfig*.json, eslint.config.*, .prettierrc*, package-lock.json, CHANGELOG*, **/*.test.*
+
   - name: google-github-actions/setup-gcloud
     ref: v3.0.1
     ref_type: tag
@@ -507,6 +535,7 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: src/, tests/, tsconfig*.json, eslint.config.*,
       .prettierrc*, package-lock.json, CHANGELOG*, **/*.test.*
+
   - name: goreleaser/goreleaser-action
     ref: v6.4.0
     ref_type: tag
@@ -532,6 +561,7 @@ actions:
       Node action; runs dist/index.js. excluded: src/, __tests__/, test/, .yarn/, tsconfig*.json,
       jest.config.*, .eslintrc*, .eslintignore, .prettierrc*, .prettierignore, yarn.lock, .yarnrc*,
       .dockerignore, **/*.test.*, *.Dockerfile, docker-bake.hcl
+
   - name: helm/chart-releaser-action
     ref: v1.7.0
     ref_type: tag
@@ -539,6 +569,7 @@ actions:
     exclude: []
     notes: >-
       Composite action; loads cr.sh from the action directory.
+
   - name: helm/chart-testing-action
     ref: v2.8.0
     ref_type: tag
@@ -547,6 +578,7 @@ actions:
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yml uses the action directory
       itself (working directory, module path or similar)
+
   - name: imjasonh/setup-crane
     ref: v0.7
     ref_type: tag
@@ -556,6 +588,7 @@ actions:
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+
   - name: jakebailey/pyright-action
     ref: v3.0.2
     ref_type: tag
@@ -576,6 +609,7 @@ actions:
       Node action; runs dist/index.js. excluded: src/, tsconfig*.json, vitest.config.*,
       eslint.config.*, pnpm-lock.yaml, .nvmrc, **/*.test.*, .ncurc.cjs, build.mjs, dprint.json,
       smoke-test/
+
   - name: jayanta525/github-pages-directory-listing
     ref: v4.0.0
     ref_type: tag
@@ -585,6 +619,7 @@ actions:
     notes: >-
       Docker action built from Dockerfile; copies Dockerfile, entrypoint.sh, src. excluded: docs/
       kept although usually excludable: src/ (referenced)
+
   - name: lycheeverse/lychee-action
     ref: v2.9.0
     ref_type: tag
@@ -595,6 +630,7 @@ actions:
     notes: >-
       Composite action; loads entrypoint.sh from the action directory. excluded: .lycheeignore,
       fixtures/
+
   - name: mobile-dev-inc/action-maestro-cloud
     ref: v2.0.2
     ref_type: tag
@@ -612,6 +648,7 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: __tests__/, tsconfig*.json, jest.config.*,
       .prettierrc*, package-lock.json, .nvmrc, **/*.test.*, **/*.ts, _release.sh
+
   - name: mozilla-actions/sccache-action
     ref: v0.0.11
     ref_type: tag
@@ -625,6 +662,7 @@ actions:
     notes: >-
       Node action; runs dist/setup/index.js, dist/show_stats/index.js. excluded: src/,
       tsconfig*.json, .eslintrc*, .prettierrc*, package-lock.json
+
   - name: oven-sh/setup-bun
     ref: v2.2.0
     ref_type: tag
@@ -641,6 +679,7 @@ actions:
       Node action; runs dist/setup/index.js, dist/cache-save/index.js. bunfig.toml kept: named as a
       path in the code excluded: src/, tests/, tsconfig*.json, .prettierrc*, bun.lock, **/*.spec.*,
       patches/
+
   - name: peaceiris/actions-gh-pages
     ref: v4.1.0
     ref_type: tag
@@ -668,6 +707,7 @@ actions:
       jest.config.*, eslint.config.*, .prettierrc*, .prettierignore, package-lock.json, .npmrc,
       .nvmrc, .dockerignore, CHANGELOG*, **/*.test.*, .envrc, release.sh, test_projects/ kept
       although usually excludable: lib/ (referenced)
+
   - name: planetscale/setup-pscale-action
     ref: v1
     ref_type: tag
@@ -685,6 +725,7 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: src/, doc/, tsconfig*.json, jest.config.*,
       .eslintrc*, .eslintignore, .prettierrc*, .prettierignore, package-lock.json
+
   - name: pnpm/action-setup
     ref: v6.0.10
     ref_type: tag
@@ -699,6 +740,7 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: src/, tsconfig*.json, pnpm-lock.yaml,
       pnpm-workspace.yaml, run.sh, scripts/
+
   - name: rust-lang/crates-io-auth-action
     ref: v1.0.3
     ref_type: tag
@@ -719,6 +761,7 @@ actions:
       Node action; runs dist/main.js, dist/post.js. excluded: src/, tsconfig*.json, eslint.config.*,
       .prettierrc*, .prettierignore, pnpm-lock.yaml, .node-version, **/*.test.*, **/*.ts, mock/,
       pnpm-workspace.yaml
+
   - name: shallwefootball/upload-s3-action
     ref: v1.3.3
     ref_type: tag
@@ -728,6 +771,7 @@ actions:
       - index.js
     notes: >-
       Node action; runs dist/index.js. excluded: yarn.lock, index.js
+
   - name: sigstore/cosign-installer
     ref: v4.1.2
     ref_type: tag
@@ -738,6 +782,7 @@ actions:
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE Also a nested dependency (helm/chart-testing-action); vendored at the
       version the org uses directly.
+
   - name: taiki-e/install-action
     ref: releases/cargo-udeps
     ref_type: commit
@@ -746,6 +791,7 @@ actions:
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yml uses the action directory
       itself (working directory, module path or similar)
+
   - name: tailscale/github-action
     ref: v3.3.0
     ref_type: tag
@@ -755,6 +801,7 @@ actions:
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+
   - name: tailscale/gitops-acl-action
     ref: v1.5.1
     ref_type: tag
@@ -764,6 +811,7 @@ actions:
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+
   - name: wevm/frog
     ref: v1
     ref_type: tag
@@ -775,6 +823,7 @@ actions:
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+
   - name: zizmorcore/zizmor-action
     ref: v0.6.2
     ref_type: tag

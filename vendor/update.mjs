@@ -10,7 +10,7 @@
 // Tracking rules: a semver tag tracks the highest tag in the same major (v3.6.0 -> v3.x.y); a major-only
 // or other moving tag (v1, cargo-udeps) tracks that same tag name; a branch tracks its tip; a bare commit
 // is never updated automatically.
-import { MANIFEST_PATH, VendorError, loadManifest, lsRemoteAll, resolveRef, compareVersions, upstreamUrl, sh, collectNestedUses, fetchUpstream } from "./lib.mjs";
+import { MANIFEST_PATH, VendorError, formatManifest, loadManifest, lsRemoteAll, resolveRef, compareVersions, upstreamUrl, sh, collectNestedUses, fetchUpstream } from "./lib.mjs";
 import { syncEntry, refreshReadme } from "./sync.mjs";
 import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
@@ -77,6 +77,7 @@ export function applyUpdate(entry, update, manifest) {
     }
   } finally { spawnSync("rm", ["-rf", tmp]); }
   const final = loadManifest();
+  formatManifest(MANIFEST_PATH);
   return syncEntry(final.actions.find((a) => a.name === entry.name), final, dirname(MANIFEST_PATH));
 }
 function main() {

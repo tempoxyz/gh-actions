@@ -38,7 +38,7 @@ export function yqJsonFromString(text, expr = ".") {
 export function loadManifest(path = MANIFEST_PATH) {
   if (!existsSync(path)) throw new VendorError(`${path} not found`);
   const m = yqJson(path);
-  if (!m || m.version !== 1) throw new VendorError(`${path}: expected version: 1`);
+  if (!m || typeof m !== "object" || Array.isArray(m)) throw new VendorError(`${path}: expected a mapping with an actions list`);
   m.org ??= "tempoxyz/gh-actions";
   m.vendor_dir ??= "vendor";
   m.default_exclude ??= [];
@@ -455,4 +455,33 @@ export function updateReadmeText(text, table) {
   const b = text.indexOf(README_BEGIN), e = text.indexOf(README_END);
   if (b === -1 || e === -1 || e < b) throw new VendorError(`README.md is missing the ${README_BEGIN} / ${README_END} markers`);
   return text.slice(0, b + README_BEGIN.length) + "\n" + table + "\n" + text.slice(e);
+}
+
+// yq rewrites the manifest in a compact form: folded `notes: >-` scalars end up on one long line and
+// blank lines between entries are dropped. Re-wrap notes at 100 columns (folded scalars join lines
+// with a space, so only formatting changes) and separate entries with a blank line.
+export function formatManifest(path = MANIFEST_PATH) {
+  const lines = readFileSync(path, "utf8").split("\n");
+  const out = [];
+  let seenEntry = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^  - name: /.test(line)) {
+      if (seenEntry && out.length && out[out.length - 1].trim() !== "") out.push("");
+      seenEntry = true;
+    }
+    const m = /^(\s*)notes: >-$/.exec(line);
+    if (!m) { out.push(line); continue; }
+    out.push(line);
+    const ind = m[1] + "  ";
+    const buf = [];
+    while (i + 1 < lines.length && lines[i + 1].startsWith(ind) && lines[i + 1].trim()) buf.push(lines[++i].trim());
+    let cur = "";
+    for (const word of buf.join(" ").split(" ")) {
+      if (cur && (ind + cur + " " + word).length > 100) { out.push(ind + cur); cur = word; }
+      else cur = cur ? `${cur} ${word}` : word;
+    }
+    if (cur) out.push(ind + cur);
+  }
+  writeFileSync(path, out.join("\n"));
 }

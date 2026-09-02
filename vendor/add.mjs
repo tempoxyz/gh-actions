@@ -12,10 +12,10 @@
 //
 // The analysis decides which files can be dropped from the copy. When it cannot tell what the
 // action loads at run time, it keeps the whole repository and says why in `notes`.
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MANIFEST_PATH, MANIFEST_FILE, VendorError, loadManifest, lsRemoteAll, resolveRef, fetchUpstream, analyzeTree, collectNestedUses, sh } from "./lib.mjs";
+import { MANIFEST_PATH, MANIFEST_FILE, VendorError, formatManifest, loadManifest, lsRemoteAll, resolveRef, fetchUpstream, analyzeTree, collectNestedUses, sh } from "./lib.mjs";
 import { syncEntry, refreshReadme } from "./sync.mjs";
 
 function parseArgs(argv) {
@@ -72,29 +72,7 @@ function appendEntry(entry) {
     // load() yields flow-style (JSON-looking) nodes; clear the style so the entry is written as block YAML like the rest of the file.
     sh("yq", ["-i", `.actions += [load("${tmp}")] | .actions |= sort_by(.name) | (.actions[] | .. | select(key != null) | key) style="" | (.actions[] | ..) style="" | (.actions[] | .notes) style="folded"`, MANIFEST_PATH]);
   } finally { rmSync(tmp, { force: true }); }
-  wrapNotes(MANIFEST_PATH);
-}
-
-// yq emits folded `notes: >-` scalars on one long line; re-wrap them at 100 columns. Folded scalars
-// join lines with a space, so this only changes formatting.
-function wrapNotes(path) {
-  const lines = readFileSync(path, "utf8").split("\n");
-  const out = [];
-  for (let i = 0; i < lines.length; i++) {
-    const m = /^(\s*)notes: >-$/.exec(lines[i]);
-    if (!m) { out.push(lines[i]); continue; }
-    out.push(lines[i]);
-    const ind = m[1] + "  ";
-    const buf = [];
-    while (i + 1 < lines.length && lines[i + 1].startsWith(ind) && lines[i + 1].trim()) buf.push(lines[++i].trim());
-    let cur = "";
-    for (const word of buf.join(" ").split(" ")) {
-      if (cur && (ind + cur + " " + word).length > 100) { out.push(ind + cur); cur = word; }
-      else cur = cur ? `${cur} ${word}` : word;
-    }
-    if (cur) out.push(ind + cur);
-  }
-  writeFileSync(path, out.join("\n"));
+  formatManifest(MANIFEST_PATH);
 }
 
 export function addAction(spec, opts, depth = 0) {
