@@ -285,7 +285,7 @@ By default zizmor scans the whole repo, so first-party workflows and actions any
 Optional inputs:
 
 - `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
-- `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides
+- `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides. When empty and the repository has no zizmor config of its own, the scan uses a default that disables zizmor's `ref-version-mismatch` audit: this repository publishes no version tags, so a version comment on a pin to it can never match and every such pin would otherwise be a medium-severity finding that fails the scan. Comment correctness for third-party pins is covered by pinact's `verify-pin-comments`. Add a `.github/zizmor.yml` to a repo to take back full control.
 - `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
 - `pinact` (default: `false`) — run pinact policy checks alongside zizmor and actionlint
 - `pin-config` (default: `.pinact.yaml`) — path to the caller repo's pinact configuration file; the default is optional when absent
