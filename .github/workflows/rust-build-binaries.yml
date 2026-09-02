@@ -94,7 +94,34 @@ jobs:
         with:
           toolchain: ${{ inputs.rust-toolchain }}
       - name: Install mold linker
-        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
+        env:
+          MOLD_VERSION: "2.42.0"
+          MOLD_SHA256_X86_64: f5ed2f6e31d1ada4f07fe766fe0de7a73104d1c5cdc59086fcecc16a43720b6d
+          MOLD_SHA256_AARCH64: 3c9a0a3624aac8a2007569ae50c33b3129a0f0ae8bcc974aeee2f8939d295190
+        run: |
+          set -euo pipefail
+          # mold publishes no checksums, signatures or attestations, so the release tarball digests
+          # are pinned here and change together with MOLD_VERSION (test.yml keeps this block in
+          # step with the copy in .github/workflows/rust-build-binaries.yml).
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            x86_64)  EXPECTED="$MOLD_SHA256_X86_64" ;;
+            aarch64) EXPECTED="$MOLD_SHA256_AARCH64" ;;
+            *) echo "::error::mold: unsupported architecture $ARCH"; exit 1 ;;
+          esac
+          ASSET="mold-${MOLD_VERSION}-${ARCH}-linux.tar.gz"
+          TMP="${RUNNER_TEMP:?}/mold"
+          mkdir -p "$TMP"
+          curl -fsSL --retry 3 -o "$TMP/$ASSET" "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/${ASSET}"
+          echo "$EXPECTED  $TMP/$ASSET" | sha256sum -c
+          SUDO=""
+          [ "$(id -u)" = 0 ] || SUDO=sudo
+          $SUDO tar -C /usr/local --strip-components=1 --no-overwrite-dir -xzf "$TMP/$ASSET"
+          # Make mold the default linker, as rui314/setup-mold did.
+          if [ "$(realpath /usr/bin/ld)" != /usr/local/bin/mold ]; then
+            $SUDO ln -sf /usr/local/bin/mold "$(realpath /usr/bin/ld)"
+          fi
+          mold --version
       - name: Enable sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Build

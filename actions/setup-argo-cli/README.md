@@ -19,4 +19,9 @@ steps:
       version: v3.6.4
 ```
 
-The action downloads `argo-linux-amd64.gz` and verifies it against Argo's `argo-workflows-cli-checksums.txt` from the same release before installing it.
+The action downloads `argo-linux-amd64.gz`, `argo-workflows-cli-checksums.txt` and
+`argo-workflows-cli-checksums.sig` from the release. Argo signs the checksums file with a fixed
+cosign key (`cosign sign-blob --key`); the signature is verified with `openssl` against the public
+key pinned in this directory ([`argo-cosign.pub`](argo-cosign.pub), copied from `cosign.pub` in
+the argo-workflows repository, unchanged since v3.5), and only then is the binary checked against
+the checksums file. Nothing served alongside the release is trusted on its own.

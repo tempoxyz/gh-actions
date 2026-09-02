@@ -74,7 +74,7 @@ jobs:
 
       # Guard: the reusable workflow installs pinact inline (see the comment there) and
       # actions/setup-pinact installs it for everyone else; both must pin the same release.
-      - name: Assert pinact version pinned identically
+      - name: Assert installer pins match between reusable workflows and composites
         run: |
           set -euo pipefail
           r=$(grep -oE 'PINACT_VERSION: v[0-9.]+' .github/workflows/scan-github-actions.yml | head -1 | awk '{print $2}')
@@ -91,6 +91,19 @@ jobs:
             exit 1
           fi
           echo "ok: attestation signer -> ${rs#--signer-workflow }"
+          # mold: the inline installs in the reusable workflows must pin the same version and
+          # digests as actions/setup-rust-build.
+          for wf in .github/workflows/rust-build-binaries.yml .github/workflows/rust-lint.yml; do
+            for var in MOLD_VERSION MOLD_SHA256_X86_64 MOLD_SHA256_AARCH64; do
+              r=$(grep -oE "$var: \"?[0-9a-f.]+\"?" "$wf" | head -1 | tr -d '"')
+              c=$(grep -oE "$var: \"?[0-9a-f.]+\"?" actions/setup-rust-build/action.yml | head -1 | tr -d '"')
+              if [ -z "$r" ] || [ "$r" != "$c" ]; then
+                echo "::error::$var differs ($wf='$r' composite='$c')"
+                exit 1
+              fi
+            done
+          done
+          echo "ok: mold -> $(grep -oE 'MOLD_VERSION: "?[0-9.]+"?' actions/setup-rust-build/action.yml | tr -d '"' | awk '{print $2}')"
 
       # Positive: composite on a staged known-good workflow must pass. Covers
       # composite wiring (zizmor + actionlint) and acts as the control for the
@@ -182,3 +195,29 @@ jobs:
             exit 1
           fi
           echo "default minimum-age policy correctly rejected a recent pin"
+
+      # Installers that verify upstream signatures or attestations must keep working end to end:
+      # a rotated Argo key, a changed Foundry release layout, or a broken attestation lookup
+      # should fail here, not in a consumer.
+      - name: Smoke test setup-argo-cli (cosign key signature)
+        uses: ./actions/setup-argo-cli
+      - name: Smoke test setup-foundry stable (SLSA attestation)
+        id: foundry-stable
+        uses: ./actions/setup-foundry
+        with:
+          cache: "false"
+      - name: Smoke test setup-foundry nightly (SLSA attestation, nightly-<commit> resolution)
+        id: foundry-nightly
+        uses: ./actions/setup-foundry
+        with:
+          version: nightly
+          cache: "false"
+      - name: Report resolved Foundry tags
+        env:
+          STABLE: ${{ steps.foundry-stable.outputs.tag }}
+          NIGHTLY: ${{ steps.foundry-nightly.outputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$STABLE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::stable resolved to '$STABLE'"; exit 1; }
+          [[ "$NIGHTLY" =~ ^nightly-[0-9a-f]{40}$ ]] || { echo "::error::nightly resolved to '$NIGHTLY'"; exit 1; }
+          echo "stable=$STABLE nightly=$NIGHTLY"

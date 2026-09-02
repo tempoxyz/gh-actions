@@ -16,9 +16,27 @@ Reusable GitHub Actions for the Tempo organization.
 | [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR
 | [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache
-| [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain
-| [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI
-| [`setup-pinact`](actions/setup-pinact) | Install pinact from a checksum-verified release
+| [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain from an attested release
+| [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI from a signature-verified release
+| [`setup-pinact`](actions/setup-pinact) | Install pinact from an attested release
+
+### Installer verification
+
+Every tool these actions and workflows download is verified with the strongest proof its
+publisher offers, in addition to a checksum; a checksum from the same release cannot detect a
+release that was compromised end to end. The only accepted reason to skip a check is a large
+wall-clock cost.
+
+| Tool | Where | Proof | How it is checked |
+|------|-------|-------|-------------------|
+| pinact | `setup-pinact`, `scan-github-actions` | GitHub artifact attestation (SLSA provenance) | `gh attestation verify`, pinned to pinact's release workflow and the requested tag |
+| Foundry | `setup-foundry` | GitHub artifact attestation (SLSA provenance) | `gh attestation verify`, pinned to Foundry's release workflow and the resolved tag or `master` |
+| Argo CLI | `setup-argo-cli` | cosign signature on the checksums file, fixed key | `openssl dgst -verify` with the key pinned in the action |
+| typos | `rust-lint` | GitHub release attestation (immutable release) | `gh release verify-asset` |
+| mold | `setup-rust-build`, `rust-build-binaries` | none published | tarball SHA-256 pinned in the step |
+| cosign | `cosign-sign` (via `sigstore/cosign-installer`) | checksum embedded in the pinned action | verified by the action |
+| sccache | `setup-rust-build`, `rust-build-binaries` (via `mozilla-actions/sccache-action`) | `.sha256` from the same release only | verified by the action |
+| zizmor | `scan-github-actions` (via `zizmorcore/zizmor-action`) | container image digest embedded in the pinned action | verified by the action |
 | [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows
 
 ## Usage

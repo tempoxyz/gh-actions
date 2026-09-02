@@ -1,19 +1,100 @@
 name: "Setup Foundry"
-description: "Install Foundry toolchain (forge, cast, anvil, chisel)"
+description: "Install Foundry toolchain (forge, cast, anvil, chisel) from an attested release"
 
 inputs:
   version:
-    description: "Foundry toolchain version"
+    description: >-
+      Foundry version: `stable` (newest stable release), `nightly` (newest nightly build), a release
+      tag such as `v1.8.1`, or a nightly build tag such as `nightly-<commit>`. Every choice resolves
+      to a release whose assets carry SLSA provenance from Foundry's release workflow.
     required: false
-    default: ""
+    default: "stable"
+  cache:
+    description: "Cache Foundry's RPC responses (~/.foundry/cache) between runs"
+    required: false
+    default: "true"
+  cache-key:
+    description: "Custom part of the cache key"
+    required: false
+    default: "${{ github.job }}-${{ github.sha }}"
+  cache-restore-keys:
+    description: "Custom part of the cache restore key prefix"
+    required: false
+    default: "${{ github.job }}-"
+
+outputs:
+  tag:
+    description: "Release tag that was installed (e.g. v1.8.1 or nightly-<commit>)"
+    value: ${{ steps.install.outputs.tag }}
 
 runs:
   using: "composite"
   steps:
-    - name: Install Foundry
-      uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+    - name: Restore Foundry RPC cache
+      if: inputs.cache == 'true'
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        version: ${{ inputs.version }}
+        path: ~/.foundry/cache
+        key: ${{ runner.os }}-foundry-chain-fork-${{ inputs.cache-key }}
+        restore-keys: ${{ runner.os }}-foundry-chain-fork-${{ inputs.cache-restore-keys }}
+
+    - name: Install Foundry
+      id: install
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
+        set -euo pipefail
+        REPO=foundry-rs/foundry
+        if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
+          echo "::error::setup-foundry: version must be stable, nightly, a release tag or a nightly build tag"
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64) ARCH=amd64 ;;
+          aarch64|arm64) ARCH=arm64 ;;
+          *) echo "::error::setup-foundry: unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+
+        # Foundry publishes every stable release as vX.Y.Z and every nightly build as its own
+        # nightly-<commit> pre-release, each with attested assets. The rolling `stable` and
+        # `nightly` releases are not attested, so the moving names resolve to the newest tagged one.
+        case "$VERSION" in
+          stable)  TAG=$(gh release list -R "$REPO" --exclude-pre-releases --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty') ;;
+          nightly) TAG=$(gh release list -R "$REPO" --exclude-drafts --limit 40 --json tagName --jq '[.[].tagName | select(startswith("nightly-"))][0] // empty') ;;
+          *)       TAG="$VERSION" ;;
+        esac
+        if [ -z "$TAG" ]; then
+          echo "::error::setup-foundry: could not resolve Foundry version '$VERSION' to a release"
+          exit 1
+        fi
+        case "$TAG" in
+          nightly-*) LABEL=nightly; SOURCE_REF=refs/heads/master ;;
+          *)         LABEL="$TAG"; SOURCE_REF="refs/tags/$TAG" ;;
+        esac
+        echo "Installing Foundry $TAG"
+
+        ASSET="foundry_${LABEL}_linux_${ARCH}.tar.gz"
+        BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
+        INSTALL_DIR="${RUNNER_TEMP:?}/foundry-bin"
+        mkdir -p "$INSTALL_DIR"
+
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$ASSET" "$BASE_URL/$ASSET"
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$ASSET.sha256" "$BASE_URL/${ASSET%.tar.gz}.sha256"
+        echo "$(awk '{print $1}' "$INSTALL_DIR/$ASSET.sha256")  $INSTALL_DIR/$ASSET" | sha256sum -c
+
+        # SLSA provenance signed through Sigstore by Foundry's release workflow, verified against
+        # GitHub's trust roots: built from foundry-rs/foundry at this tag (or master for nightlies).
+        gh attestation verify "$INSTALL_DIR/$ASSET" \
+          --repo "$REPO" \
+          --signer-workflow foundry-rs/foundry/.github/workflows/release.yml \
+          --source-ref "$SOURCE_REF"
+
+        tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR"
+        chmod +x "$INSTALL_DIR"/forge "$INSTALL_DIR"/cast "$INSTALL_DIR"/anvil "$INSTALL_DIR"/chisel
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
     - name: Show Forge version
       shell: bash

@@ -28,6 +28,16 @@ runs:
 
         curl -fsSL -o "$INSTALL_DIR/$ASSET" "$BASE_URL/$ASSET"
         curl -fsSL -o "$INSTALL_DIR/argo-workflows-cli-checksums.txt" "$BASE_URL/argo-workflows-cli-checksums.txt"
+        curl -fsSL -o "$INSTALL_DIR/argo-workflows-cli-checksums.sig" "$BASE_URL/argo-workflows-cli-checksums.sig"
+
+        # Argo signs the checksums file with a fixed cosign key (cosign sign-blob --key): an ECDSA
+        # P-256 signature over the file's SHA-256, base64 encoded. The public key is pinned in this
+        # action (argo-cosign.pub, copied from cosign.pub in the argo-workflows repository, where
+        # it has been unchanged since v3.5), so nothing served alongside the release is trusted.
+        base64 -d "$INSTALL_DIR/argo-workflows-cli-checksums.sig" > "$INSTALL_DIR/checksums.sig.bin"
+        openssl dgst -sha256 -verify "$GITHUB_ACTION_PATH/argo-cosign.pub" \
+          -signature "$INSTALL_DIR/checksums.sig.bin" "$INSTALL_DIR/argo-workflows-cli-checksums.txt"
+
         grep "  $ASSET$" "$INSTALL_DIR/argo-workflows-cli-checksums.txt" > "$INSTALL_DIR/$ASSET.sha256"
         (cd "$INSTALL_DIR" && sha256sum -c "$ASSET.sha256")
 
