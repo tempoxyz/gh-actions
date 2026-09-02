@@ -9,7 +9,7 @@ Install Rust toolchain, mold linker, and sccache.
 | `toolchain` | Rust toolchain (stable, nightly, or specific version) | No | `stable` |
 | `components` | Comma-separated Rust components (e.g., `clippy,rustfmt`) | No | `""` |
 | `targets` | Comma-separated Rust targets | No | `""` |
-| `mold` | Install mold linker | No | `true` |
+| `mold` | Install the mold linker (2.42.0, tarball digest pinned in the action since mold publishes no checksums or signatures) and make it the default linker | No | `true` |
 | `sccache` | Enable sccache | No | `true` |
 
 ## Usage
