@@ -212,6 +212,14 @@ jobs:
         with:
           version: nightly
           cache: "false"
+      - name: Smoke test setup-terraform (HashiCorp GPG signature)
+        uses: ./actions/setup-terraform
+      - name: Smoke test setup-helm default (maintainer GPG signature)
+        uses: ./actions/setup-helm
+      - name: Smoke test setup-helm v4.1.1 (a release signed by a different maintainer key)
+        uses: ./actions/setup-helm
+        with:
+          version: v4.1.1
       - name: Report resolved Foundry tags
         env:
           STABLE: ${{ steps.foundry-stable.outputs.tag }}
