@@ -14,6 +14,7 @@ runs:
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
       run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
         set -euo pipefail
         if [ "$VERSION" = "latest" ]; then
@@ -36,6 +37,15 @@ runs:
         curl -fsSL -o "$INSTALL_DIR/$CHECKSUMS" "$BASE_URL/$CHECKSUMS"
         grep "  $ASSET$" "$INSTALL_DIR/$CHECKSUMS" > "$INSTALL_DIR/$ASSET.sha256"
         (cd "$INSTALL_DIR" && sha256sum -c "$ASSET.sha256")
+
+        # pinact publishes GitHub artifact attestations (SLSA provenance signed through Sigstore
+        # by its shared release workflow). Verify the tarball against GitHub's trust roots and
+        # require that it was built from the pinact repository at this tag by that workflow, so
+        # a swapped asset or checksums file from a compromised release does not pass.
+        gh attestation verify "$INSTALL_DIR/$ASSET" \
+          --repo suzuki-shunsuke/pinact \
+          --signer-workflow suzuki-shunsuke/go-release-workflow/.github/workflows/release.yaml \
+          --source-ref "refs/tags/${VERSION}"
 
         tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" pinact
         chmod +x "$INSTALL_DIR/pinact"

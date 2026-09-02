@@ -101,6 +101,7 @@ jobs:
         if: ${{ inputs.pinact }}
         env:
           PINACT_VERSION: v4.1.1
+          GH_TOKEN: ${{ github.token }}
         run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
           set -euo pipefail
           case "$(uname -m)" in
@@ -117,6 +118,12 @@ jobs:
           curl -fsSL -o "$INSTALL_DIR/$CHECKSUMS" "$BASE_URL/$CHECKSUMS"
           grep "  $ASSET$" "$INSTALL_DIR/$CHECKSUMS" > "$INSTALL_DIR/$ASSET.sha256"
           (cd "$INSTALL_DIR" && sha256sum -c "$ASSET.sha256")
+          # Attestation check as in actions/setup-pinact: provenance from the pinact repository
+          # at this tag, signed by its shared release workflow.
+          gh attestation verify "$INSTALL_DIR/$ASSET" \
+            --repo suzuki-shunsuke/pinact \
+            --signer-workflow suzuki-shunsuke/go-release-workflow/.github/workflows/release.yaml \
+            --source-ref "refs/tags/${PINACT_VERSION}"
           tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" pinact
           chmod +x "$INSTALL_DIR/pinact"
           echo "$INSTALL_DIR" >> "$GITHUB_PATH"

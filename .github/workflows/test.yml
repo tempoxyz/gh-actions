@@ -84,6 +84,13 @@ jobs:
             exit 1
           fi
           echo "ok: pinact -> $r"
+          rs=$(grep -oE -- '--signer-workflow \S+' .github/workflows/scan-github-actions.yml | head -1)
+          cs=$(grep -oE -- '--signer-workflow \S+' actions/setup-pinact/action.yml | head -1)
+          if [ -z "$rs" ] || [ "$rs" != "$cs" ]; then
+            echo "::error::pinact attestation signer differs (reusable='$rs' composite='$cs')"
+            exit 1
+          fi
+          echo "ok: attestation signer -> ${rs#--signer-workflow }"
 
       # Positive: composite on a staged known-good workflow must pass. Covers
       # composite wiring (zizmor + actionlint) and acts as the control for the
