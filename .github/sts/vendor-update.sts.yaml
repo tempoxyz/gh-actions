@@ -1,4 +1,4 @@
-# Allow the Vendor Update workflow (schedule/workflow_dispatch on main) to mint a
+# Allow the Vendor Update workflow (workflow_dispatch on main) to mint a
 # short-lived token that pushes one vendor/<action>-<version> branch per updated
 # third-party action and opens its pull request. Replaces the built-in GITHUB_TOKEN
 # so the org can keep "Allow GitHub Actions to create and approve pull requests" off.
