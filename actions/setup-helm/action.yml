@@ -1,0 +1,59 @@
+name: "Setup Helm"
+description: "Install a Helm release verified against the Helm maintainers' GPG signatures"
+
+inputs:
+  version:
+    description: "Helm release tag (e.g., v4.2.4). Mutable 'latest' is rejected."
+    required: false
+    default: "v4.2.4"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Helm
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
+        set -euo pipefail
+        if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+          echo "::error::setup-helm requires an immutable release tag such as v4.2.4 (got '$VERSION')"
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64) ARCH=amd64 ;;
+          aarch64|arm64) ARCH=arm64 ;;
+          *) echo "::error::setup-helm: unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+
+        TAR="helm-${VERSION}-linux-${ARCH}.tar.gz"
+        INSTALL_DIR="${RUNNER_TEMP:?}/helm-bin"
+        mkdir -p "$INSTALL_DIR"
+
+        # Binaries and checksums are served from get.helm.sh; the detached signatures are release
+        # assets on GitHub.
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$TAR" "https://get.helm.sh/$TAR"
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$TAR.sha256sum" "https://get.helm.sh/$TAR.sha256sum"
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$TAR.asc" "https://github.com/helm/helm/releases/download/${VERSION}/${TAR}.asc"
+        (cd "$INSTALL_DIR" && sha256sum -c "$TAR.sha256sum")
+
+        # Each Helm release is signed by one of the maintainers listed in the project's KEYS file,
+        # pinned here as helm-KEYS.asc. Require a valid, unexpired signature from that keyring.
+        export GNUPGHOME
+        GNUPGHOME="$(mktemp -d "${RUNNER_TEMP:?}/gnupg-XXXXXX")"
+        gpg --batch --quiet --import "$GITHUB_ACTION_PATH/helm-KEYS.asc"
+        status="$(gpg --batch --status-fd 1 --verify "$INSTALL_DIR/$TAR.asc" "$INSTALL_DIR/$TAR" 2>/dev/null || true)"
+        if ! grep -qE '^\[GNUPG:\] VALIDSIG ' <<< "$status" || grep -qE '^\[GNUPG:\] (BADSIG|EXPKEYSIG|REVKEYSIG|NO_PUBKEY) ' <<< "$status"; then
+          echo "::error::setup-helm: ${TAR} is not validly signed by a key in the pinned Helm KEYS file"
+          echo "$status"
+          exit 1
+        fi
+        echo "Signed by $(grep -oE '^\[GNUPG:\] GOODSIG [0-9A-F]+ .*' <<< "$status" | cut -d' ' -f4-)"
+
+        tar -xzf "$INSTALL_DIR/$TAR" -C "$INSTALL_DIR" --strip-components=1 "linux-${ARCH}/helm"
+        chmod +x "$INSTALL_DIR/helm"
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Show Helm version
+      shell: bash
+      run: helm version --short

@@ -1,0 +1,65 @@
+name: "Setup Terraform"
+description: "Install a Terraform release verified against HashiCorp's GPG-signed SHA256SUMS"
+
+inputs:
+  version:
+    description: "Exact Terraform version (e.g., 1.14.7). Constraints and 'latest' are rejected."
+    required: false
+    default: "1.14.7"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Terraform
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        # Primary fingerprint of "HashiCorp Security <security@hashicorp.com>", the key that signs
+        # every release's SHA256SUMS. Pinned here as hashicorp.asc (from
+        # https://www.hashicorp.com/.well-known/pgp-key.txt); the signature is made by one of
+        # its signing subkeys, so VALIDSIG is checked against the primary fingerprint.
+        HASHICORP_FINGERPRINT: C874011F0AB405110D02105534365D9472D7468F
+      run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
+        set -euo pipefail
+        if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+          echo "::error::setup-terraform requires an exact version such as 1.14.7 (got '$VERSION')"
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64) ARCH=amd64 ;;
+          aarch64|arm64) ARCH=arm64 ;;
+          *) echo "::error::setup-terraform: unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+
+        ZIP="terraform_${VERSION}_linux_${ARCH}.zip"
+        SUMS="terraform_${VERSION}_SHA256SUMS"
+        SIG="${SUMS}.72D7468F.sig"
+        BASE_URL="https://releases.hashicorp.com/terraform/${VERSION}"
+        INSTALL_DIR="${RUNNER_TEMP:?}/terraform-bin"
+        mkdir -p "$INSTALL_DIR"
+
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$ZIP" "$BASE_URL/$ZIP"
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$SUMS" "$BASE_URL/$SUMS"
+        curl -fsSL --retry 3 -o "$INSTALL_DIR/$SIG" "$BASE_URL/$SIG"
+
+        # Verify HashiCorp's signature on the checksums file with an isolated keyring that holds
+        # only the pinned key, then check the archive against the signed checksums.
+        export GNUPGHOME
+        GNUPGHOME="$(mktemp -d "${RUNNER_TEMP:?}/gnupg-XXXXXX")"
+        gpg --batch --quiet --import "$GITHUB_ACTION_PATH/hashicorp.asc"
+        status="$(gpg --batch --status-fd 1 --verify "$INSTALL_DIR/$SIG" "$INSTALL_DIR/$SUMS" 2>/dev/null || true)"
+        if ! grep -qE "^\[GNUPG:\] VALIDSIG .* ${HASHICORP_FINGERPRINT}$" <<< "$status"; then
+          echo "::error::setup-terraform: ${SUMS} is not validly signed by HashiCorp's release key"
+          echo "$status"
+          exit 1
+        fi
+        grep " ${ZIP}$" "$INSTALL_DIR/$SUMS" > "$INSTALL_DIR/$ZIP.sha256"
+        (cd "$INSTALL_DIR" && sha256sum -c "$ZIP.sha256")
+
+        unzip -o -q "$INSTALL_DIR/$ZIP" terraform -d "$INSTALL_DIR"
+        chmod +x "$INSTALL_DIR/terraform"
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Show Terraform version
+      shell: bash
+      run: terraform version

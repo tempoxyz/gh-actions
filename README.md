@@ -19,6 +19,8 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain from an attested release
 | [`setup-argo-cli`](actions/setup-argo-cli) | Install Argo Workflows CLI from a signature-verified release
 | [`setup-pinact`](actions/setup-pinact) | Install pinact from an attested release
+| [`setup-terraform`](actions/setup-terraform) | Install Terraform verified against HashiCorp's signed checksums
+| [`setup-helm`](actions/setup-helm) | Install Helm verified against the maintainers' GPG signatures
 
 ### Installer verification
 
@@ -32,6 +34,8 @@ wall-clock cost.
 | pinact | `setup-pinact`, `scan-github-actions` | GitHub artifact attestation (SLSA provenance) | `gh attestation verify`, pinned to pinact's release workflow and the requested tag |
 | Foundry | `setup-foundry` | GitHub artifact attestation (SLSA provenance) | `gh attestation verify`, pinned to Foundry's release workflow and the resolved tag or `master` |
 | Argo CLI | `setup-argo-cli` | cosign signature on the checksums file, fixed key | `openssl dgst -verify` with the key pinned in the action |
+| Terraform | `setup-terraform` | GPG signature on `SHA256SUMS` by the HashiCorp Security key | `gpg --verify` in a throwaway keyring holding only the pinned key |
+| Helm | `setup-helm` | GPG signature per archive by a maintainer in Helm's `KEYS` file | `gpg --verify` against the pinned `KEYS` keyring |
 | typos | `rust-lint` | GitHub release attestation (immutable release) | `gh release verify-asset` |
 | mold | `setup-rust-build`, `rust-build-binaries` | none published | tarball SHA-256 pinned in the step |
 | cosign | `cosign-sign` (via `sigstore/cosign-installer`) | checksum embedded in the pinned action | verified by the action |
