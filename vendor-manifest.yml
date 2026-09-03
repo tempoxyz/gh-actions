@@ -24,6 +24,13 @@ allowed_upstreams:
 # failure, so dropping them changes error output, not behaviour. Patterns are anchored at the
 # vendored tree root; use **/ for any depth.
 default_exclude:
+  # Dependency lockfiles describe how upstream built the action; the prebuilt bundles under dist/
+  # never read them, and they only feed false positives into dependency scanners.
+  - "**/package-lock.json"
+  - "**/pnpm-lock.yaml"
+  - "**/yarn.lock"
+  - "**/bun.lock"
+  - "**/bun.lockb"
   - .github/
   - docs/
   - doc/
@@ -705,21 +712,28 @@ actions:
       .node-version, .dockerignore, **/*.test.*
 
   - name: gradle/actions
-    ref: v4.4.3
+    ref: v6.3.0
     ref_type: tag
-    sha: ed408507eac070d1f99cc633dbcf757c94c7933a
+    sha: 9c971963bec38e04b3d30dcc455b5382be2fdbfb
     exclude:
       - docs/
+      - .tool-versions
+      - '**/*.d.ts'
       - '**/*.test.*'
       - actions.code-workspace
+      - build
       - dependency-submission/
+      - licenses/
       - wrapper-validation/
+      - sources/
     keep:
       - setup-gradle/
     notes: >-
-      Composite action; loads build, dist, sources from the action directory. build kept: named as a
-      path in the code excluded: docs/, **/*.test.*, actions.code-workspace, dependency-submission/,
-      wrapper-validation/
+      Composite action; loads dist, sources from the action directory. sources kept: named as a path
+      in the code excluded: docs/, .tool-versions, **/*.d.ts, **/*.test.*, actions.code-workspace,
+      build, dependency-submission/, licenses/, wrapper-validation/ Manual: sources/ is the
+      TypeScript source tree and its lockfile; the action runs the prebuilt dist/ bundles, which
+      only mention the word "sources" in strings.
 
   - name: helm/chart-releaser-action
     ref: v1.7.0

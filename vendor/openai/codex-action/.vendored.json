@@ -7,6 +7,6 @@
   "readme_url": "https://github.com/openai/codex-action/blob/86365089eb2b84e0a8fb0717b304f8bdcb13b20e/README.md",
   "description": "Run `codex exec` with a prompt.",
   "consume_as": "tempoxyz/gh-actions/vendor/openai/codex-action@<gh-actions-sha>",
-  "files_removed": 7,
+  "files_removed": 8,
   "nested_rewrites": []
 }
