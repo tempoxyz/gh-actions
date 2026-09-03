@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/bullfrogsec/bullfrog",
+  "ref": "v0.11.1",
+  "ref_type": "tag",
+  "sha": "7dee337d4575320b6d8cbe9a56d48d2fb765963a",
+  "upstream_commit_date": "2026-08-24T22:32:06-04:00",
+  "readme_url": "https://github.com/bullfrogsec/bullfrog/blob/7dee337d4575320b6d8cbe9a56d48d2fb765963a/README.md",
+  "description": "Block unauthorized outbound traffic (egress) in your Github workflows",
+  "consume_as": "tempoxyz/gh-actions/vendor/bullfrogsec/bullfrog@<gh-actions-sha>",
+  "files_removed": 37,
+  "nested_rewrites": []
+}

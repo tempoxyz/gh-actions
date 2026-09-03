@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/jaxxstorm/action-install-gh-release",
+  "ref": "v3.0.0",
+  "ref_type": "tag",
+  "sha": "25e24d2d23ae098373794ef1d6faecb48ee52da8",
+  "upstream_commit_date": "2026-03-30T04:43:40-07:00",
+  "readme_url": "https://github.com/jaxxstorm/action-install-gh-release/blob/25e24d2d23ae098373794ef1d6faecb48ee52da8/README.md",
+  "description": "Install binaries from GitHub releases",
+  "consume_as": "tempoxyz/gh-actions/vendor/jaxxstorm/action-install-gh-release@<gh-actions-sha>",
+  "files_removed": 14,
+  "nested_rewrites": []
+}

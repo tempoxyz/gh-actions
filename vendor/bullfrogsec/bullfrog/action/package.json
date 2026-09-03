@@ -1,0 +1,31 @@
+{
+  "name": "action",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@eslint/js": "9.39.2",
+    "@types/node": "25.0.10",
+    "@vitest/ui": "^4.0.16",
+    "esbuild": "0.27.2",
+    "eslint": "9.39.2",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.5",
+    "prettier": "3.8.1",
+    "ts-node": "10.9.2",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.17.0",
+    "vitest": "^4.0.16"
+  },
+  "dependencies": {
+    "@actions/core": "2.0.2"
+  }
+}
