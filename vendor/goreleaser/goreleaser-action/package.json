@@ -2,16 +2,15 @@
   "name": "goreleaser-action",
   "description": "GitHub Action for GoReleaser, a release automation tool for Go projects",
   "main": "src/main.ts",
+  "type": "module",
   "scripts": {
-    "build": "ncc build src/main.ts --source-map --minify --license licenses.txt",
-    "lint": "yarn run prettier && yarn run eslint",
-    "format": "yarn run prettier:fix && yarn run eslint:fix",
-    "eslint": "eslint --max-warnings=0 .",
-    "eslint:fix": "eslint --fix .",
-    "prettier": "prettier --check \"./**/*.ts\"",
-    "prettier:fix": "prettier --write \"./**/*.ts\"",
-    "test": "jest",
-    "all": "yarn run build && yarn run format && yarn test"
+    "build": "ncc build src/main.ts --minify --license licenses.txt",
+    "format": "prettier --write \"**/*.ts\"",
+    "format-check": "prettier --check \"**/*.ts\"",
+    "lint": "eslint --max-warnings=0 \"**/*.ts\"",
+    "lint:fix": "eslint --fix \"**/*.ts\"",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
+    "pre-checkin": "npm run format && npm run lint:fix && npm run build && npm test"
   },
   "repository": {
     "type": "git",
@@ -24,18 +23,17 @@
   ],
   "author": "CrazyMax",
   "license": "MIT",
-  "packageManager": "yarn@3.6.3",
   "dependencies": {
-    "@actions/core": "^1.11.1",
-    "@actions/exec": "^1.1.1",
-    "@actions/http-client": "^2.2.3",
-    "@actions/tool-cache": "^2.0.2",
-    "js-yaml": "^4.1.0",
-    "semver": "^7.7.2",
-    "yargs": "^17.7.2"
+    "@actions/core": "^3.0.0",
+    "@actions/exec": "^3.0.0",
+    "@actions/http-client": "^4.0.0",
+    "@actions/tool-cache": "^4.0.0",
+    "js-yaml": "^4.2.0",
+    "semver": "^7.7.4",
+    "yargs": "^18.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.6.0",
+    "@types/node": "^24.0.0",
     "@typescript-eslint/eslint-plugin": "^6.6.0",
     "@typescript-eslint/parser": "^6.6.0",
     "@vercel/ncc": "^0.38.0",

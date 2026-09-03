@@ -5,56 +5,60 @@ runs:
   main: "dist/index.js"
 inputs:
   github-token:
-    description: "The GitHub token to use for authentication. Defaults to the GitHub-provided token."
+    description: >
+      The GitHub token to use for authentication. Defaults to the GitHub-provided token.
+      To use a custom token, pass it explicitly to this input.
     required: false
     default: ${{ github.token }}
-  publish:
+  publish-script:
     description: "The command to use to build and publish packages"
     required: false
-  version:
+  version-script:
     description: "The command to update version, edit CHANGELOG, read and delete changesets. Default to `changeset version` if not provided"
     required: false
-  cwd:
-    description: Sets the cwd for the node process. Default to `process.cwd()`
+  commit-message:
+    description: "The commit message. Default to `Version Packages`"
     required: false
-  commit:
-    description: |
-      The commit message. Default to `Version Packages`
+    default: "Version Packages"
+  pr-title:
+    description: "The pull request title. Default to `Version Packages`"
     required: false
-  title:
-    description: The pull request title. Default to `Version Packages`
+    default: "Version Packages"
+  pr-draft:
+    description: "Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them."
     required: false
-  setupGitUser:
-    description: Sets up the git user for commits as `"github-actions[bot]"`. Default to `true`
+  pr-base-branch:
+    description: "Sets the base branch of the PR. Defaults to `github.ref_name`."
+    required: false
+  create-github-releases:
+    description: "Whether to create Github releases after publish"
     required: false
     default: true
-  createGithubReleases:
-    description: "A boolean value to indicate whether to create Github releases after `publish` or not"
-    required: false
-    default: true
-  commitMode:
+  push-git-tags:
     description: >
-      An enum to specify the commit mode. Use "git-cli" to push changes using the Git CLI,
-      or "github-api" to push changes via the GitHub API. When using "github-api",
-      all commits and tags are signed using GitHub's GPG key and attributed to the user
-      or app who owns the GITHUB_TOKEN.
+      Whether to create git tags after publish. If `create-github-releases` is set to `true`,
+      this option will also always be `true`.
     required: false
-    default: "git-cli"
-  branch:
-    description: Sets the branch in which the action will run. Default to `github.ref_name` if not provided
+    default: true
+  push-with-git-cli:
+    description: >
+      Whether to use the Git CLI instead of the GitHub API to push release commits and tags.
+      Defaults to `false`. When using the GitHub API, commits and tags are signed using
+      GitHub's GPG key and attributed to the user or app that owns the `github-token`.
     required: false
-  prDraft:
-    description: 'Controls draft PR behavior. Use "create" to create new version PRs as draft, or "always" to also convert existing version PRs back to draft when updating them.'
+    default: false
+  cwd:
+    description: "The working directory to execute Changesets in. Defaults to the root of the repository."
     required: false
 outputs:
   published:
-    description: A boolean value to indicate whether a publishing is happened or not
-  publishedPackages:
+    description: A "true" or "false" string value to indicate whether a publishing is happened or not
+  published-packages:
     description: >
       A JSON array to present the published packages. The format is `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]`
-  hasChangesets:
-    description: A boolean about whether there were changesets. Useful if you want to create your own publishing functionality.
-  pullRequestNumber:
+  has-changesets:
+    description: A "true" or "false" string value about whether there were changesets. Useful if you want to create your own publishing functionality.
+  pr-number:
     description: The pull request number that was created or updated
 branding:
   icon: "package"

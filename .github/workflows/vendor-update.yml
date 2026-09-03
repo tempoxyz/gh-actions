@@ -101,7 +101,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          slug=$(printf '%s-%s' "$NAME" "$new_ref" | tr '/' '-' | tr -c 'A-Za-z0-9._-\n' '-')
+          slug=$(printf '%s-%s' "$NAME" "$new_ref" | tr '/' '-' | tr -c 'A-Za-z0-9._\n-' '-')
           {
             echo "changed=true"
             echo "branch=vendor/$slug"

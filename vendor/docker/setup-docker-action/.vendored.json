@@ -1,12 +1,12 @@
 {
   "upstream": "https://github.com/docker/setup-docker-action",
-  "ref": "v4.7.0",
+  "ref": "v5.1.0",
   "ref_type": "tag",
-  "sha": "e43656e248c0bd0647d3f5c195d116aacf6fcaf4",
-  "upstream_commit_date": "2025-12-19T15:08:37Z",
-  "readme_url": "https://github.com/docker/setup-docker-action/blob/e43656e248c0bd0647d3f5c195d116aacf6fcaf4/README.md",
+  "sha": "b2189fbf2a6592b51fee7cdd93ee2bfaeba733db",
+  "upstream_commit_date": "2026-04-24T15:36:15+02:00",
+  "readme_url": "https://github.com/docker/setup-docker-action/blob/b2189fbf2a6592b51fee7cdd93ee2bfaeba733db/README.md",
   "description": "Set up Docker for use in GitHub Actions by downloading and installing a version of Docker CE",
   "consume_as": "tempoxyz/gh-actions/vendor/docker/setup-docker-action@<gh-actions-sha>",
-  "files_removed": 37,
+  "files_removed": 40,
   "nested_rewrites": []
 }
