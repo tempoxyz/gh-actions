@@ -109,11 +109,14 @@ actions:
       - examples/
       - .prettierrc*
       - CHANGELOG*
-      - .codspeed-runner-installer-hashes.json
       - scripts/
+    keep:
+      - .codspeed-runner-installer-hashes.json
     notes: >-
       Composite action; loads .codspeed-runner-version from the action directory. excluded:
-      examples/, .prettierrc*, CHANGELOG*, .codspeed-runner-installer-hashes.json, scripts/
+      examples/, .prettierrc*, CHANGELOG*, .codspeed-runner-installer-hashes.json, scripts/ Manual:
+      the installer step requires .codspeed-runner-installer-hashes.json from the action directory
+      to verify the runner download.
 
   - name: DeterminateSystems/nix-installer-action
     ref: v22
