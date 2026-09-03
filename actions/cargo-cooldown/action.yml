@@ -15,6 +15,16 @@ inputs:
     required: false
     default: "false"
 
+outputs:
+  checked-packages:
+    description: "Number of crates.io package versions checked"
+  cache-hits:
+    description: "Number of unique crate lookups served by Cargo's sparse-index cache"
+  remote-fallbacks:
+    description: "Number of unique crate lookups fetched from index.crates.io"
+  exemptions:
+    description: "Number of package versions exempted before index lookup"
+
 runs:
   using: "node24"
   main: "main.js"

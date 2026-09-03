@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const https = require("node:https");
+const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -10,6 +11,8 @@ const CRATES_IO_SOURCES = new Set([
 ]);
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const MAX_RETRIES = 3;
+const SPARSE_CACHE_FORMAT = 3;
+const SPARSE_INDEX_FORMAT = 2;
 
 function input(name) {
   const key = name.toUpperCase();
@@ -146,7 +149,26 @@ function requestIndex(crate, dependencies = {}) {
   });
 }
 
-function publicationTimes(crate, body) {
+function addPublicationEntry(versions, crate, declaredVersion, rawEntry, location) {
+  if (typeof declaredVersion !== "string" || declaredVersion.length === 0) {
+    throw new Error(`invalid crates.io index version for ${crate} at ${location}`);
+  }
+  let entry;
+  try {
+    entry = JSON.parse(rawEntry);
+  } catch {
+    throw new Error(`invalid crates.io index JSON for ${crate} at ${location}`);
+  }
+  if (entry.name !== crate || entry.vers !== declaredVersion) {
+    throw new Error(`crates.io index identity mismatch for ${crate}@${declaredVersion} at ${location}`);
+  }
+  if (versions.has(declaredVersion)) {
+    throw new Error(`duplicate crates.io index entry for ${crate}@${declaredVersion}`);
+  }
+  versions.set(declaredVersion, entry.pubtime);
+}
+
+function publicationTimes(crate, body, requestedVersions) {
   const versions = new Map();
   for (const [index, line] of body.split(/\r?\n/).entries()) {
     if (!line) continue;
@@ -156,9 +178,76 @@ function publicationTimes(crate, body) {
     } catch {
       throw new Error(`invalid crates.io index JSON for ${crate} on line ${index + 1}`);
     }
-    if (typeof entry.vers === "string") versions.set(entry.vers, entry.pubtime);
+    if (requestedVersions && !requestedVersions.has(entry.vers)) continue;
+    addPublicationEntry(versions, crate, entry.vers, line, `line ${index + 1}`);
   }
   return versions;
+}
+
+function sparseCachePublicationTimes(crate, contents, requestedVersions) {
+  const buffer = Buffer.isBuffer(contents) ? contents : Buffer.from(contents);
+  if (buffer.length > MAX_RESPONSE_BYTES) throw new Error(`Cargo sparse-index cache entry for ${crate} is too large`);
+  if (buffer.length < 6 || buffer[0] !== SPARSE_CACHE_FORMAT) {
+    throw new Error(`unsupported Cargo sparse-index cache format for ${crate}`);
+  }
+  if (buffer.readUInt32LE(1) !== SPARSE_INDEX_FORMAT) {
+    throw new Error(`unsupported crates.io index format in Cargo cache for ${crate}`);
+  }
+
+  const fields = buffer.subarray(5).toString("utf8").split("\0");
+  if (fields.at(-1) === "") fields.pop();
+  const revision = fields.shift();
+  if (!revision || fields.length === 0 || fields.length % 2 !== 0) {
+    throw new Error(`malformed Cargo sparse-index cache entry for ${crate}`);
+  }
+
+  const versions = new Map();
+  for (let index = 0; index < fields.length; index += 2) {
+    const declaredVersion = fields[index];
+    if (!declaredVersion) throw new Error(`malformed Cargo sparse-index cache version for ${crate}`);
+    if (requestedVersions && !requestedVersions.has(declaredVersion)) continue;
+    addPublicationEntry(versions, crate, declaredVersion, fields[index + 1], `cached version ${declaredVersion}`);
+  }
+  return versions;
+}
+
+function validPublicationTime(value) {
+  const rfc3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+  return typeof value === "string" && rfc3339.test(value) && Number.isFinite(Date.parse(value));
+}
+
+async function readCachedPublicationTimes(crate, requestedVersions, cargoHome) {
+  const indexRoot = path.join(cargoHome, "registry", "index");
+  let directories;
+  try {
+    directories = fs.readdirSync(indexRoot, { withFileTypes: true });
+  } catch {
+    return new Map();
+  }
+
+  for (const directory of directories) {
+    if (!directory.isDirectory() || !directory.name.startsWith("index.crates.io-")) continue;
+    const cachePath = path.join(indexRoot, directory.name, ".cache", crateIndexPath(crate));
+    let contents;
+    try {
+      const stat = fs.statSync(cachePath);
+      if (stat.size > MAX_RESPONSE_BYTES) continue;
+      contents = fs.readFileSync(cachePath);
+    } catch {
+      continue;
+    }
+
+    let versions;
+    try {
+      versions = sparseCachePublicationTimes(crate, contents, requestedVersions);
+    } catch {
+      continue;
+    }
+    if ([...requestedVersions].every((version) => validPublicationTime(versions.get(version)))) {
+      return versions;
+    }
+  }
+  return new Map();
 }
 
 async function mapConcurrent(values, limit, operation) {
@@ -176,29 +265,110 @@ async function mapConcurrent(values, limit, operation) {
   return results;
 }
 
-async function checkPackages(packages, options, dependencies = {}) {
-  const crates = [...new Set(packages.map((pkg) => pkg.name))].sort();
-  const fetchIndex = dependencies.fetchIndex || requestIndex;
-  const bodies = await mapConcurrent(crates, 8, async (crate) => [crate, await fetchIndex(crate)]);
-  const indexes = new Map(bodies.map(([crate, body]) => [crate, publicationTimes(crate, body)]));
-  const violations = [];
+async function resolvePublicationTimes(crate, requestedVersions, options, dependencies) {
+  const readCache = dependencies.readCachedPublicationTimes || readCachedPublicationTimes;
+  let cached = new Map();
+  try {
+    cached = await readCache(crate, requestedVersions, options.cargoHome);
+  } catch {
+    // Cargo's cache is an optimization and uses an internal format. Anything unfamiliar falls
+    // back to the authoritative sparse index; failure there still fails the action closed.
+  }
+  if ([...requestedVersions].every((version) => validPublicationTime(cached.get(version)))) {
+    return { crate, source: "cache", versions: cached };
+  }
 
+  const fetchIndex = dependencies.fetchIndex || requestIndex;
+  const remote = publicationTimes(crate, await fetchIndex(crate), requestedVersions);
+  for (const version of requestedVersions) {
+    const rawTime = remote.get(version);
+    if (typeof rawTime !== "string") {
+      throw new Error(`crates.io index has no publication timestamp for ${crate}@${version}`);
+    }
+    if (!validPublicationTime(rawTime)) {
+      throw new Error(`crates.io index has an invalid publication timestamp for ${crate}@${version}`);
+    }
+  }
+  return { crate, source: "remote", versions: remote };
+}
+
+async function checkPackages(packages, options, dependencies = {}) {
+  const required = [];
+  let exemptions = 0;
   for (const pkg of packages) {
     const key = `${pkg.name}@${pkg.version}`;
     if (options.allowlist.exact.has(key)) {
-      console.log(`Allowed exact exception: ${key}`);
+      exemptions += 1;
+      console.log(`Allowed exact exception without index lookup: ${key}`);
       continue;
     }
-    const rawTime = indexes.get(pkg.name).get(pkg.version);
-    if (typeof rawTime !== "string") throw new Error(`crates.io index has no publication timestamp for ${key}`);
-    const publishedAt = Date.parse(rawTime);
-    if (!Number.isFinite(publishedAt)) throw new Error(`crates.io index has an invalid publication timestamp for ${key}`);
     const days = options.allowlist.packageDays.get(pkg.name) ?? options.cooldownDays;
-    const eligibleAt = publishedAt + days * 86_400_000;
-    if (options.verbose) console.log(`${key}: published ${rawTime}, cooldown ${days} day(s)`);
-    if (options.now < eligibleAt) violations.push({ key, rawTime, eligibleAt, days });
+    if (days === 0) {
+      exemptions += 1;
+      console.log(`Allowed zero-day package exception without index lookup: ${key}`);
+      continue;
+    }
+    required.push({ ...pkg, days });
   }
-  return violations;
+
+  const requestedByCrate = new Map();
+  for (const pkg of required) {
+    if (!requestedByCrate.has(pkg.name)) requestedByCrate.set(pkg.name, new Set());
+    requestedByCrate.get(pkg.name).add(pkg.version);
+  }
+  const requests = [...requestedByCrate.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const resolved = await mapConcurrent(requests, 8, ([crate, versions]) => (
+    resolvePublicationTimes(crate, versions, options, dependencies)
+  ));
+  const indexes = new Map(resolved.map((entry) => [entry.crate, entry.versions]));
+  const violations = [];
+
+  for (const pkg of required) {
+    const key = `${pkg.name}@${pkg.version}`;
+    const rawTime = indexes.get(pkg.name).get(pkg.version);
+    const publishedAt = Date.parse(rawTime);
+    const eligibleAt = publishedAt + pkg.days * 86_400_000;
+    if (options.verbose) console.log(`${key}: published ${rawTime}, cooldown ${pkg.days} day(s)`);
+    if (options.now < eligibleAt) violations.push({ key, rawTime, eligibleAt, days: pkg.days });
+  }
+  return {
+    violations,
+    stats: {
+      cacheHits: resolved.filter((entry) => entry.source === "cache").length,
+      checkedPackages: required.length,
+      exemptions,
+      remoteFallbacks: resolved.filter((entry) => entry.source === "remote").length,
+      uniqueCrates: requestedByCrate.size,
+    },
+  };
+}
+
+function classifyPackages(packages) {
+  const cratesIo = [];
+  let skipped = 0;
+  for (const pkg of packages) {
+    if (pkg.source === null || (typeof pkg.source === "string" && pkg.source.startsWith("git+"))) {
+      skipped += 1;
+      continue;
+    }
+    if (CRATES_IO_SOURCES.has(pkg.source)) {
+      cratesIo.push(pkg);
+      continue;
+    }
+    throw new Error(`cannot enforce crates.io cooldown for ${pkg.name}@${pkg.version}: unrecognized Cargo source ${String(pkg.source)}`);
+  }
+  return { cratesIo, skipped };
+}
+
+function setOutputs(stats, outputPath = process.env.GITHUB_OUTPUT) {
+  if (!outputPath) return;
+  fs.appendFileSync(outputPath, [
+    `checked-packages=${stats.checkedPackages}`,
+    `cache-hits=${stats.cacheHits}`,
+    `remote-fallbacks=${stats.remoteFallbacks}`,
+    `exemptions=${stats.exemptions}`,
+    "",
+  ].join("\n"));
 }
 
 async function main(dependencies = {}) {
@@ -231,23 +401,25 @@ async function main(dependencies = {}) {
   const allowlist = fs.existsSync(allowlistPath)
     ? parseAllowlist(fs.readFileSync(allowlistPath, "utf8"))
     : { exact: new Set(), packageDays: new Map() };
-  const packages = metadata.packages.filter((pkg) => CRATES_IO_SOURCES.has(pkg.source));
-  const skipped = metadata.packages.filter((pkg) => pkg.source && !CRATES_IO_SOURCES.has(pkg.source));
-  if (skipped.length > 0) console.log(`Skipped ${skipped.length} package(s) not sourced from crates.io.`);
+  const { cratesIo: packages, skipped } = classifyPackages(metadata.packages);
+  if (skipped > 0) console.log(`Skipped ${skipped} local or Git-sourced package(s).`);
 
-  const violations = await checkPackages(packages, {
+  const result = await checkPackages(packages, {
     allowlist,
+    cargoHome: path.resolve(process.env.CARGO_HOME || path.join(os.homedir(), ".cargo")),
     cooldownDays: Number(rawDays),
     now: dependencies.now ?? Date.now(),
     verbose: verboseInput === "true",
   }, dependencies);
-  if (violations.length > 0) {
-    for (const violation of violations) {
+  setOutputs(result.stats, dependencies.outputPath);
+  console.log(`Cargo cooldown evidence: ${result.stats.checkedPackages} package(s) checked across ${result.stats.uniqueCrates} crate(s); ${result.stats.cacheHits} cache hit(s), ${result.stats.remoteFallbacks} remote fallback(s), ${result.stats.exemptions} exemption(s).`);
+  if (result.violations.length > 0) {
+    for (const violation of result.violations) {
       annotation(`${violation.key} was published ${violation.rawTime}; it is not eligible until ${new Date(violation.eligibleAt).toISOString()} (${violation.days}-day cooldown)`);
     }
-    throw new Error(`${violations.length} crates.io package(s) violate the cooldown policy`);
+    throw new Error(`${result.violations.length} crates.io package(s) violate the cooldown policy`);
   }
-  console.log(`Cargo cooldown passed for ${packages.length} crates.io package(s).`);
+  console.log(`Cargo cooldown passed for ${result.stats.checkedPackages} checked crates.io package(s).`);
 }
 
 if (require.main === module) {
@@ -257,4 +429,14 @@ if (require.main === module) {
   });
 }
 
-module.exports = { checkPackages, crateIndexPath, main, parseAllowlist, publicationTimes };
+module.exports = {
+  checkPackages,
+  classifyPackages,
+  crateIndexPath,
+  main,
+  parseAllowlist,
+  publicationTimes,
+  readCachedPublicationTimes,
+  requestIndex,
+  sparseCachePublicationTimes,
+};

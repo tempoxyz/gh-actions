@@ -4,9 +4,9 @@ Fail when a crates.io dependency in the workspace's committed `Cargo.lock` is ne
 configured cooldown. The action is implemented in this repository with the Node.js standard
 library and does not download or execute a third-party tool.
 
-The action fails closed. A fresh crate, missing lockfile, crates.io index failure, Cargo metadata
-failure, or malformed publication timestamp makes the action and its job fail. Do not use
-`continue-on-error` on the gate step or job.
+The action fails closed. A fresh crate, missing lockfile, Cargo metadata failure, unknown registry,
+or inability to obtain a valid publication timestamp from Cargo's cache or crates.io makes the
+action and its job fail. Do not use `continue-on-error` on the gate step or job.
 
 ## Configuration
 
@@ -18,7 +18,7 @@ with:
 ```
 
 Optional exceptions can be committed in `.cargo/cooldown-allowlist.toml`. Prefer an exact
-exception for a one-off release:
+exception for a one-off release. Exact exceptions are applied before cache or network lookup:
 
 ```toml
 # Temporary bootstrap exception; remove after 2026-09-10.
@@ -43,6 +43,15 @@ days = 1
 | `cooldown-days` | Minimum whole days since a crates.io release was published | No | `7` |
 | `working-directory` | Cargo workspace to check | No | `.` |
 | `verbose` | Print each crate and publication timestamp | No | `false` |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| `checked-packages` | Number of crates.io package versions whose publication age was checked |
+| `cache-hits` | Number of unique crate lookups served from Cargo's sparse-index cache |
+| `remote-fallbacks` | Number of unique crate lookups fetched from `index.crates.io` |
+| `exemptions` | Number of package versions exempted before any index lookup |
 
 ## Usage
 
@@ -71,12 +80,28 @@ depend on it. Repeating the action in every matrix job repeats the same metadata
 
 ## Scope
 
-The action runs `cargo metadata --locked --all-features`, checks every crates.io package in the
-resolved graph, and reads publication timestamps from the official crates.io sparse index. Git
-dependencies, path dependencies, and non-crates.io registries are skipped because they do not
-have crates.io publication timestamps.
+The action runs `cargo metadata --locked --all-features` and checks every crates.io package in the
+resolved workspace graph. It first reads publication timestamps from Cargo's existing
+sparse-index cache. A missing, malformed, unsupported, or incomplete cache entry falls back to the
+official crates.io sparse index. The cache is read-only and remote requests are therefore normally
+limited to cache misses.
+
+Path and Git dependencies are explicitly outside this crates.io publication-age policy. An
+unrecognized registry or source format fails closed instead of being silently skipped. Registry
+mirrors and private registries are not currently configurable.
+
+This action checks the workspace dependency graph at the point where it runs. It does not protect
+a later `cargo install`: that command resolves the installed package and its packaged lockfile in
+a separate Cargo invocation. Use a cooldown-aware install action for that operation rather than
+assuming this workspace gate applies to it.
+
+Cargo's sparse-index cache is an internal Cargo format rather than a stable API. The action accepts
+only the cache format it understands and falls back to crates.io for anything else. A persistent
+self-hosted runner must provide a trusted or isolated `CARGO_HOME`, because this action trusts the
+same local registry cache that Cargo uses for dependency resolution. GitHub-hosted runners are
+ephemeral, and `cargo metadata` normally populates the relevant cache entries within the job.
 
 The action has no runtime dependency on another GitHub Action, npm package, or downloaded
 executable. Cargo, the Node runtime supplied by GitHub Actions, and access to the crates.io index
-are required. crates.io is an unavoidable data source: a lockfile does not contain publication
-timestamps.
+for cache misses are required. crates.io is the authoritative data source because a lockfile does
+not contain publication timestamps.
