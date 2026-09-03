@@ -256,7 +256,27 @@ jobs:
       - name: Smoke test typos (release attestation) on the first-party action sources
         uses: ./actions/typos
         with:
-          files: actions/check-needs actions/pr-comment actions/typos actions/gh-release actions/changed-paths actions/cargo-install actions/slack-notify actions/setup-mold
+          files: actions/check-needs actions/pr-comment actions/typos actions/gh-release actions/changed-paths actions/cargo-cooldown actions/cargo-install actions/slack-notify actions/setup-mold
+      - name: Create cargo-cooldown fixture
+        env:
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-fixture
+        run: |
+          set -euo pipefail
+          mkdir -p "$FIXTURE/.cargo" "$FIXTURE/src"
+          printf '[package]\nname = "cooldown-fixture"\nversion = "0.1.0"\nedition = "2024"\n' > "$FIXTURE/Cargo.toml"
+          printf 'fn main() {}\n' > "$FIXTURE/src/main.rs"
+          printf '[[allow.exact]]\ncrate = "example"\nversion = "1.2.3"\n' > "$FIXTURE/.cargo/cooldown-allowlist.toml"
+          cargo generate-lockfile --manifest-path "$FIXTURE/Cargo.toml"
+      - name: Smoke test cargo-cooldown (first-party implementation)
+        uses: ./actions/cargo-cooldown
+        with:
+          cooldown-days: 7
+          working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Assert cargo-cooldown did not modify caller files
+        env:
+          CONFIG: ${{ runner.temp }}/cargo-cooldown-fixture/.cargo/cooldown-allowlist.toml
+        run: |
+          grep -Fx 'version = "1.2.3"' "$CONFIG"
       - name: Smoke test cargo-install (cached binary)
         uses: ./actions/cargo-install
         with:

@@ -1,0 +1,20 @@
+name: "Cargo cooldown"
+description: "Fail when crates.io dependencies in Cargo.lock are newer than the configured cooldown"
+
+inputs:
+  cooldown-days:
+    description: "Minimum whole days a crates.io release must have been published"
+    required: false
+    default: "7"
+  working-directory:
+    description: "Cargo workspace directory to check"
+    required: false
+    default: "."
+  verbose:
+    description: "Enable verbose cooldown output"
+    required: false
+    default: "false"
+
+runs:
+  using: "node24"
+  main: "main.js"

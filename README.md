@@ -46,6 +46,7 @@ wall-clock cost.
 | [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows
 | [`setup-mold`](actions/setup-mold) | Install the mold linker from a digest-pinned release
 | [`typos`](actions/typos) | Spell-check with typos, installed from an attested release
+| [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
 | [`cargo-install`](actions/cargo-install) | `cargo install` a tool with the binary cached
 | [`check-needs`](actions/check-needs) | Gate job: fail unless every needed job succeeded (allowed skips/failures)
 | [`changed-paths`](actions/changed-paths) | One boolean output per named path filter for the changed files
