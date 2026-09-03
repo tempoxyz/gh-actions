@@ -22,6 +22,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-pinact`](actions/setup-pinact) | Install pinact from an attested release
 | [`setup-terraform`](actions/setup-terraform) | Install Terraform verified against HashiCorp's signed checksums
 | [`setup-helm`](actions/setup-helm) | Install Helm verified against the maintainers' GPG signatures
+| [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
 
 ### Installer verification
 
@@ -29,30 +30,6 @@ Every tool these actions and workflows download is verified with the strongest p
 publisher offers, in addition to a checksum; a checksum from the same release cannot detect a
 release that was compromised end to end. The only accepted reason to skip a check is a large
 wall-clock cost.
-
-| Tool | Where | Proof | How it is checked |
-|------|-------|-------|-------------------|
-| pinact | `setup-pinact`, `scan-github-actions` | GitHub artifact attestation (SLSA provenance) | `gh attestation verify`, pinned to pinact's release workflow and the requested tag |
-| Foundry | `setup-foundry` | GitHub artifact attestation (SLSA provenance) | `gh attestation verify`, pinned to Foundry's release workflow and the resolved tag or `master` |
-| Argo CLI | `setup-argo-cli` | cosign signature on the checksums file, fixed key | `openssl dgst -verify` with the key pinned in the action |
-| Terraform | `setup-terraform` | GPG signature on `SHA256SUMS` by the HashiCorp Security key | `gpg --verify` in a throwaway keyring holding only the pinned key |
-| Helm | `setup-helm` | GPG signature per archive by a maintainer in Helm's `KEYS` file | `gpg --verify` against the pinned `KEYS` keyring |
-| typos | `typos`, `rust-lint` | GitHub release attestation (immutable release) | `gh release verify-asset` |
-| mold | `setup-mold`, `setup-rust-build`, `rust-build-binaries`, `rust-lint` | none published | tarball SHA-256 pinned in the step |
-| actionlint | `actionlint`, `scan-github-actions`, `scan-github-actions.yml` | release tarball digests pinned in the installer (rhysd/actionlint publishes checksums but no attestations) |
-| cosign | `cosign-sign` (via `sigstore/cosign-installer`) | checksum embedded in the pinned action | verified by the action |
-| sccache | `setup-rust-build`, `rust-build-binaries` (via `mozilla-actions/sccache-action`) | `.sha256` from the same release only | verified by the action |
-| zizmor | `scan-github-actions` (via `zizmorcore/zizmor-action`) | container image digest embedded in the pinned action | verified by the action |
-| [`scan-github-actions`](actions/scan-github-actions) | Security scan (zizmor) + lint (actionlint) for GitHub Actions workflows
-| [`setup-mold`](actions/setup-mold) | Install the mold linker from a digest-pinned release
-| [`typos`](actions/typos) | Spell-check with typos, installed from an attested release
-| [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
-| [`cargo-install`](actions/cargo-install) | `cargo install` a tool with the binary cached
-| [`check-needs`](actions/check-needs) | Gate job: fail unless every needed job succeeded (allowed skips/failures)
-| [`changed-paths`](actions/changed-paths) | One boolean output per named path filter for the changed files
-| [`pr-comment`](actions/pr-comment) | Create or update one marker-identified PR/issue comment
-| [`gh-release`](actions/gh-release) | Create or update a GitHub release and upload assets
-| [`slack-notify`](actions/slack-notify) | Post a JSON payload to a Slack API method or webhook
 
 ### 3rd Party Actions
 
