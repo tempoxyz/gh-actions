@@ -269,6 +269,7 @@ jobs:
           cargo generate-lockfile --manifest-path "$FIXTURE/Cargo.toml"
           git -C "$FIXTURE" init
           git -C "$FIXTURE" add Cargo.lock Cargo.toml cooldown.toml src/main.rs
+          git -C "$FIXTURE" -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m fixture
       - name: Smoke test cargo-cooldown
         uses: ./actions/cargo-cooldown
         with:
@@ -278,7 +279,7 @@ jobs:
         env:
           FIXTURE: ${{ runner.temp }}/cargo-cooldown-fixture
         run: |
-          git -C "$FIXTURE" diff --exit-code -- Cargo.lock Cargo.toml cooldown.toml src/main.rs
+          git -C "$FIXTURE" diff --exit-code HEAD -- Cargo.lock Cargo.toml cooldown.toml src/main.rs
       - name: Smoke test cargo-install (cached binary)
         uses: ./actions/cargo-install
         with:

@@ -14,8 +14,9 @@ test("action installs a pinned cargo-cooldown and runs it fail closed", async ()
   assert.match(action, /CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE/);
   assert.match(action, /COOLDOWN_INCOMPATIBLE_PUBLISH_AGE: deny/);
   assert.match(action, /COOLDOWN_LOCKFILE_BASELINE: ignore/);
-  assert.match(action, /cargo cooldown --workspace --all-features check/);
-  assert.match(action, /git diff --exit-code -- Cargo\.lock/);
+  assert.match(action, /git diff --quiet HEAD -- Cargo\.lock/);
+  assert.match(action, /cargo cooldown --workspace --all-features check --locked/);
+  assert.match(action, /git diff --exit-code HEAD -- Cargo\.lock/);
   assert.doesNotMatch(action, /curl|cargo install/);
 });
 

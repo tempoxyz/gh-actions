@@ -41,7 +41,11 @@ runs:
           echo "::error::Cargo.lock must exist and be committed"
           exit 1
         fi
+        if ! git diff --quiet HEAD -- Cargo.lock; then
+          echo "::error::Cargo.lock must match the committed version"
+          exit 1
+        fi
 
         export CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE="${COOLDOWN_DAYS} days"
-        cargo cooldown --workspace --all-features check
-        git diff --exit-code -- Cargo.lock
+        cargo cooldown --workspace --all-features check --locked
+        git diff --exit-code HEAD -- Cargo.lock
