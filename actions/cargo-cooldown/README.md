@@ -13,8 +13,9 @@ The action runs `cargo cooldown --workspace --all-features check --locked` with 
 - `git diff --exit-code HEAD -- Cargo.lock` fails when `cargo-cooldown` finds a safe downgrade, so the
   changed lockfile must be reviewed and committed separately.
 
-The workspace must contain a committed `Cargo.lock`. The tool and its installer are version-pinned;
-the vendored installer verifies release checksums before executing the downloaded binary.
+The workspace must contain a committed `Cargo.lock`. The tool version and release archives are
+verified against SHA-256 digests pinned in this action before the downloaded binary is executed.
+The installer supports x86-64 and ARM64 Linux and macOS runners, plus x86-64 Windows runners.
 
 ## Configuration
 
