@@ -7,6 +7,6 @@
   "readme_url": "https://github.com/bullfrogsec/bullfrog/blob/7dee337d4575320b6d8cbe9a56d48d2fb765963a/README.md",
   "description": "Block unauthorized outbound traffic (egress) in your Github workflows",
   "consume_as": "tempoxyz/gh-actions/vendor/bullfrogsec/bullfrog@<gh-actions-sha>",
-  "files_removed": 37,
+  "files_removed": 36,
   "nested_rewrites": []
 }
