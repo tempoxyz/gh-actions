@@ -4,7 +4,10 @@ Install [`cargo-cooldown` 0.3.4](https://crates.io/crates/cargo-cooldown/0.3.4) 
 workspace dependency graphs containing registry releases newer than the configured cooldown, which
 defaults to seven days.
 
-The action runs `cargo cooldown --workspace --all-features check --locked` with fail-closed policy:
+By default, the action runs
+`cargo cooldown metadata --all-features --locked --format-version 1 --no-deps` with fail-closed
+policy. Cargo metadata resolves the whole workspace by default. Set `mode: check` to run
+`cargo cooldown --workspace --all-features check --locked` after the same policy guard.
 
 - `incompatible-publish-age = "deny"` rejects a graph when Cargo requires a fresh version.
 - `lockfile-baseline = "ignore"` checks versions already present in `Cargo.lock`, rather than
@@ -42,6 +45,7 @@ intentionally reduce that policy for selected dependencies.
 |------|-------------|----------|---------|
 | `cooldown-days` | Minimum whole days since a registry release was published | No | `7` |
 | `working-directory` | Cargo workspace to check | No | `.` |
+| `mode` | Validation mode: `metadata` or `check` | No | `metadata` |
 | `verbose` | Enable verbose `cargo-cooldown` output | No | `false` |
 
 ## Usage
@@ -62,10 +66,14 @@ jobs:
       - uses: tempoxyz/gh-actions/actions/cargo-cooldown@<full-commit-sha>
 ```
 
-`cargo-cooldown` validates the graph with Cargo and runs `cargo check --locked` only after fresh
-versions have been removed or rejected. The action requires `Cargo.lock` to match `HEAD` before the
-check and fails if the tool changes it. Run one required gate job per workflow and make jobs that
-consume the workspace dependency graph depend on it. Downstream Cargo commands should still use
-`--locked` so they cannot resolve a different graph after the gate.
+In `metadata` (default) mode, `cargo-cooldown` validates the complete workspace dependency graph
+without compiling it, then forwards a minimal `cargo metadata --locked` command. In `check` mode,
+it runs `cargo check --locked` only after fresh versions have been removed or rejected. Both modes
+apply the same cooldown policy.
+
+The action requires `Cargo.lock` to match `HEAD` before validation and fails if the tool changes it.
+Run one required gate job per workflow and make jobs that consume the workspace dependency graph
+depend on it. Downstream Cargo commands should still use `--locked` so they cannot resolve a
+different graph after the gate.
 
 The action does not protect a later `cargo install`, which resolves a separate dependency graph.

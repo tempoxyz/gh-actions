@@ -280,6 +280,37 @@ jobs:
           FIXTURE: ${{ runner.temp }}/cargo-cooldown-fixture
         run: |
           git -C "$FIXTURE" diff --exit-code HEAD -- Cargo.lock Cargo.toml cooldown.toml src/main.rs
+      - name: Smoke test cargo-cooldown check mode
+        uses: ./actions/cargo-cooldown
+        with:
+          cooldown-days: 7
+          mode: check
+          working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Create cargo-cooldown transitive fixture
+        env:
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-transitive-fixture
+        run: |
+          set -euo pipefail
+          mkdir -p "$FIXTURE/src"
+          printf '[package]\nname = "cooldown-transitive-fixture"\nversion = "0.1.0"\nedition = "2024"\n\n[dependencies]\nserde_json = "=1.0.100"\n' > "$FIXTURE/Cargo.toml"
+          printf 'fn main() { println!("{}", serde_json::json!({"ok": true})); }\n' > "$FIXTURE/src/main.rs"
+          printf '[[allow.exact]]\ncrate = "serde_json"\nversion = "1.0.100"\n' > "$FIXTURE/cooldown.toml"
+          cargo generate-lockfile --manifest-path "$FIXTURE/Cargo.toml"
+          git -C "$FIXTURE" init
+          git -C "$FIXTURE" add Cargo.lock Cargo.toml cooldown.toml src/main.rs
+          git -C "$FIXTURE" -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m fixture
+      - name: Reject a fresh transitive dependency in metadata mode
+        id: cargo-cooldown-transitive
+        continue-on-error: true
+        uses: ./actions/cargo-cooldown
+        with:
+          cooldown-days: 36500
+          working-directory: ${{ runner.temp }}/cargo-cooldown-transitive-fixture
+      - name: Assert fresh transitive dependency was rejected
+        if: always()
+        env:
+          OUTCOME: ${{ steps.cargo-cooldown-transitive.outcome }}
+        run: test "$OUTCOME" = failure
       - name: Smoke test cargo-install (cached binary)
         uses: ./actions/cargo-install
         with:
