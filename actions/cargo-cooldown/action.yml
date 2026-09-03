@@ -11,9 +11,9 @@ inputs:
     required: false
     default: "."
   mode:
-    description: "Validation mode: metadata checks policy only; check also compiles the workspace"
+    description: "Validation mode: verify checks policy only; check also compiles the workspace"
     required: false
-    default: "metadata"
+    default: "verify"
   verbose:
     description: "Enable verbose cargo-cooldown output"
     required: false
@@ -133,15 +133,15 @@ runs:
 
         export CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE="${COOLDOWN_DAYS} days"
         case "$COOLDOWN_MODE" in
-          metadata)
-            cargo cooldown metadata --all-features \
-              --locked --format-version 1 --no-deps >/dev/null
+          verify)
+            cargo cooldown --workspace --all-features tree \
+              --locked --depth 0 >/dev/null
             ;;
           check)
             cargo cooldown --workspace --all-features check --locked
             ;;
           *)
-            echo "::error::mode must be 'metadata' or 'check'"
+            echo "::error::mode must be 'verify' or 'check'"
             exit 1
             ;;
         esac

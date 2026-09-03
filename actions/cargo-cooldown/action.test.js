@@ -25,12 +25,12 @@ test("action installs a pinned cargo-cooldown and runs it fail closed", async ()
   assert.match(action, /CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE/);
   assert.match(action, /COOLDOWN_INCOMPATIBLE_PUBLISH_AGE: deny/);
   assert.match(action, /COOLDOWN_LOCKFILE_BASELINE: ignore/);
-  assert.match(action, /default: "metadata"/);
-  assert.match(action, /mode must be 'metadata' or 'check'/);
+  assert.match(action, /default: "verify"/);
+  assert.match(action, /mode must be 'verify' or 'check'/);
   assert.match(action, /git diff --quiet HEAD -- Cargo\.lock/);
   assert.match(
     action,
-    /cargo cooldown metadata --all-features \\\n\s+--locked --format-version 1 --no-deps >\/dev\/null/,
+    /cargo cooldown --workspace --all-features tree \\\n\s+--locked --depth 0 >\/dev\/null/,
   );
   assert.match(action, /cargo cooldown --workspace --all-features check --locked/);
   assert.match(action, /git diff --exit-code HEAD -- Cargo\.lock/);
@@ -46,7 +46,7 @@ test("documentation covers project configuration and lockfile behavior", async (
   assert.match(readme, /`cooldown\.toml`/);
   assert.match(readme, /lockfile-baseline = "ignore"/);
   assert.match(readme, /incompatible-publish-age = "deny"/);
-  assert.match(readme, /`metadata` \(default\)/);
+  assert.match(readme, /`verify` \(default\)/);
   assert.match(readme, /`check`/);
   assert.match(readme, /does not protect a later `cargo install`/);
 });

@@ -5,8 +5,8 @@ workspace dependency graphs containing registry releases newer than the configur
 defaults to seven days.
 
 By default, the action runs
-`cargo cooldown metadata --all-features --locked --format-version 1 --no-deps` with fail-closed
-policy. Cargo metadata resolves the whole workspace by default. Set `mode: check` to run
+`cargo cooldown --workspace --all-features tree --locked --depth 0` with fail-closed policy.
+Set `mode: check` to run
 `cargo cooldown --workspace --all-features check --locked` after the same policy guard.
 
 - `incompatible-publish-age = "deny"` rejects a graph when Cargo requires a fresh version.
@@ -45,7 +45,7 @@ intentionally reduce that policy for selected dependencies.
 |------|-------------|----------|---------|
 | `cooldown-days` | Minimum whole days since a registry release was published | No | `7` |
 | `working-directory` | Cargo workspace to check | No | `.` |
-| `mode` | Validation mode: `metadata` or `check` | No | `metadata` |
+| `mode` | Validation mode: `verify` or `check` | No | `verify` |
 | `verbose` | Enable verbose `cargo-cooldown` output | No | `false` |
 
 ## Usage
@@ -66,10 +66,11 @@ jobs:
       - uses: tempoxyz/gh-actions/actions/cargo-cooldown@<full-commit-sha>
 ```
 
-In `metadata` (default) mode, `cargo-cooldown` validates the complete workspace dependency graph
-without compiling it, then forwards a minimal `cargo metadata --locked` command. In `check` mode,
-it runs `cargo check --locked` only after fresh versions have been removed or rejected. Both modes
-apply the same cooldown policy.
+In `verify` (default) mode, `cargo-cooldown` selects every workspace member, validates its complete
+dependency graph without compiling it, then forwards a depth-zero `cargo tree --locked` command.
+The explicit `--workspace` also covers non-default members when a workspace configures
+`default-members`. In `check` mode, the action runs `cargo check --locked` only after fresh versions
+have been removed or rejected. Both modes apply the same cooldown policy.
 
 The action requires `Cargo.lock` to match `HEAD` before validation and fails if the tool changes it.
 Run one required gate job per workflow and make jobs that consume the workspace dependency graph

@@ -286,30 +286,33 @@ jobs:
           cooldown-days: 7
           mode: check
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
-      - name: Create cargo-cooldown transitive fixture
+      - name: Create cargo-cooldown non-default member fixture
         env:
-          FIXTURE: ${{ runner.temp }}/cargo-cooldown-transitive-fixture
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-nondefault-fixture
         run: |
           set -euo pipefail
-          mkdir -p "$FIXTURE/src"
-          printf '[package]\nname = "cooldown-transitive-fixture"\nversion = "0.1.0"\nedition = "2024"\n\n[dependencies]\nserde_json = "=1.0.100"\n' > "$FIXTURE/Cargo.toml"
-          printf 'fn main() { println!("{}", serde_json::json!({"ok": true})); }\n' > "$FIXTURE/src/main.rs"
+          mkdir -p "$FIXTURE/safe/src" "$FIXTURE/nondefault/src"
+          printf '[workspace]\nmembers = ["safe", "nondefault"]\ndefault-members = ["safe"]\nresolver = "3"\n' > "$FIXTURE/Cargo.toml"
+          printf '[package]\nname = "safe"\nversion = "0.1.0"\nedition = "2024"\n' > "$FIXTURE/safe/Cargo.toml"
+          printf 'pub fn safe() {}\n' > "$FIXTURE/safe/src/lib.rs"
+          printf '[package]\nname = "nondefault"\nversion = "0.1.0"\nedition = "2024"\n\n[dependencies]\nserde_json = "=1.0.100"\n' > "$FIXTURE/nondefault/Cargo.toml"
+          printf 'pub fn value() -> serde_json::Value { serde_json::json!({"ok": true}) }\n' > "$FIXTURE/nondefault/src/lib.rs"
           printf '[[allow.exact]]\ncrate = "serde_json"\nversion = "1.0.100"\n' > "$FIXTURE/cooldown.toml"
           cargo generate-lockfile --manifest-path "$FIXTURE/Cargo.toml"
           git -C "$FIXTURE" init
-          git -C "$FIXTURE" add Cargo.lock Cargo.toml cooldown.toml src/main.rs
+          git -C "$FIXTURE" add Cargo.lock Cargo.toml cooldown.toml safe nondefault
           git -C "$FIXTURE" -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m fixture
-      - name: Reject a fresh transitive dependency in metadata mode
-        id: cargo-cooldown-transitive
+      - name: Reject a fresh dependency in a non-default member
+        id: cargo-cooldown-nondefault
         continue-on-error: true
         uses: ./actions/cargo-cooldown
         with:
           cooldown-days: 36500
-          working-directory: ${{ runner.temp }}/cargo-cooldown-transitive-fixture
-      - name: Assert fresh transitive dependency was rejected
+          working-directory: ${{ runner.temp }}/cargo-cooldown-nondefault-fixture
+      - name: Assert non-default member dependency was rejected
         if: always()
         env:
-          OUTCOME: ${{ steps.cargo-cooldown-transitive.outcome }}
+          OUTCOME: ${{ steps.cargo-cooldown-nondefault.outcome }}
         run: test "$OUTCOME" = failure
       - name: Smoke test cargo-install (cached binary)
         uses: ./actions/cargo-install
