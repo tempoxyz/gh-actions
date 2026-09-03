@@ -7,6 +7,6 @@
   "readme_url": "https://github.com/CodSpeedHQ/action/blob/f22792bfac16f3e14eb9fbea76f4a48e9cc22b93/README.md",
   "description": "Continuous benchmarking and performance checks",
   "consume_as": "tempoxyz/gh-actions/vendor/CodSpeedHQ/action@<gh-actions-sha>",
-  "files_removed": 16,
+  "files_removed": 15,
   "nested_rewrites": []
 }

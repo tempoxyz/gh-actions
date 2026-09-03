@@ -109,11 +109,10 @@ actions:
       - examples/
       - .prettierrc*
       - CHANGELOG*
-      - .codspeed-runner-installer-hashes.json
       - scripts/
     notes: >-
-      Composite action; loads .codspeed-runner-version from the action directory. excluded:
-      examples/, .prettierrc*, CHANGELOG*, .codspeed-runner-installer-hashes.json, scripts/
+      Composite action; loads .codspeed-runner-installer-hashes.json, .codspeed-runner-version from
+      the action directory. excluded: examples/, .prettierrc*, CHANGELOG*, scripts/
 
   - name: DeterminateSystems/nix-installer-action
     ref: v22
