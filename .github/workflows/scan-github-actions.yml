@@ -179,7 +179,7 @@ jobs:
 
       - name: Scan GitHub Actions
         if: ${{ !cancelled() }}
-        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
         with:
           inputs: ${{ inputs.paths }}
           persona: regular

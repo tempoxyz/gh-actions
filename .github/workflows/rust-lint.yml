@@ -110,7 +110,7 @@ jobs:
           fi
           mold --version
       - name: Enable sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
       - name: Run clippy
         run: |
           # CLIPPY_FLAGS is a space-separated flag list that must word-split.
@@ -196,7 +196,7 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+      - uses: tempoxyz/gh-actions/vendor/EmbarkStudios/cargo-deny-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
         with:
           command: check all
           arguments: ${{ inputs.deny-flags }}
