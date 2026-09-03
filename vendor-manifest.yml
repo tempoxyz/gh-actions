@@ -337,7 +337,11 @@ actions:
       Node action; runs action/dist/main.js, action/dist/post.js. bin kept: named as a path in the
       code excluded: test/, CHANGELOG*, **/*.test.*, **/*.ts, Makefile,
       .release-please-manifest.json, .vagrant/, Vagrantfile, bullfrog.code-workspace, devbox.json,
-      devbox.lock, release-please-config.json, action/scripts/, action/src/
+      devbox.lock, release-please-config.json, action/scripts/, action/src/ Manual: main.js runs
+      action/scripts/download_agent.sh via path.join(actionDirectory, "scripts",
+      "download_agent.sh"), which the literal scan does not see as one path.
+    keep:
+      - action/scripts/
 
   - name: changesets/action
     ref: v2.1.1
@@ -725,15 +729,12 @@ actions:
       - dependency-submission/
       - licenses/
       - wrapper-validation/
-      - sources/
     keep:
       - setup-gradle/
     notes: >-
       Composite action; loads dist, sources from the action directory. sources kept: named as a path
       in the code excluded: docs/, .tool-versions, **/*.d.ts, **/*.test.*, actions.code-workspace,
-      build, dependency-submission/, licenses/, wrapper-validation/ Manual: sources/ is the
-      TypeScript source tree and its lockfile; the action runs the prebuilt dist/ bundles, which
-      only mention the word "sources" in strings.
+      build, dependency-submission/, licenses/, wrapper-validation/
 
   - name: helm/chart-releaser-action
     ref: v1.7.0
