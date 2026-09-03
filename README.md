@@ -247,7 +247,9 @@ jobs:
       github.event.issue.pull_request &&
       (
         startsWith(github.event.comment.body, 'cyclops audit') ||
+        startsWith(github.event.comment.body, 'cyclops private audit') ||
         startsWith(github.event.comment.body, '@decofe cyclops audit') ||
+        startsWith(github.event.comment.body, '@decofe cyclops private audit') ||
         startsWith(github.event.comment.body, 'derek audit')
       )
     runs-on: ubuntu-latest
@@ -259,7 +261,7 @@ jobs:
     steps:
       - uses: tempoxyz/gh-actions/actions/pr-audit-comment@main
         with:
-          command-regex: '^(?:@decofe\s+)?(?:cyclops\s+audit|derek\s+audit)\b'
+          command-regex: '^(?:@decofe\s+)?(?:cyclops\s+(?:private\s+)?audit|derek\s+audit)\b'
           permission-check-mode: association
           allowed-associations: OWNER,MEMBER
           organization: tempoxyz
@@ -271,8 +273,8 @@ jobs:
 
 The comment surface supports:
 
-- comments: `cyclops audit`, `@decofe cyclops audit`, `derek audit`
-- arguments: `fast`, `perf`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `note="..."`
+- comments: `cyclops audit`, `cyclops private audit`, `@decofe cyclops audit`, `derek audit`
+- arguments: `private`, `fast`, `perf`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `note="..."`
 
 Set `permission-check-mode: org` (with `organization`) for org-membership API
 checks. Use `permission-token` when those checks need a token distinct from the

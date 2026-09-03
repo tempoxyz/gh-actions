@@ -4,7 +4,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const usage = [
-  '**Usage:** `cyclops audit [super-fast] [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
+  '**Usage:** `cyclops [private] audit [super-fast] [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
   '[models="anthropic/claude-opus-4-7,openai/gpt-5.5"] [run-label=LABEL] ',
   '[dry-run] [note="per-run audit guidance"]`',
 ].join("");
@@ -24,15 +24,20 @@ function parseArgs(body, commandRegex) {
     models: "",
     "run-label": "",
     "dry-run": "false",
+    private: "false",
     perf: "false",
     note: "",
   };
   const intArgs = new Set(["iterations", "hours"]);
   const stringArgs = new Set(["config", "models", "run-label", "note"]);
-  const boolArgs = new Set(["dry-run", "perf"]);
+  const boolArgs = new Set(["dry-run", "perf", "private"]);
   const unknown = [];
   const invalid = [];
   let superFast = false;
+
+  if (/^(?:@decofe\s+)?cyclops\s+private\s+audit\b/i.test(body)) {
+    defaults.private = "true";
+  }
 
   for (const part of parts) {
     if (part === "super-fast") {
@@ -167,6 +172,7 @@ function buildPayload(context, pr, defaults) {
     actor: context.payload.comment.user.login,
     comment_id: context.payload.comment.id,
     dry_run: defaults["dry-run"] === "true",
+    private: defaults.private === "true",
   };
   if (defaults.config) data.config = defaults.config;
   if (defaults.iterations) data.max_iterations = Number(defaults.iterations);
@@ -192,6 +198,7 @@ function buildSummary(defaults) {
   if (defaults.models) summaryParts.push(`models: \`${defaults.models}\``);
   if (defaults["run-label"]) summaryParts.push(`run-label: \`${defaults["run-label"]}\``);
   if (defaults["dry-run"] === "true") summaryParts.push("dry-run: `true`");
+  if (defaults.private === "true") summaryParts.push("private: `true`");
   if (defaults.perf === "true") summaryParts.push("perf: `true`");
   if (defaults.note) {
     const note = defaults.note.replace(/`/g, "'").slice(0, 160);
@@ -307,16 +314,18 @@ module.exports = async ({ github, context, core, getOctokit }) => {
     core.warning(`Could not add acknowledgement reaction: ${error.message}`);
   }
 
-  try {
-    const { data: comment } = await github.rest.issues.createComment({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: context.issue.number,
-      body: `cc @${actor}\n\nCyclops audit event queued. [View workflow run](${runUrl})\n\n${summary}`,
-    });
-    commentId = comment.id;
-  } catch (error) {
-    core.warning(`Could not create queued audit status comment: ${error.message}`);
+  if (defaults.private !== "true") {
+    try {
+      const { data: comment } = await github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: context.issue.number,
+        body: `cc @${actor}\n\nCyclops audit event queued. [View workflow run](${runUrl})\n\n${summary}`,
+      });
+      commentId = comment.id;
+    } catch (error) {
+      core.warning(`Could not create queued audit status comment: ${error.message}`);
+    }
   }
 
   let publishError;

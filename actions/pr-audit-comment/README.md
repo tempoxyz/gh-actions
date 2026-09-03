@@ -59,7 +59,9 @@ the commenter is an organization member; it does not check the PR author.
 Supported default commands:
 
 - `cyclops audit`
+- `cyclops private audit`
 - `@decofe cyclops audit`
+- `@decofe cyclops private audit`
 - `derek audit`
 
 Supported arguments:
@@ -71,5 +73,6 @@ Supported arguments:
 - `models=...`
 - `run-label=LABEL`
 - `dry-run`
+- `private` (also accepted before `audit`; publishes findings only to Linear and links them from Slack)
 - `perf`
 - `note="..."`
