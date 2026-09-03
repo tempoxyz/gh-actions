@@ -41,7 +41,7 @@ jobs:
           reusable=.github/workflows/scan-github-actions.yml
           composite=actions/scan-github-actions/action.yml
           status=0
-          for tool in 'zizmorcore/zizmor-action' 'docker://rhysd/actionlint'; do
+          for tool in zizmorcore/zizmor-action; do
             r=$(grep -oE "${tool}@[^ ]+" "$reusable" | sort -u || true)
             c=$(grep -oE "${tool}@[^ ]+" "$composite" | sort -u || true)
             if [ -z "$r" ] || [ -z "$c" ]; then
@@ -54,15 +54,19 @@ jobs:
               echo "ok: ${tool} -> $r"
             fi
           done
-          # The standalone actionlint composite must run the same image digest.
-          a=$(grep -oE "docker://rhysd/actionlint@[^ ]+" actions/actionlint/action.yml | sort -u || true)
-          c=$(grep -oE "docker://rhysd/actionlint@[^ ]+" "$composite" | sort -u || true)
-          if [ "$a" != "$c" ]; then
-            echo "::error::actionlint image differs (actionlint='$a' scan-github-actions='$c')"
-            status=1
-          else
-            echo "ok: actions/actionlint -> $a"
-          fi
+          # The three actionlint installers (reusable workflow, scan composite, standalone composite)
+          # must pin the same release and tarball digests.
+          for var in ACTIONLINT_VERSION SHA256; do
+            r=$(grep -oE "${var}=\"[^\"]+\"" "$reusable" | sort -u | tr '\n' ' ')
+            c=$(grep -oE "${var}=\"[^\"]+\"" "$composite" | sort -u | tr '\n' ' ')
+            a=$(grep -oE "${var}=\"[^\"]+\"" actions/actionlint/action.yml | sort -u | tr '\n' ' ')
+            if [ -z "$r" ] || [ "$r" != "$c" ] || [ "$r" != "$a" ]; then
+              echo "::error::actionlint $var differs (reusable='$r' scan-composite='$c' actionlint-composite='$a')"
+              status=1
+            else
+              echo "ok: actionlint $var -> $r"
+            fi
+          done
           exit "$status"
 
       # Guard the reusable workflow wiring that the integration steps below
