@@ -10,6 +10,7 @@ const CRATES_IO_SOURCES = new Set([
   "sparse+https://index.crates.io/",
 ]);
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+const MAX_LOCKFILE_BYTES = 64 * 1024 * 1024;
 const MAX_RETRIES = 3;
 const SPARSE_CACHE_FORMAT = 3;
 const SPARSE_INDEX_FORMAT = 2;
@@ -94,16 +95,123 @@ function parseAllowlist(contents) {
   return result;
 }
 
-function requestIndex(crate, dependencies = {}) {
+function parseCargoLock(contents) {
+  if (Buffer.byteLength(contents) > MAX_LOCKFILE_BYTES) throw new Error("Cargo.lock is too large");
+  const packages = [];
+  let lockfileVersion = null;
+  let record = null;
+  let atTopLevel = true;
+
+  function finishRecord() {
+    if (!record) return;
+    if (!record.name || !record.version) {
+      throw new Error("each Cargo.lock [[package]] entry requires name and version");
+    }
+    packages.push({
+      name: record.name,
+      version: record.version,
+      source: record.source ?? null,
+    });
+    record = null;
+  }
+
+  for (const [index, original] of contents.split(/\r?\n/).entries()) {
+    const lineNumber = index + 1;
+    const line = original.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line === "[[package]]") {
+      finishRecord();
+      record = {};
+      atTopLevel = false;
+      continue;
+    }
+    if (line.startsWith("[[")) {
+      throw new Error(`Cargo.lock line ${lineNumber}: unsupported array table`);
+    }
+    if (line.startsWith("[")) {
+      finishRecord();
+      atTopLevel = false;
+      continue;
+    }
+
+    if (!record) {
+      if (atTopLevel) {
+        const version = line.match(/^version\s*=\s*(\d+)$/);
+        if (version) {
+          if (lockfileVersion !== null) throw new Error(`Cargo.lock line ${lineNumber}: duplicate lockfile version`);
+          lockfileVersion = Number(version[1]);
+        } else if (/^version\s*=/.test(line)) {
+          throw new Error(`Cargo.lock line ${lineNumber}: malformed lockfile version`);
+        }
+      }
+      continue;
+    }
+
+    const assignment = line.match(/^(name|version|source)\s*=\s*"([^"\\]*)"$/);
+    if (assignment) {
+      const [, key, value] = assignment;
+      if (Object.hasOwn(record, key)) throw new Error(`Cargo.lock line ${lineNumber}: duplicate package ${key}`);
+      record[key] = value;
+    } else if (/^(name|version|source)\s*=/.test(line)) {
+      throw new Error(`Cargo.lock line ${lineNumber}: malformed package field`);
+    }
+  }
+  finishRecord();
+
+  if (lockfileVersion !== 3 && lockfileVersion !== 4) {
+    throw new Error(`unsupported Cargo.lock format version ${String(lockfileVersion)}`);
+  }
+  if (packages.length === 0) throw new Error("Cargo.lock contains no package entries");
+  return packages;
+}
+
+function abortError() {
+  const error = new Error("crates.io index request was aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function retryableError(message) {
+  const error = new Error(message);
+  error.retryable = true;
+  return error;
+}
+
+function requestIndexOnce(crate, dependencies) {
   const get = dependencies.get || https.get;
-  const sleep = dependencies.sleep || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const signal = dependencies.signal;
   const url = `https://index.crates.io/${crateIndexPath(crate)}`;
 
   return new Promise((resolve, reject) => {
-    let attempt = 0;
-    const send = () => {
-      attempt += 1;
-      const request = get(url, {
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+
+    let settled = false;
+    let request;
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
+    const succeed = (value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => {
+      const error = abortError();
+      fail(error);
+      request?.destroy(error);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    try {
+      request = get(url, {
         headers: {
           Accept: "text/plain",
           "User-Agent": "tempoxyz-gh-actions-cargo-cooldown",
@@ -112,41 +220,81 @@ function requestIndex(crate, dependencies = {}) {
         const status = response.statusCode || 0;
         if ([408, 425, 429].includes(status) || status >= 500) {
           response.resume();
-          if (attempt <= MAX_RETRIES) {
-            void sleep(500 * 2 ** (attempt - 1)).then(send, reject);
-          } else {
-            reject(new Error(`crates.io index request for ${crate} failed after ${attempt} attempts (HTTP ${status})`));
-          }
+          fail(retryableError(`HTTP ${status}`));
           return;
         }
         if (status !== 200) {
           response.resume();
-          reject(new Error(`crates.io index request for ${crate} returned HTTP ${status}`));
+          fail(new Error(`crates.io index request for ${crate} returned HTTP ${status}`));
           return;
         }
 
         response.setEncoding("utf8");
-        let body = "";
+        const chunks = [];
+        let receivedBytes = 0;
         response.on("data", (chunk) => {
-          body += chunk;
-          if (Buffer.byteLength(body) > MAX_RESPONSE_BYTES) {
-            response.destroy(new Error(`crates.io index response for ${crate} is too large`));
+          receivedBytes += Buffer.byteLength(chunk);
+          if (receivedBytes > MAX_RESPONSE_BYTES) {
+            const error = new Error(`crates.io index response for ${crate} is too large`);
+            fail(error);
+            response.destroy(error);
+            return;
           }
+          chunks.push(chunk);
         });
-        response.on("end", () => resolve(body));
-        response.on("error", reject);
+        response.on("end", () => succeed(chunks.join("")));
+        response.on("aborted", () => fail(retryableError("response was aborted")));
+        response.on("error", (error) => fail(retryableError(error.message)));
       });
-      request.setTimeout(15_000, () => request.destroy(new Error(`crates.io index request for ${crate} timed out`)));
+      request.setTimeout(15_000, () => {
+        const error = retryableError("request timed out");
+        fail(error);
+        request.destroy(error);
+      });
       request.on("error", (error) => {
-        if (attempt <= MAX_RETRIES) {
-          void sleep(500 * 2 ** (attempt - 1)).then(send, reject);
-        } else {
-          reject(new Error(`crates.io index request for ${crate} failed after ${attempt} attempts: ${error.message}`));
-        }
+        if (signal?.aborted || error.name === "AbortError") fail(abortError());
+        else fail(retryableError(error.message));
       });
-    };
-    send();
+    } catch (error) {
+      fail(error);
+    }
   });
+}
+
+async function retryDelay(milliseconds, dependencies) {
+  const signal = dependencies.signal;
+  if (signal?.aborted) throw abortError();
+  if (dependencies.sleep) {
+    await dependencies.sleep(milliseconds);
+    if (signal?.aborted) throw abortError();
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(abortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function requestIndex(crate, dependencies = {}) {
+  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt += 1) {
+    try {
+      return await requestIndexOnce(crate, dependencies);
+    } catch (error) {
+      if (!error.retryable || error.name === "AbortError") throw error;
+      if (attempt > MAX_RETRIES) {
+        throw new Error(`crates.io index request for ${crate} failed after ${attempt} attempts: ${error.message}`);
+      }
+      await retryDelay(500 * 2 ** (attempt - 1), dependencies);
+    }
+  }
+  throw new Error(`crates.io index request for ${crate} exhausted its retry budget`);
 }
 
 function addPublicationEntry(versions, crate, declaredVersion, rawEntry, location) {
@@ -250,15 +398,23 @@ async function readCachedPublicationTimes(crate, requestedVersions, cargoHome) {
   return new Map();
 }
 
-async function mapConcurrent(values, limit, operation) {
+async function mapConcurrent(values, limit, operation, onError = () => {}) {
   const results = new Array(values.length);
   let next = 0;
+  let stopped = false;
   async function worker() {
     for (;;) {
+      if (stopped) return;
       const index = next;
       next += 1;
       if (index >= values.length) return;
-      results[index] = await operation(values[index]);
+      try {
+        results[index] = await operation(values[index]);
+      } catch (error) {
+        stopped = true;
+        onError(error);
+        throw error;
+      }
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, values.length) }, worker));
@@ -279,7 +435,8 @@ async function resolvePublicationTimes(crate, requestedVersions, options, depend
   }
 
   const fetchIndex = dependencies.fetchIndex || requestIndex;
-  const remote = publicationTimes(crate, await fetchIndex(crate), requestedVersions);
+  const body = await fetchIndex(crate, { signal: options.signal });
+  const remote = publicationTimes(crate, body, requestedVersions);
   for (const version of requestedVersions) {
     const rawTime = remote.get(version);
     if (typeof rawTime !== "string") {
@@ -317,9 +474,11 @@ async function checkPackages(packages, options, dependencies = {}) {
     requestedByCrate.get(pkg.name).add(pkg.version);
   }
   const requests = [...requestedByCrate.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const controller = new AbortController();
+  const resolveOptions = { ...options, signal: controller.signal };
   const resolved = await mapConcurrent(requests, 8, ([crate, versions]) => (
-    resolvePublicationTimes(crate, versions, options, dependencies)
-  ));
+    resolvePublicationTimes(crate, versions, resolveOptions, dependencies)
+  ), () => controller.abort());
   const indexes = new Map(resolved.map((entry) => [entry.crate, entry.versions]));
   const violations = [];
 
@@ -372,37 +531,51 @@ function setOutputs(stats, outputPath = process.env.GITHUB_OUTPUT) {
 }
 
 async function main(dependencies = {}) {
-  const rawDays = input("cooldown-days") || "7";
+  const readInput = dependencies.input || input;
+  const rawDays = readInput("cooldown-days") || "7";
   if (!/^[1-9]\d*$/.test(rawDays)) throw new Error("cooldown-days must be a positive whole number");
-  const verboseInput = input("verbose") || "false";
+  const verboseInput = readInput("verbose") || "false";
   if (verboseInput !== "true" && verboseInput !== "false") throw new Error("verbose must be 'true' or 'false'");
 
-  const workingDirectory = path.resolve(input("working-directory") || ".");
-  const runCargo = dependencies.runCargo || ((cwd) => spawnSync(
+  const workingDirectory = path.resolve(readInput("working-directory") || ".");
+  const runCargo = dependencies.runCargo || ((cwd, args, maxBuffer) => spawnSync(
     "cargo",
-    ["metadata", "--locked", "--all-features", "--format-version", "1"],
-    { cwd, encoding: "utf8", maxBuffer: 128 * 1024 * 1024 },
+    args,
+    { cwd, encoding: "utf8", maxBuffer },
   ));
-  const cargo = runCargo(workingDirectory);
-  if (cargo.error) throw new Error(`could not run Cargo: ${cargo.error.message}`);
-  if (cargo.status !== 0) throw new Error(`cargo metadata failed: ${(cargo.stderr || "unknown error").trim()}`);
+  const locate = runCargo(
+    workingDirectory,
+    ["locate-project", "--workspace", "--message-format", "json", "--frozen"],
+    1024 * 1024,
+  );
+  if (locate.error) throw new Error(`could not run Cargo: ${locate.error.message}`);
+  if (locate.status !== 0) throw new Error(`cargo locate-project failed: ${(locate.stderr || "unknown error").trim()}`);
 
-  let metadata;
+  let located;
   try {
-    metadata = JSON.parse(cargo.stdout);
+    located = JSON.parse(locate.stdout);
   } catch {
-    throw new Error("cargo metadata returned invalid JSON");
+    throw new Error("cargo locate-project returned invalid JSON");
   }
-  if (!Array.isArray(metadata.packages) || typeof metadata.workspace_root !== "string") {
-    throw new Error("cargo metadata response is missing packages or workspace_root");
+  if (typeof located.root !== "string" || path.basename(located.root) !== "Cargo.toml") {
+    throw new Error("cargo locate-project response is missing the workspace Cargo.toml path");
   }
 
-  const allowlistPath = path.join(metadata.workspace_root, ".cargo", "cooldown-allowlist.toml");
+  const workspaceRoot = path.dirname(path.resolve(located.root));
+  const lockfilePath = path.join(workspaceRoot, "Cargo.lock");
+  let lockfile;
+  try {
+    lockfile = fs.readFileSync(lockfilePath, "utf8");
+  } catch (error) {
+    throw new Error(`could not read workspace Cargo.lock: ${error.message}`);
+  }
+  const allowlistPath = path.join(workspaceRoot, ".cargo", "cooldown-allowlist.toml");
   const allowlist = fs.existsSync(allowlistPath)
     ? parseAllowlist(fs.readFileSync(allowlistPath, "utf8"))
     : { exact: new Set(), packageDays: new Map() };
-  const { cratesIo: packages, skipped } = classifyPackages(metadata.packages);
+  const { cratesIo: packages, skipped } = classifyPackages(parseCargoLock(lockfile));
   if (skipped > 0) console.log(`Skipped ${skipped} local or Git-sourced package(s).`);
+  console.log("::notice::Cargo cooldown checks Cargo.lock only; every downstream workspace Cargo command must use --locked.");
 
   const result = await checkPackages(packages, {
     allowlist,
@@ -424,7 +597,7 @@ async function main(dependencies = {}) {
 
 if (require.main === module) {
   main().catch((error) => {
-    annotation(`Cargo cooldown could not prove that the dependency graph satisfies policy; failing closed: ${error.message}`);
+    annotation(`Cargo cooldown could not prove that the crates.io versions recorded in Cargo.lock satisfy policy; failing closed: ${error.message}`);
     process.exitCode = 1;
   });
 }
@@ -435,6 +608,7 @@ module.exports = {
   crateIndexPath,
   main,
   parseAllowlist,
+  parseCargoLock,
   publicationTimes,
   readCachedPublicationTimes,
   requestIndex,

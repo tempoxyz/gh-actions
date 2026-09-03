@@ -1,13 +1,18 @@
 const assert = require("node:assert/strict");
-const { readFile } = require("node:fs/promises");
+const { EventEmitter } = require("node:events");
+const { mkdir, mkdtemp, readFile, rm, writeFile } = require("node:fs/promises");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const {
   checkPackages,
   classifyPackages,
   crateIndexPath,
+  main,
   parseAllowlist,
+  parseCargoLock,
   publicationTimes,
+  requestIndex,
   sparseCachePublicationTimes,
 } = require("./main.js");
 
@@ -49,6 +54,39 @@ test("action is first-party Node code with no downloaded executable", async () =
   assert.match(action, /main: "main\.js"/);
   assert.doesNotMatch(action, /NomicFoundation|curl|cargo install/);
   assert.doesNotMatch(main, /require\(["'](?!node:|\.\/)/);
+  assert.match(main, /locate-project/);
+  for (const command of ["metadata", "fetch", "tree", "generate-lockfile"]) {
+    assert.doesNotMatch(main, new RegExp(`["']${command}["']`));
+  }
+  assert.match(main, /::notice::.*downstream workspace Cargo command must use --locked/);
+});
+
+test("main discovers the workspace without running a dependency-resolving Cargo command", async (t) => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "cargo-cooldown-test-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  await mkdir(path.join(workspace, ".cargo"));
+  await writeFile(path.join(workspace, "Cargo.toml"), "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n");
+  await writeFile(path.join(workspace, "Cargo.lock"), "version = 4\n\n[[package]]\nname = \"fixture\"\nversion = \"0.1.0\"\n");
+
+  const calls = [];
+  await main({
+    input: (name) => (name === "working-directory" ? workspace : ""),
+    now: Date.parse("2026-09-03T00:00:00Z"),
+    outputPath: null,
+    runCargo: (cwd, args) => {
+      calls.push({ cwd, args });
+      return {
+        status: 0,
+        stderr: "",
+        stdout: JSON.stringify({ root: path.join(workspace, "Cargo.toml") }),
+      };
+    },
+  });
+
+  assert.deepEqual(calls, [{
+    cwd: workspace,
+    args: ["locate-project", "--workspace", "--message-format", "json", "--frozen"],
+  }]);
 });
 
 test("crate index paths follow the sparse registry layout", () => {
@@ -77,6 +115,40 @@ test("allowlist supports exact exceptions and package-specific days", () => {
 test("malformed allowlists fail closed", () => {
   assert.throws(() => parseAllowlist("[[allow.exact]]\ncrate = \"missing-version\""), /requires crate and version/);
   assert.throws(() => parseAllowlist("[[allow.package]]\ncrate = \"x\"\ndays = soon"), /whole number/);
+});
+
+test("Cargo.lock parser extracts registry, Git, and local package records", () => {
+  const packages = parseCargoLock(`
+    version = 4
+
+    [[package]]
+    name = "workspace"
+    version = "0.1.0"
+
+    [[package]]
+    name = "registry"
+    version = "1.2.3"
+    source = "registry+https://github.com/rust-lang/crates.io-index"
+    checksum = "abc"
+
+    [[package]]
+    name = "git-package"
+    version = "2.3.4"
+    source = "git+https://example.test/repo#revision"
+  `);
+  assert.deepEqual(packages, [
+    { name: "workspace", version: "0.1.0", source: null },
+    { name: "registry", version: "1.2.3", source: "registry+https://github.com/rust-lang/crates.io-index" },
+    { name: "git-package", version: "2.3.4", source: "git+https://example.test/repo#revision" },
+  ]);
+});
+
+test("unsupported and malformed Cargo.lock files fail closed", () => {
+  assert.throws(() => parseCargoLock("version = 2\n"), /unsupported Cargo.lock format/);
+  assert.throws(() => parseCargoLock("version = 4\n[[package]]\nname = \"missing-version\"\n"), /requires name and version/);
+  assert.throws(() => parseCargoLock("version = 4\n[[package]]\nname = 'single-quoted'\nversion = \"1.0.0\"\n"), /malformed package field/);
+  assert.throws(() => parseCargoLock("version = 4\n[[package]]\nname = \"one\"\nname = \"two\"\nversion = \"1.0.0\"\n"), /duplicate package name/);
+  assert.throws(() => parseCargoLock("version = 4\n[[ package ]]\nname = \"hidden\"\nversion = \"1.0.0\"\n"), /unsupported array table/);
 });
 
 test("publication timestamps are read from index JSON lines", () => {
@@ -195,6 +267,88 @@ test("missing, invalid, and unavailable publication evidence fails closed", asyn
   );
 });
 
+test("a failed lookup stops workers from scheduling the rest of the queue", async () => {
+  const packages = Array.from({ length: 50 }, (_, index) => ({
+    name: `crate${String(index).padStart(2, "0")}`,
+    version: "1.0.0",
+  }));
+  let remoteRequests = 0;
+  await assert.rejects(
+    checkPackages(packages, options(), {
+      readCachedPublicationTimes: async () => new Map(),
+      fetchIndex: async (crate, { signal }) => {
+        remoteRequests += 1;
+        if (crate === "crate00") throw new Error("first lookup failed");
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => resolve(remoteEntry(crate, "1.0.0")), 100);
+          const abort = () => {
+            clearTimeout(timeout);
+            reject(new Error("lookup aborted"));
+          };
+          if (signal.aborted) abort();
+          else signal.addEventListener("abort", abort, { once: true });
+        });
+      },
+    }),
+    /first lookup failed/,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(remoteRequests <= 8, `expected at most 8 in-flight requests, got ${remoteRequests}`);
+});
+
+test("a response timeout is retried without rejecting successful later attempts", async () => {
+  let attempts = 0;
+  const body = remoteEntry("retry-demo", "1.0.0");
+  const get = (_url, _requestOptions, callback) => {
+    attempts += 1;
+    const currentAttempt = attempts;
+    const request = new EventEmitter();
+    const response = new EventEmitter();
+    response.statusCode = 200;
+    response.setEncoding = () => {};
+    response.destroy = (error) => response.emit("error", error);
+    request.setTimeout = (_milliseconds, onTimeout) => {
+      if (currentAttempt < 3) setImmediate(onTimeout);
+    };
+    request.destroy = (error) => {
+      request.emit("error", error);
+      response.emit("error", error);
+    };
+    process.nextTick(() => {
+      callback(response);
+      if (currentAttempt === 3) {
+        response.emit("data", body);
+        response.emit("end");
+      }
+    });
+    return request;
+  };
+
+  assert.equal(await requestIndex("retry-demo", { get, sleep: async () => {} }), body);
+  assert.equal(attempts, 3);
+});
+
+test("aborting an index request does not retry it", async () => {
+  let attempts = 0;
+  const controller = new AbortController();
+  const get = () => {
+    attempts += 1;
+    const request = new EventEmitter();
+    request.setTimeout = () => {};
+    request.destroy = (error) => request.emit("error", error);
+    return request;
+  };
+
+  const pending = requestIndex("abort-demo", {
+    get,
+    signal: controller.signal,
+    sleep: async () => {},
+  });
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(attempts, 1);
+});
+
 test("only known crates.io sources, local packages, and Git packages are accepted", () => {
   const cratesIo = { name: "registry", version: "1.0.0", source: "registry+sparse+https://index.crates.io/" };
   const result = classifyPackages([
@@ -222,5 +376,7 @@ test("documentation states cache, scope, seven-day, and fail-closed behavior", a
   assert.match(readme, /does not download or execute a third-party tool/);
   assert.match(readme, /The action fails closed/);
   assert.match(readme, /Cargo's sparse-index cache/);
+  assert.match(readme, /does\s+not download or extract crate archives/);
+  assert.match(readme, /downstream Cargo command.*`--locked`/s);
   assert.match(readme, /does not protect\s+a later `cargo install`/);
 });

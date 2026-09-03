@@ -269,17 +269,28 @@ jobs:
           cargo generate-lockfile --manifest-path "$FIXTURE/Cargo.toml"
       - name: Smoke test cargo-cooldown (first-party implementation)
         id: cargo-cooldown
+        env:
+          # Exercise the cold-cache fallback and prove locate-project does not fetch crate sources.
+          CARGO_HOME: ${{ runner.temp }}/cargo-cooldown-action-home
         uses: ./actions/cargo-cooldown
         with:
           cooldown-days: 7
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
       - name: Assert cargo-cooldown did not modify caller files
         env:
+          CACHE_HITS: ${{ steps.cargo-cooldown.outputs.cache-hits }}
           CHECKED_PACKAGES: ${{ steps.cargo-cooldown.outputs.checked-packages }}
           CONFIG: ${{ runner.temp }}/cargo-cooldown-fixture/.cargo/cooldown-allowlist.toml
+          CARGO_COOLDOWN_HOME: ${{ runner.temp }}/cargo-cooldown-action-home
+          REMOTE_FALLBACKS: ${{ steps.cargo-cooldown.outputs.remote-fallbacks }}
         run: |
           grep -Fx 'version = "1.2.3"' "$CONFIG"
           test "$CHECKED_PACKAGES" -ge 1
+          test "$CACHE_HITS" -eq 0
+          test "$REMOTE_FALLBACKS" -eq 1
+          test ! -d "$CARGO_COOLDOWN_HOME/registry/cache"
+          test ! -d "$CARGO_COOLDOWN_HOME/registry/src"
+          test ! -d "$CARGO_COOLDOWN_HOME/git/checkouts"
       - name: Smoke test cargo-install (cached binary)
         uses: ./actions/cargo-install
         with:
