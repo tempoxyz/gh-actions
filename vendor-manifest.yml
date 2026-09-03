@@ -725,15 +725,12 @@ actions:
       - dependency-submission/
       - licenses/
       - wrapper-validation/
-      - sources/
     keep:
       - setup-gradle/
     notes: >-
       Composite action; loads dist, sources from the action directory. sources kept: named as a path
       in the code excluded: docs/, .tool-versions, **/*.d.ts, **/*.test.*, actions.code-workspace,
-      build, dependency-submission/, licenses/, wrapper-validation/ Manual: sources/ is the
-      TypeScript source tree and its lockfile; the action runs the prebuilt dist/ bundles, which
-      only mention the word "sources" in strings.
+      build, dependency-submission/, licenses/, wrapper-validation/
 
   - name: helm/chart-releaser-action
     ref: v1.7.0

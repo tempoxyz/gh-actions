@@ -1,0 +1,72 @@
+{
+  "name": "gradle-actions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Execute Gradle Build",
+  "scripts": {
+    "prettier-write": "prettier --write 'src/**/*.ts'",
+    "prettier-check": "prettier --check 'src/**/*.ts'",
+    "lint": "eslint 'src/**/*.ts'",
+    "compile-dependency-submission-main": "esbuild src/actions/dependency-submission/main.ts --bundle --platform=node --target=node24 --format=esm --banner:js=\"import {createRequire} from 'module';const require=createRequire(import.meta.url);\" --outfile=dist/dependency-submission/main/index.js --sourcemap --minify",
+    "compile-dependency-submission-post": "esbuild src/actions/dependency-submission/post.ts --bundle --platform=node --target=node24 --format=esm --banner:js=\"import {createRequire} from 'module';const require=createRequire(import.meta.url);\" --outfile=dist/dependency-submission/post/index.js --sourcemap --minify",
+    "compile-setup-gradle-main": "esbuild src/actions/setup-gradle/main.ts --bundle --platform=node --target=node24 --format=esm --banner:js=\"import {createRequire} from 'module';const require=createRequire(import.meta.url);\" --outfile=dist/setup-gradle/main/index.js --sourcemap --minify",
+    "compile-setup-gradle-post": "esbuild src/actions/setup-gradle/post.ts --bundle --platform=node --target=node24 --format=esm --banner:js=\"import {createRequire} from 'module';const require=createRequire(import.meta.url);\" --outfile=dist/setup-gradle/post/index.js --sourcemap --minify",
+    "compile-wrapper-validation-main": "esbuild src/actions/wrapper-validation/main.ts --bundle --platform=node --target=node24 --format=esm --banner:js=\"import {createRequire} from 'module';const require=createRequire(import.meta.url);\" --outfile=dist/wrapper-validation/main/index.js --sourcemap --minify",
+    "compile": "npm-run-all --parallel compile-*",
+    "check": "npm-run-all --parallel prettier-check lint",
+    "format": "npm-run-all --parallel prettier-write lint",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "build": "npm run format && npm run compile",
+    "all": "npm run build && npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gradle/actions.git"
+  },
+  "keywords": [
+    "github",
+    "actions",
+    "github-actions",
+    "gradle"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "@actions/artifact": "6.2.1",
+    "@actions/cache": "6.2.0",
+    "@actions/core": "3.0.1",
+    "@actions/exec": "3.0.0",
+    "@actions/github": "9.1.1",
+    "@actions/glob": "0.7.0",
+    "@actions/http-client": "4.0.1",
+    "@actions/tool-cache": "4.0.0",
+    "@octokit/webhooks-types": "7.6.1",
+    "cheerio": "1.2.0",
+    "semver": "7.8.5",
+    "string-argv": "0.3.2",
+    "unhomoglyph": "1.0.6",
+    "which": "7.0.0"
+  },
+  "devDependencies": {
+    "@jest/globals": "30.4.1",
+    "@types/jest": "30.0.0",
+    "@types/node": "24.13.3",
+    "@types/semver": "7.7.1",
+    "@types/unzipper": "0.10.11",
+    "@types/which": "3.0.4",
+    "@typescript-eslint/eslint-plugin": "8.65.0",
+    "dedent": "1.7.2",
+    "esbuild": "0.28.1",
+    "eslint": "10.8.0",
+    "globals": "17.8.0",
+    "jest": "30.4.2",
+    "nock": "14.0.17",
+    "npm-run-all": "4.1.5",
+    "prettier": "3.9.6",
+    "ts-jest": "29.4.12",
+    "typescript": "6.0.3"
+  }
+}

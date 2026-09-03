@@ -7,6 +7,6 @@
   "readme_url": "https://github.com/gradle/actions/blob/9c971963bec38e04b3d30dcc455b5382be2fdbfb/README.md",
   "description": "A collection of actions for building Gradle projects, as well as generating a dependency graph via Dependency Submission.",
   "consume_as": "tempoxyz/gh-actions/vendor/gradle/actions@<gh-actions-sha>",
-  "files_removed": 204,
+  "files_removed": 146,
   "nested_rewrites": []
 }
