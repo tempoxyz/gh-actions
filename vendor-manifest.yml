@@ -59,13 +59,40 @@ default_exclude:
   - .yamllint*
 actions:
   - name: 1password/install-cli-action
-    ref: v1.0.0
+    ref: v4.1.0
     ref_type: tag
-    sha: 143a85f84a90555d121cde2ff5872e393a47ab9f
+    sha: 1a3160d5e9de1ae0803eaa08a88746f5ae3daa50
     exclude:
+      - src/
       - test/
+      - tsconfig*.json
+      - jest.config.*
+      - eslint.config.*
+      - .prettierignore
+      - package-lock.json
+      - lint-staged.config.*
+      - '**/*.test.*'
     notes: >-
-      Composite action; loads install-cli.sh from the action directory. excluded: test/
+      Node action; runs dist/index.js. scripts kept: named as a path in the code excluded: src/,
+      test/, tsconfig*.json, jest.config.*, eslint.config.*, .prettierignore, package-lock.json,
+      lint-staged.config.*, **/*.test.*
+
+  - name: 1password/load-secrets-action
+    ref: v5.0.1
+    ref_type: tag
+    sha: 70062d7a876d3eb6334754fa26efd2fbd90c32f2
+    exclude:
+      - src/
+      - tests/
+      - docs/
+      - tsconfig*.json
+      - package-lock.json
+      - '**/*.test.*'
+      - configure/
+    notes: >-
+      Node action; runs dist/index.js. config kept: named as a path in the code scripts kept: named
+      as a path in the code excluded: src/, tests/, docs/, tsconfig*.json, package-lock.json,
+      **/*.test.*, configure/
 
   - name: CodSpeedHQ/action
     ref: v4.19.1
@@ -80,6 +107,28 @@ actions:
     notes: >-
       Composite action; loads .codspeed-runner-version from the action directory. excluded:
       examples/, .prettierrc*, CHANGELOG*, .codspeed-runner-installer-hashes.json, scripts/
+
+  - name: DeterminateSystems/nix-installer-action
+    ref: v22
+    ref_type: tag
+    sha: ef8a148080ab6020fd15196c2084a2eea5ff2d25
+    exclude:
+      - src/
+      - tsconfig*.json
+      - .eslintrc*
+      - .prettierrc*
+      - .prettierignore
+      - tsup.config.*
+      - pnpm-lock.yaml
+      - '**/*.d.ts'
+      - '**/*.test.*'
+      - .envrc
+      - flake.lock
+      - flake.nix
+    notes: >-
+      Node action; runs dist/index.js. excluded: src/, tsconfig*.json, .eslintrc*, .prettierrc*,
+      .prettierignore, tsup.config.*, pnpm-lock.yaml, **/*.d.ts, **/*.test.*, .envrc, flake.lock,
+      flake.nix
 
   - name: EmbarkStudios/cargo-deny-action
     ref: v2.1.1
@@ -134,6 +183,23 @@ actions:
     notes: >-
       Node action; runs dist/restore.js, dist/save.js. excluded: src/, tests/, tsconfig*.json,
       rollup.config.*, package-lock.json, CHANGELOG*
+
+  - name: amannn/action-semantic-pull-request
+    ref: v6.1.1
+    ref_type: tag
+    sha: 48f256284bd46cdaab1048c3721360e808335d50
+    exclude:
+      - src/
+      - eslint.config.*
+      - rollup.config.*
+      - pnpm-lock.yaml
+      - CHANGELOG*
+      - .releaserc*
+      - '**/*.test.*'
+      - index.js
+    notes: >-
+      Node action; runs dist/index.js. excluded: src/, eslint.config.*, rollup.config.*,
+      pnpm-lock.yaml, CHANGELOG*, .releaserc*, **/*.test.*, index.js
 
   - name: anchore/sbom-action
     ref: v0.24.0
@@ -241,6 +307,31 @@ actions:
       named as a path in the code scripts kept: named as a path in the code excluded: src/, test/,
       tsconfig*.json, bun.lock, .npmrc, **/*.test.*, **/*.ts, .bun-version, lefthook.yml
 
+  - name: bullfrogsec/bullfrog
+    ref: v0.11.1
+    ref_type: tag
+    sha: 7dee337d4575320b6d8cbe9a56d48d2fb765963a
+    exclude:
+      - test/
+      - CHANGELOG*
+      - '**/*.test.*'
+      - '**/*.ts'
+      - Makefile
+      - .release-please-manifest.json
+      - .vagrant/
+      - Vagrantfile
+      - bullfrog.code-workspace
+      - devbox.json
+      - devbox.lock
+      - release-please-config.json
+      - action/scripts/
+      - action/src/
+    notes: >-
+      Node action; runs action/dist/main.js, action/dist/post.js. bin kept: named as a path in the
+      code excluded: test/, CHANGELOG*, **/*.test.*, **/*.ts, Makefile,
+      .release-please-manifest.json, .vagrant/, Vagrantfile, bullfrog.code-workspace, devbox.json,
+      devbox.lock, release-please-config.json, action/scripts/, action/src/
+
   - name: changesets/action
     ref: v2.1.1
     ref_type: tag
@@ -273,6 +364,35 @@ actions:
     exclude: []
     notes: >-
       Node action; runs dist/index.mjs.
+
+  - name: dblock/create-a-github-issue
+    ref: v3.4.0
+    ref_type: tag
+    sha: a25e69ccb88998dc267170a0dbde8ef8ac3a491c
+    exclude: []
+    notes: >-
+      Node action; runs dist/index.js.
+
+  - name: dependabot/fetch-metadata
+    ref: v3.1.0
+    ref_type: tag
+    sha: 25dd0e34f4fe68f24cc83900b1fe3fe149efef98
+    exclude:
+      - src/
+      - tsconfig*.json
+      - jest.config.*
+      - eslint.config.*
+      - package-lock.json
+      - .npmrc
+      - .nvmrc
+      - '**/*.test.*'
+      - .env.example
+      - bin/
+      - jest-resolver.js
+    notes: >-
+      Node action; runs dist/index.js. excluded: src/, tsconfig*.json, jest.config.*,
+      eslint.config.*, package-lock.json, .npmrc, .nvmrc, **/*.test.*, .env.example, bin/,
+      jest-resolver.js
 
   - name: depot/bake-action
     ref: v1.13.0
@@ -457,6 +577,30 @@ actions:
       vitest.config.*, eslint.config.*, .prettierrc*, .prettierignore, yarn.lock, .yarnrc*,
       .dockerignore, codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
 
+  - name: docker/setup-qemu-action
+    ref: v4.2.0
+    ref_type: tag
+    sha: 96fe6ef7f33517b61c61be40b68a1882f3264fb8
+    exclude:
+      - src/
+      - __tests__/
+      - tsconfig*.json
+      - vitest.config.*
+      - eslint.config.*
+      - .prettierrc*
+      - .prettierignore
+      - yarn.lock
+      - .yarnrc*
+      - .dockerignore
+      - codecov.yml
+      - '**/*.test.*'
+      - '*.Dockerfile'
+      - docker-bake.hcl
+    notes: >-
+      Node action; runs dist/index.cjs. excluded: src/, __tests__/, tsconfig*.json, vitest.config.*,
+      eslint.config.*, .prettierrc*, .prettierignore, yarn.lock, .yarnrc*, .dockerignore,
+      codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
+
   - name: dtolnay/rust-toolchain
     ref: stable
     ref_type: branch
@@ -560,6 +704,23 @@ actions:
       jest.config.*, .eslintrc*, .eslintignore, .prettierrc*, .prettierignore, package-lock.json,
       .node-version, .dockerignore, **/*.test.*
 
+  - name: gradle/actions
+    ref: v4.4.3
+    ref_type: tag
+    sha: ed408507eac070d1f99cc633dbcf757c94c7933a
+    exclude:
+      - docs/
+      - '**/*.test.*'
+      - actions.code-workspace
+      - dependency-submission/
+      - wrapper-validation/
+    keep:
+      - setup-gradle/
+    notes: >-
+      Composite action; loads build, dist, sources from the action directory. build kept: named as a
+      path in the code excluded: docs/, **/*.test.*, actions.code-workspace, dependency-submission/,
+      wrapper-validation/
+
   - name: helm/chart-releaser-action
     ref: v1.7.0
     ref_type: tag
@@ -607,6 +768,21 @@ actions:
       Node action; runs dist/index.js. excluded: src/, tsconfig*.json, vitest.config.*,
       eslint.config.*, pnpm-lock.yaml, .nvmrc, **/*.test.*, .ncurc.cjs, build.mjs, dprint.json,
       smoke-test/
+
+  - name: jaxxstorm/action-install-gh-release
+    ref: v3.0.0
+    ref_type: tag
+    sha: 25e24d2d23ae098373794ef1d6faecb48ee52da8
+    exclude:
+      - src/
+      - tsconfig*.json
+      - eslint.config.*
+      - package-lock.json
+      - Makefile
+      - dist/
+    notes: >-
+      Node action; runs lib/index.js. excluded: src/, tsconfig*.json, eslint.config.*,
+      package-lock.json, Makefile, dist/ kept although usually excludable: lib/ (referenced)
 
   - name: jayanta525/github-pages-directory-listing
     ref: v4.0.0
@@ -660,6 +836,15 @@ actions:
     notes: >-
       Node action; runs dist/setup/index.js, dist/show_stats/index.js. excluded: src/,
       tsconfig*.json, .eslintrc*, .prettierrc*, package-lock.json
+
+  - name: openai/codex-action
+    ref: v1.12
+    ref_type: tag
+    sha: 86365089eb2b84e0a8fb0717b304f8bdcb13b20e
+    exclude: []
+    notes: >-
+      whole repository kept (apart from repo-wide defaults): action.yml uses the action directory
+      itself (working directory, module path or similar)
 
   - name: oven-sh/setup-bun
     ref: v2.2.0
@@ -739,6 +924,37 @@ actions:
       Node action; runs dist/index.js. excluded: src/, tsconfig*.json, pnpm-lock.yaml,
       pnpm-workspace.yaml, run.sh, scripts/
 
+  - name: ruby/setup-ruby
+    ref: v1.321.0
+    ref_type: tag
+    sha: 95ef2b042f9d7a56d8268cba8559e2842e2ad01b
+    exclude:
+      - yarn.lock
+      - Rakefile
+      - bundler.js
+      - common.js
+      - gemfiles/
+      - generate-test-matrix.rb
+      - generate-windows-versions.rb
+      - new-versions.rb
+      - pre-commit
+      - release.rb
+      - ruby-builder-versions.json
+      - ruby-builder.js
+      - rubygems.js
+      - test_subprocess.rb
+      - versions-strings-for-builder.rb
+      - windows-toolchain-versions.json
+      - windows-versions.json
+      - windows.js
+    notes: >-
+      Node action; runs dist/index.js. Gemfile kept: named as a path in the code index.js kept:
+      named as a path in the code excluded: yarn.lock, Rakefile, bundler.js, common.js, gemfiles/,
+      generate-test-matrix.rb, generate-windows-versions.rb, new-versions.rb, pre-commit,
+      release.rb, ruby-builder-versions.json, ruby-builder.js, rubygems.js, test_subprocess.rb,
+      versions-strings-for-builder.rb, windows-toolchain-versions.json, windows-versions.json,
+      windows.js
+
   - name: rust-lang/crates-io-auth-action
     ref: v1.0.5
     ref_type: tag
@@ -782,9 +998,9 @@ actions:
       version the org uses directly.
 
   - name: taiki-e/install-action
-    ref: releases/cargo-udeps
-    ref_type: commit
-    sha: 52fa4b339a202e373b2179c5278f8161d5f8e9cc
+    ref: v2.85.2
+    ref_type: tag
+    sha: 41049aa56687c35e0afa74eed4f09cec4f9afabf
     exclude: []
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yml uses the action directory

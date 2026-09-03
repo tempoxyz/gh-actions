@@ -1,0 +1,60 @@
+name: Bullfrog Secure Runner
+description: "Block unauthorized outbound traffic (egress) in your Github workflows"
+
+inputs:
+  allowed-ips:
+    description: "List of allowed IP addresses for outbound connections."
+
+  allowed-domains:
+    description: "List of allowed domains for outbound connections."
+
+  api-token:
+    description: "API token for submitting connection results to the Bullfrog control plane. If not provided, results will not be published."
+
+  collect-process-info:
+    description: "Enable this option to collect process information (PID, process name, command line) for network connections. Options: 'true' (default) or 'false'."
+    type: boolean
+    default: true
+
+  dns-policy:
+    description: "DNS policy to enforce when egress-policy is set to 'block'. Options: 'allowed-domains-only' (default) or 'any'."
+    default: "allowed-domains-only"
+
+  egress-policy:
+    description: "The egress policy to enforce. Options: 'audit' (default) or 'block'."
+    type: string
+    default: "audit"
+
+  enable-sudo:
+    description: "Enable this option to allow steps to execute commands with sudo. Options: 'true' (default) or 'false'."
+    type: boolean
+    default: true
+
+  _control-plane-api-base-url:
+    description: "(Internal) Base URL for the Bullfrog control plane API. This is useful for testing changes in a fork."
+    type: string
+    default: "https://api.bullfrogsec.com/"
+
+  _control-plane-webapp-base-url:
+    description: "(Internal) Base URL for the Bullfrog control plane webapp. This is useful for testing changes in a fork."
+    type: string
+    default: "https://app.bullfrogsec.com/"
+
+  _log-directory:
+    description: "(Internal) Directory to store log files."
+    type: string
+    default: ${{ runner.temp }}/agent-logs
+
+  _dry-run-print-config:
+    description: "(Internal) Resolve inputs and the control-plane policy override, print the resulting configuration as JSON, then exit before installing or starting the agent. Used by the e2e test harness."
+    type: boolean
+    default: false
+
+runs:
+  using: "node24"
+  main: "action/dist/main.js"
+  post: "action/dist/post.js"
+
+branding:
+  icon: "shield"
+  color: "green"

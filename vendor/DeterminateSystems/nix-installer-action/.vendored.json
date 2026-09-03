@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/DeterminateSystems/nix-installer-action",
+  "ref": "v22",
+  "ref_type": "tag",
+  "sha": "ef8a148080ab6020fd15196c2084a2eea5ff2d25",
+  "upstream_commit_date": "2026-03-25T14:12:51Z",
+  "readme_url": "https://github.com/DeterminateSystems/nix-installer-action/blob/ef8a148080ab6020fd15196c2084a2eea5ff2d25/README.md",
+  "description": "Install Nix with the Determinate Nix Installer. See: https://github.com/DeterminateSystems/nix-installer",
+  "consume_as": "tempoxyz/gh-actions/vendor/DeterminateSystems/nix-installer-action@<gh-actions-sha>",
+  "files_removed": 28,
+  "nested_rewrites": []
+}

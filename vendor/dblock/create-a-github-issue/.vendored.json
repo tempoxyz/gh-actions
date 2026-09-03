@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/dblock/create-a-github-issue",
+  "ref": "v3.4.0",
+  "ref_type": "tag",
+  "sha": "a25e69ccb88998dc267170a0dbde8ef8ac3a491c",
+  "upstream_commit_date": "2026-03-28T14:29:53Z",
+  "readme_url": "https://github.com/dblock/create-a-github-issue",
+  "description": "Creates a new GitHub issue using a template.",
+  "consume_as": "tempoxyz/gh-actions/vendor/dblock/create-a-github-issue@<gh-actions-sha>",
+  "files_removed": 0,
+  "nested_rewrites": []
+}

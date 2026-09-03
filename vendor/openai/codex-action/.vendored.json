@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/openai/codex-action",
+  "ref": "v1.12",
+  "ref_type": "tag",
+  "sha": "86365089eb2b84e0a8fb0717b304f8bdcb13b20e",
+  "upstream_commit_date": "2026-08-20T16:38:51-07:00",
+  "readme_url": "https://github.com/openai/codex-action/blob/86365089eb2b84e0a8fb0717b304f8bdcb13b20e/README.md",
+  "description": "Run `codex exec` with a prompt.",
+  "consume_as": "tempoxyz/gh-actions/vendor/openai/codex-action@<gh-actions-sha>",
+  "files_removed": 7,
+  "nested_rewrites": []
+}
