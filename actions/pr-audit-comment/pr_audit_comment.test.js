@@ -18,6 +18,18 @@ test("super-fast selects the five-minute config and one iteration", () => {
   assert.equal(defaults.iterations, "1");
 });
 
+test("private composes with fast and note arguments", () => {
+  const { defaults, errors } = handle.parseArgs(
+    "cyclops private audit fast note='focus on authorization'",
+    "^cyclops\\s+(?:private\\s+)?audit\\b",
+  );
+
+  assert.deepEqual(errors, []);
+  assert.equal(defaults.private, "true");
+  assert.equal(defaults.iterations, "1");
+  assert.equal(defaults.note, "focus on authorization");
+});
+
 function makePr({
   authorAssociation = "MEMBER",
   authorId = 2,
@@ -185,7 +197,7 @@ async function runScenario({
   updateComment,
 }) {
   const restoreEnvironment = setEnvironment({
-    COMMAND_REGEX: "^cyclops\\s+audit\\b",
+    COMMAND_REGEX: "^cyclops\\s+(?:private\\s+)?audit\\b",
     PERMISSION_CHECK_MODE: mode,
     ALLOWED_ASSOCIATIONS: allowedAssociations,
     ALLOW_SAME_AUTHOR: allowSameAuthor,
@@ -551,6 +563,39 @@ test("comment publisher preserves quoted arguments and isolates parser and curl"
     assert.equal(fs.existsSync(shellMarker), false);
   } finally {
     process.chdir(previousCwd);
+    restoreEnvironment();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("private audit publishes the flag without creating a GitHub status comment", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-private-"));
+  const harness = makeProcessHarness(tmp);
+  const restoreEnvironment = setEnvironment({
+    PATH: `${harness.bin}:${process.env.PATH}`,
+    EVENTS_ARGS: "--url https://events.example",
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+  });
+
+  try {
+    const result = await runScenario({
+      mode: "association",
+      body: "cyclops private audit fast note='focus here'",
+    });
+
+    assert.deepEqual(result.core.failures, []);
+    assert.equal(result.primary.calls.comments.length, 0);
+    assert.equal(result.primary.calls.commentUpdates.length, 0);
+    assert.equal(result.primary.calls.reactions.length, 1);
+    const payload = JSON.parse(fs.readFileSync(harness.files.payload));
+    assert.equal(payload.data.private, true);
+    assert.equal(payload.data.max_iterations, 1);
+    assert.equal(
+      Buffer.from(payload.data.audit_note_b64, "base64").toString("utf8"),
+      "focus here",
+    );
+  } finally {
     restoreEnvironment();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
