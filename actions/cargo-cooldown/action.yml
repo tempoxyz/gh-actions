@@ -1,9 +1,9 @@
 name: "Cargo cooldown"
-description: "Fail when crates.io dependencies in Cargo.lock are newer than the configured cooldown"
+description: "Reject Cargo dependency graphs containing releases newer than the configured cooldown"
 
 inputs:
   cooldown-days:
-    description: "Minimum whole days a crates.io release must have been published"
+    description: "Minimum whole days a registry release must have been published"
     required: false
     default: "7"
   working-directory:
@@ -11,20 +11,37 @@ inputs:
     required: false
     default: "."
   verbose:
-    description: "Enable verbose cooldown output"
+    description: "Enable verbose cargo-cooldown output"
     required: false
     default: "false"
 
-outputs:
-  checked-packages:
-    description: "Number of crates.io package versions checked"
-  cache-hits:
-    description: "Number of unique crate lookups served by Cargo's sparse-index cache"
-  remote-fallbacks:
-    description: "Number of unique crate lookups fetched from index.crates.io"
-  exemptions:
-    description: "Number of package versions exempted before index lookup"
-
 runs:
-  using: "node24"
-  main: "main.js"
+  using: "composite"
+  steps:
+    - name: Install cargo-cooldown
+      uses: tempoxyz/gh-actions/vendor/taiki-e/install-action@056cebd0e8a3c19bfd7b221e0af505c3cf6e72d3
+      with:
+        tool: cargo-cooldown@0.3.4
+
+    - name: Check dependency cooldown
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        COOLDOWN_DAYS: ${{ inputs.cooldown-days }}
+        COOLDOWN_INCOMPATIBLE_PUBLISH_AGE: deny
+        COOLDOWN_LOCKFILE_BASELINE: ignore
+        COOLDOWN_VERBOSE: ${{ inputs.verbose }}
+      run: |
+        set -euo pipefail
+        if [[ ! "$COOLDOWN_DAYS" =~ ^[1-9][0-9]*$ ]]; then
+          echo "::error::cooldown-days must be a positive whole number"
+          exit 1
+        fi
+        if [[ ! -f Cargo.lock ]] || ! git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
+          echo "::error::Cargo.lock must exist and be committed"
+          exit 1
+        fi
+
+        export CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE="${COOLDOWN_DAYS} days"
+        cargo cooldown --workspace --all-features check
+        git diff --exit-code -- Cargo.lock
