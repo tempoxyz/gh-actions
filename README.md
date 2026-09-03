@@ -39,6 +39,7 @@ wall-clock cost.
 | Helm | `setup-helm` | GPG signature per archive by a maintainer in Helm's `KEYS` file | `gpg --verify` against the pinned `KEYS` keyring |
 | typos | `typos`, `rust-lint` | GitHub release attestation (immutable release) | `gh release verify-asset` |
 | mold | `setup-mold`, `setup-rust-build`, `rust-build-binaries`, `rust-lint` | none published | tarball SHA-256 pinned in the step |
+| actionlint | `actionlint`, `scan-github-actions`, `scan-github-actions.yml` | release tarball digests pinned in the installer (rhysd/actionlint publishes checksums but no attestations) |
 | cosign | `cosign-sign` (via `sigstore/cosign-installer`) | checksum embedded in the pinned action | verified by the action |
 | sccache | `setup-rust-build`, `rust-build-binaries` (via `mozilla-actions/sccache-action`) | `.sha256` from the same release only | verified by the action |
 | zizmor | `scan-github-actions` (via `zizmorcore/zizmor-action`) | container image digest embedded in the pinned action | verified by the action |
