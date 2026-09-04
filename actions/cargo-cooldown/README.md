@@ -95,14 +95,11 @@ jobs:
         uses: tempoxyz/gh-actions/actions/cargo-cooldown@<full-commit-sha>
         with:
           strict-project-config: true
-      - name: Use the same verified binary later
-        env:
-          VERIFIER: ${{ steps.cargo-cooldown.outputs.verifier-path }}
-          EXPECTED_SHA256: ${{ steps.cargo-cooldown.outputs.verifier-sha256 }}
-        run: |
-          echo "$EXPECTED_SHA256  $VERIFIER" | sha256sum --check --strict
-          "$VERIFIER" cooldown --workspace --all-features tree --locked --depth 0
 ```
+
+Invoke the action again with another `working-directory` to validate a second workspace. The
+verifier outputs identify the installed binary, but do not carry the action's policy environment,
+configuration checks, or lockfile restoration into later steps.
 
 In `verify` (default) mode, `cargo-cooldown` selects every workspace member, validates its complete
 dependency graph without compiling it, then forwards a depth-zero `cargo tree --locked` command.

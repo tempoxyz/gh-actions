@@ -81,6 +81,8 @@ test("documentation covers project configuration and lockfile behavior", async (
   assert.match(readme, /complete `\[\[allow\.exact\]\]` blocks/);
   assert.match(readme, /restores the original lockfile/);
   assert.match(readme, /rather than job environment exports/);
+  assert.match(readme, /Invoke the action again with another `working-directory`/);
+  assert.match(readme, /do not carry the action's policy environment/);
   assert.match(readme, /`verify` \(default\)/);
   assert.match(readme, /`check`/);
   assert.match(readme, /does not protect a later `cargo install`/);
