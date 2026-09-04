@@ -253,6 +253,8 @@ jobs:
       # identifiers that typos flags, and adopting typos repo-wide is a separate decision.
       - name: Smoke test actionlint (digest-pinned image) on this repository's workflows
         uses: ./actions/actionlint
+      - name: Shellcheck cargo-cooldown script
+        run: shellcheck actions/cargo-cooldown/check.sh
       - name: Smoke test typos (release attestation) on the first-party action sources
         uses: ./actions/typos
         with:
@@ -271,21 +273,74 @@ jobs:
           git -C "$FIXTURE" add Cargo.lock Cargo.toml cooldown.toml src/main.rs
           git -C "$FIXTURE" -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m fixture
       - name: Smoke test cargo-cooldown
+        id: cargo-cooldown
+        env:
+          COOLDOWN_CACHE_DIR: ${{ runner.temp }}/cargo-cooldown-fixture/Cargo.toml
+          CARGO_REGISTRIES_CRATES_IO_MIN_PUBLISH_AGE: invalid
+          CARGO_REGISTRY_MIN_PUBLISH_AGE: invalid
+          COOLDOWN_FALLBACK_ACCEPT: invalid
+          COOLDOWN_NOW: invalid
+          COOLDOWN_SKIP_REGISTRIES: "["
+          COOLDOWN_TTL_SECONDS: invalid
         uses: ./actions/cargo-cooldown
         with:
           cooldown-days: 7
+          strict-project-config: true
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Assert cargo-cooldown verifier outputs
+        env:
+          VERIFIER_PATH: ${{ steps.cargo-cooldown.outputs.verifier-path }}
+          VERIFIER_SHA256: ${{ steps.cargo-cooldown.outputs.verifier-sha256 }}
+        run: |
+          set -euo pipefail
+          test -x "$VERIFIER_PATH"
+          echo "$VERIFIER_SHA256  $VERIFIER_PATH" | sha256sum --check --strict
       - name: Assert cargo-cooldown did not modify caller files
         env:
           FIXTURE: ${{ runner.temp }}/cargo-cooldown-fixture
         run: |
           git -C "$FIXTURE" diff --exit-code HEAD -- Cargo.lock Cargo.toml cooldown.toml src/main.rs
+      - name: Create untrusted user cargo-cooldown policy
+        env:
+          USER_CARGO_HOME: ${{ runner.temp }}/cargo-cooldown-user-home
+        run: |
+          mkdir -p "$USER_CARGO_HOME"
+          printf '[registry]\nglobal-min-publish-age = "0"\n' > "$USER_CARGO_HOME/cooldown.toml"
+      - name: Reject untrusted user cargo-cooldown policy
+        id: cargo-cooldown-user-policy
+        continue-on-error: true
+        env:
+          CARGO_HOME: ${{ runner.temp }}/cargo-cooldown-user-home
+        uses: ./actions/cargo-cooldown
+        with:
+          working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Assert untrusted user policy was rejected
+        if: always()
+        env:
+          OUTCOME: ${{ steps.cargo-cooldown-user-policy.outcome }}
+        run: test "$OUTCOME" = failure
       - name: Smoke test cargo-cooldown check mode
         uses: ./actions/cargo-cooldown
         with:
           cooldown-days: 7
           mode: check
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Make strict cargo-cooldown policy dirty
+        env:
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-fixture
+        run: printf '\n# uncommitted exception policy\n' >> "$FIXTURE/cooldown.toml"
+      - name: Reject dirty strict cargo-cooldown policy
+        id: cargo-cooldown-dirty-policy
+        continue-on-error: true
+        uses: ./actions/cargo-cooldown
+        with:
+          strict-project-config: true
+          working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Assert dirty strict policy was rejected
+        if: always()
+        env:
+          OUTCOME: ${{ steps.cargo-cooldown-dirty-policy.outcome }}
+        run: test "$OUTCOME" = failure
       - name: Create cargo-cooldown non-default member fixture
         env:
           FIXTURE: ${{ runner.temp }}/cargo-cooldown-nondefault-fixture
@@ -314,6 +369,37 @@ jobs:
         env:
           OUTCOME: ${{ steps.cargo-cooldown-nondefault.outcome }}
         run: test "$OUTCOME" = failure
+      - name: Create cargo-cooldown downgrade fixture
+        env:
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-downgrade-fixture
+        run: |
+          set -euo pipefail
+          mkdir -p "$FIXTURE/src"
+          printf '[package]\nname = "cooldown-downgrade-fixture"\nversion = "0.1.0"\nedition = "2024"\n\n[dependencies]\nitoa = "1"\n' > "$FIXTURE/Cargo.toml"
+          printf 'fn main() { let mut buffer = itoa::Buffer::new(); println!("{}", buffer.format(42)); }\n' > "$FIXTURE/src/main.rs"
+          printf 'now = "2024-01-01T00:00:00Z"\n' > "$FIXTURE/cooldown.toml"
+          cargo generate-lockfile --manifest-path "$FIXTURE/Cargo.toml"
+          git -C "$FIXTURE" init
+          git -C "$FIXTURE" add Cargo.lock Cargo.toml cooldown.toml src/main.rs
+          git -C "$FIXTURE" -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m fixture
+          sha256sum "$FIXTURE/Cargo.lock" | cut -d ' ' -f 1 > "$FIXTURE/Cargo.lock.sha256"
+      - name: Reject and restore a safe dependency downgrade
+        id: cargo-cooldown-downgrade
+        continue-on-error: true
+        uses: ./actions/cargo-cooldown
+        with:
+          cooldown-days: 7
+          working-directory: ${{ runner.temp }}/cargo-cooldown-downgrade-fixture
+      - name: Assert failed downgrade left Cargo.lock unchanged
+        if: always()
+        env:
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-downgrade-fixture
+          OUTCOME: ${{ steps.cargo-cooldown-downgrade.outcome }}
+        run: |
+          set -euo pipefail
+          test "$OUTCOME" = failure
+          test "$(cat "$FIXTURE/Cargo.lock.sha256")" = "$(sha256sum "$FIXTURE/Cargo.lock" | cut -d ' ' -f 1)"
+          git -C "$FIXTURE" diff --exit-code HEAD -- Cargo.lock
       - name: Smoke test cargo-install (cached binary)
         uses: ./actions/cargo-install
         with:
@@ -358,3 +444,54 @@ jobs:
           [[ "$STABLE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::stable resolved to '$STABLE'"; exit 1; }
           [[ "$NIGHTLY" =~ ^nightly-[0-9a-f]{40}$ ]] || { echo "::error::nightly resolved to '$NIGHTLY'"; exit 1; }
           echo "stable=$STABLE nightly=$NIGHTLY"
+
+  cargo-cooldown-windows:
+    name: cargo-cooldown-windows
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: ./vendor/dtolnay/rust-toolchain
+      - name: Create Windows cargo-cooldown fixture and user policy
+        shell: pwsh
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP "cargo-cooldown-windows-fixture"
+          $userCargoHome = Join-Path $env:RUNNER_TEMP "cargo-cooldown-windows-home"
+          New-Item -ItemType Directory -Force (Join-Path $fixture "src"), $userCargoHome | Out-Null
+          Set-Content -Path (Join-Path $fixture "Cargo.toml") -Value @'
+          [package]
+          name = "cargo-cooldown-windows-fixture"
+          version = "0.1.0"
+          edition = "2024"
+          '@
+          Set-Content -Path (Join-Path $fixture "src/main.rs") -Value 'fn main() {}'
+          Set-Content -Path (Join-Path $userCargoHome "cooldown.toml") -Value @'
+          [registry]
+          global-min-publish-age = "0"
+          '@
+          cargo generate-lockfile --manifest-path (Join-Path $fixture "Cargo.toml")
+          git -C $fixture init
+          git -C $fixture add Cargo.lock Cargo.toml src/main.rs
+          git -C $fixture -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m "test: add fixture"
+      - name: Reject native Windows user cargo-cooldown policy
+        id: cargo-cooldown-windows-user-policy
+        continue-on-error: true
+        env:
+          CARGO_HOME: ${{ runner.temp }}\cargo-cooldown-windows-home
+        uses: ./actions/cargo-cooldown
+        with:
+          working-directory: ${{ runner.temp }}\cargo-cooldown-windows-fixture
+      - name: Assert native Windows user policy was rejected
+        if: always()
+        shell: pwsh
+        env:
+          OUTCOME: ${{ steps.cargo-cooldown-windows-user-policy.outcome }}
+        run: |
+          if ($env:OUTCOME -ne "failure") {
+            Write-Error "Native Windows CARGO_HOME policy was not rejected (outcome=$env:OUTCOME)"
+          }
