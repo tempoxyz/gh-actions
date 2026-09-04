@@ -6,11 +6,14 @@ const path = require("node:path");
 const test = require("node:test");
 
 const actionPath = path.join(__dirname, "action.yml");
+const checkScriptPath = path.join(__dirname, "check.sh");
 const readmePath = path.join(__dirname, "README.md");
-const strictConfigValidatorPath = path.join(__dirname, "validate-strict-config.awk");
 
 test("action installs a pinned cargo-cooldown and runs it fail closed", async () => {
-  const action = await readFile(actionPath, "utf8");
+  const [action, checkScript] = await Promise.all([
+    readFile(actionPath, "utf8"),
+    readFile(checkScriptPath, "utf8"),
+  ]);
 
   assert.match(action, /using: "composite"/);
   assert.match(action, /CARGO_COOLDOWN_VERSION: "0\.3\.4"/);
@@ -36,31 +39,35 @@ test("action installs a pinned cargo-cooldown and runs it fail closed", async ()
   assert.match(action, /id: install-windows/);
   assert.match(action, /GITHUB_OUTPUT/);
   assert.doesNotMatch(action, /GITHUB_ENV/);
-  assert.match(action, /cargo-cooldown verifier checksum mismatch/);
-  assert.match(action, /cargo-cooldown requires cygpath on Windows/);
-  assert.match(action, /USER_CARGO_HOME="\$\(cygpath -u "\$USER_CARGO_HOME"\)"/);
-  assert.match(action, /CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE/);
+  assert.match(action, /CHECK_SCRIPT="\$ACTION_PATH\/check\.sh"/);
+  assert.match(action, /exec bash "\$CHECK_SCRIPT"/);
+  assert.doesNotMatch(action, /validate-strict-config\.awk/);
+  assert.match(checkScript, /cargo-cooldown verifier checksum mismatch/);
+  assert.match(checkScript, /cargo-cooldown requires cygpath on Windows/);
+  assert.match(checkScript, /user_cargo_home="\$\(cygpath -u "\$user_cargo_home"\)"/);
+  assert.match(checkScript, /CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE/);
   assert.match(action, /COOLDOWN_INCOMPATIBLE_PUBLISH_AGE: deny/);
   assert.match(action, /COOLDOWN_LOCKFILE_BASELINE: ignore/);
   assert.match(action, /default: "verify"/);
-  assert.match(action, /mode must be 'verify' or 'check'/);
-  assert.match(action, /git diff --quiet HEAD -- Cargo\.lock/);
+  assert.match(checkScript, /mode must be 'verify' or 'check'/);
+  assert.match(checkScript, /git diff --quiet HEAD -- Cargo\.lock/);
   assert.match(action, /allow-user-policy/);
   assert.match(action, /strict-project-config/);
-  assert.match(action, /cooldown\.toml must be tracked in strict project config mode/);
-  assert.match(action, /git diff --quiet HEAD -- cooldown\.toml/);
-  assert.match(action, /validate-strict-config\.awk/);
-  assert.match(action, /user cargo-cooldown policy is not allowed/);
-  assert.match(action, /unset COOLDOWN_CACHE_DIR COOLDOWN_FALLBACK_ACCEPT COOLDOWN_NOW/);
-  assert.match(action, /COOLDOWN_SKIP_REGISTRIES COOLDOWN_TTL_SECONDS/);
-  assert.match(action, /CARGO_REGISTRIES_\*_MIN_PUBLISH_AGE/);
-  assert.match(action, /trap restore_lockfile EXIT/);
-  assert.match(action, /cp -p Cargo\.lock "\$LOCKFILE_SNAPSHOT"/);
-  assert.ok(action.includes('"$VERIFIER_EXEC" cooldown --workspace --all-features tree'));
-  assert.ok(action.includes('"$VERIFIER_EXEC" cooldown --workspace --all-features check --locked'));
-  assert.doesNotMatch(action, /^\s*cargo cooldown /m);
-  assert.match(action, /git diff --exit-code HEAD -- Cargo\.lock/);
+  assert.match(checkScript, /cooldown\.toml must be tracked in strict project config mode/);
+  assert.match(checkScript, /git diff --quiet HEAD -- cooldown\.toml/);
+  assert.match(checkScript, /validate_strict_config cooldown\.toml/);
+  assert.match(checkScript, /user cargo-cooldown policy is not allowed/);
+  assert.match(checkScript, /unset COOLDOWN_CACHE_DIR COOLDOWN_FALLBACK_ACCEPT COOLDOWN_NOW/);
+  assert.match(checkScript, /COOLDOWN_SKIP_REGISTRIES COOLDOWN_TTL_SECONDS/);
+  assert.match(checkScript, /CARGO_REGISTRIES_\*_MIN_PUBLISH_AGE/);
+  assert.match(checkScript, /trap restore_lockfile EXIT/);
+  assert.match(checkScript, /cp -p Cargo\.lock "\$LOCKFILE_SNAPSHOT"/);
+  assert.ok(checkScript.includes('"$verifier_exec" cooldown --workspace --all-features tree'));
+  assert.ok(checkScript.includes('"$verifier_exec" cooldown --workspace --all-features check --locked'));
+  assert.doesNotMatch(checkScript, /^\s*cargo cooldown /m);
+  assert.match(checkScript, /git diff --exit-code HEAD -- Cargo\.lock/);
   assert.doesNotMatch(action, /install-action|cargo-binstall|cargo install/);
+  assert.equal(spawnSync("bash", ["-n", checkScriptPath]).status, 0);
 });
 
 test("documentation covers project configuration and lockfile behavior", async () => {
@@ -97,7 +104,16 @@ test("strict project config accepts only complete exact-version rules", async ()
       configPath,
       '# Reviewed exceptions\n\n[[allow.exact]]\ncrate = "alloy-primitives"\nversion = "1.7.2"\n',
     );
-    assert.equal(spawnSync("awk", ["-f", strictConfigValidatorPath, configPath]).status, 0);
+    assert.equal(
+      spawnSync("bash", [
+        "-c",
+        'source "$1"; validate_strict_config "$2"',
+        "bash",
+        checkScriptPath,
+        configPath,
+      ]).status,
+      0,
+    );
 
     for (const invalid of [
       '[registry]\nglobal-min-publish-age = "0"\n',
@@ -107,7 +123,16 @@ test("strict project config accepts only complete exact-version rules", async ()
       '[[allow.exact]]\ncrate = "alloy-primitives"\nversion = "1.7.2"\n\n[[allow.exact]]\ncrate = "alloy-primitives"\nversion = "1.7.2"\n',
     ]) {
       await writeFile(configPath, invalid);
-      assert.notEqual(spawnSync("awk", ["-f", strictConfigValidatorPath, configPath]).status, 0);
+      assert.notEqual(
+        spawnSync("bash", [
+          "-c",
+          'source "$1"; validate_strict_config "$2"',
+          "bash",
+          checkScriptPath,
+          configPath,
+        ]).status,
+        0,
+      );
     }
   } finally {
     await rm(directory, { recursive: true, force: true });

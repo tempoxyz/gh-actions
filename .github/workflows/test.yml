@@ -253,6 +253,8 @@ jobs:
       # identifiers that typos flags, and adopting typos repo-wide is a separate decision.
       - name: Smoke test actionlint (digest-pinned image) on this repository's workflows
         uses: ./actions/actionlint
+      - name: Shellcheck cargo-cooldown script
+        run: shellcheck actions/cargo-cooldown/check.sh
       - name: Smoke test typos (release attestation) on the first-party action sources
         uses: ./actions/typos
         with:
