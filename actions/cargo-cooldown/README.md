@@ -16,8 +16,9 @@ Set `mode: check` to run
 - `git diff --exit-code HEAD -- Cargo.lock` fails when `cargo-cooldown` finds a safe downgrade, so the
   changed lockfile must be reviewed and committed separately.
 
-The workspace must contain a committed `Cargo.lock`. The tool version and release archives are
-verified against SHA-256 digests pinned in this action before the downloaded binary is executed.
+The workspace must contain a committed `Cargo.lock`. The tool version, release archives, and
+extracted binaries are verified against SHA-256 digests pinned in this action before the binary is
+executed directly, without Cargo alias or external-subcommand lookup.
 The installer supports x86-64 and ARM64 Linux and macOS runners, plus x86-64 Windows runners.
 
 ## Configuration
@@ -48,6 +49,18 @@ intentionally reduce that policy for selected dependencies.
 | `mode` | Validation mode: `verify` or `check` | No | `verify` |
 | `verbose` | Enable verbose `cargo-cooldown` output | No | `false` |
 
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| `verifier-path` | Absolute path to the checksum-verified `cargo-cooldown` binary |
+| `verifier-sha256` | Pinned SHA-256 digest of the installed binary |
+
+The same values are exported as `CARGO_COOLDOWN_BIN` and `CARGO_COOLDOWN_SHA256` for subsequent
+steps in the job. Callers that execute the verifier later should hash `CARGO_COOLDOWN_BIN`, compare
+it with `CARGO_COOLDOWN_SHA256`, and invoke the binary directly as
+`"$CARGO_COOLDOWN_BIN" cooldown ...`.
+
 ## Usage
 
 Check out the repository and install its Rust toolchain before invoking the action:
@@ -63,7 +76,15 @@ jobs:
         with:
           persist-credentials: false
       - uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@<full-commit-sha>
-      - uses: tempoxyz/gh-actions/actions/cargo-cooldown@<full-commit-sha>
+      - id: cargo-cooldown
+        uses: tempoxyz/gh-actions/actions/cargo-cooldown@<full-commit-sha>
+      - name: Use the same verified binary later
+        env:
+          VERIFIER: ${{ steps.cargo-cooldown.outputs.verifier-path }}
+          EXPECTED_SHA256: ${{ steps.cargo-cooldown.outputs.verifier-sha256 }}
+        run: |
+          echo "$EXPECTED_SHA256  $VERIFIER" | sha256sum --check --strict
+          "$VERIFIER" cooldown --workspace --all-features tree --locked --depth 0
 ```
 
 In `verify` (default) mode, `cargo-cooldown` selects every workspace member, validates its complete

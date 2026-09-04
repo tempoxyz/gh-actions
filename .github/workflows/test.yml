@@ -271,10 +271,21 @@ jobs:
           git -C "$FIXTURE" add Cargo.lock Cargo.toml cooldown.toml src/main.rs
           git -C "$FIXTURE" -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m fixture
       - name: Smoke test cargo-cooldown
+        id: cargo-cooldown
         uses: ./actions/cargo-cooldown
         with:
           cooldown-days: 7
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Assert cargo-cooldown verifier outputs
+        env:
+          VERIFIER_PATH: ${{ steps.cargo-cooldown.outputs.verifier-path }}
+          VERIFIER_SHA256: ${{ steps.cargo-cooldown.outputs.verifier-sha256 }}
+        run: |
+          set -euo pipefail
+          test -x "$VERIFIER_PATH"
+          echo "$VERIFIER_SHA256  $VERIFIER_PATH" | sha256sum --check --strict
+          test "$CARGO_COOLDOWN_BIN" = "$VERIFIER_PATH"
+          test "$CARGO_COOLDOWN_SHA256" = "$VERIFIER_SHA256"
       - name: Assert cargo-cooldown did not modify caller files
         env:
           FIXTURE: ${{ runner.temp }}/cargo-cooldown-fixture

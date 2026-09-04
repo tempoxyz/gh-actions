@@ -19,6 +19,14 @@ inputs:
     required: false
     default: "false"
 
+outputs:
+  verifier-path:
+    description: "Absolute path to the checksum-verified cargo-cooldown binary"
+    value: ${{ steps.check.outputs.verifier-path }}
+  verifier-sha256:
+    description: "Pinned SHA-256 digest of the installed cargo-cooldown binary"
+    value: ${{ steps.check.outputs.verifier-sha256 }}
+
 runs:
   using: "composite"
   steps:
@@ -31,24 +39,32 @@ runs:
         CARGO_COOLDOWN_SHA256_LINUX_ARM64: bc5488d892da21575f1834ad31c64077f2a681ea70d22e4409fa3f21857cf63a
         CARGO_COOLDOWN_SHA256_MACOS_X64: fd7e8627a8248f3e803a866a893cd3ec2db29c215dee16357caa4d23a36c86f0
         CARGO_COOLDOWN_SHA256_MACOS_ARM64: 0499a6ff956cd1bfb4b29466cbbf1ceb4571a1d1c0eabfe84bffa487e2b11d4b
+        CARGO_COOLDOWN_BINARY_SHA256_LINUX_X64: c9939a37768c7d0e4dbac047ea2d2e41bd1e0276db4da3752e200dd5722d1f6e
+        CARGO_COOLDOWN_BINARY_SHA256_LINUX_ARM64: 0e71062f61a6d0bc9345a6c20409e34e7b43bee8d991eeb6f5d933340082c758
+        CARGO_COOLDOWN_BINARY_SHA256_MACOS_X64: 374c625a4574752dca107cd843236da9deecea879799a86e64fc5c6cd58022df
+        CARGO_COOLDOWN_BINARY_SHA256_MACOS_ARM64: 56b30e9418915503a70391dee75214f30874875d6d567219c6dbe0b05c1ae14c
       run: | # zizmor: ignore[github-env] BIN_DIR is created under RUNNER_TEMP, not derived from user input.
         set -euo pipefail
         case "${RUNNER_OS}/${RUNNER_ARCH}" in
           Linux/X64)
             TARGET=x86_64-unknown-linux-gnu
-            EXPECTED="$CARGO_COOLDOWN_SHA256_LINUX_X64"
+            EXPECTED_ARCHIVE="$CARGO_COOLDOWN_SHA256_LINUX_X64"
+            EXPECTED_BINARY="$CARGO_COOLDOWN_BINARY_SHA256_LINUX_X64"
             ;;
           Linux/ARM64)
             TARGET=aarch64-unknown-linux-gnu
-            EXPECTED="$CARGO_COOLDOWN_SHA256_LINUX_ARM64"
+            EXPECTED_ARCHIVE="$CARGO_COOLDOWN_SHA256_LINUX_ARM64"
+            EXPECTED_BINARY="$CARGO_COOLDOWN_BINARY_SHA256_LINUX_ARM64"
             ;;
           macOS/X64)
             TARGET=x86_64-apple-darwin
-            EXPECTED="$CARGO_COOLDOWN_SHA256_MACOS_X64"
+            EXPECTED_ARCHIVE="$CARGO_COOLDOWN_SHA256_MACOS_X64"
+            EXPECTED_BINARY="$CARGO_COOLDOWN_BINARY_SHA256_MACOS_X64"
             ;;
           macOS/ARM64)
             TARGET=aarch64-apple-darwin
-            EXPECTED="$CARGO_COOLDOWN_SHA256_MACOS_ARM64"
+            EXPECTED_ARCHIVE="$CARGO_COOLDOWN_SHA256_MACOS_ARM64"
+            EXPECTED_BINARY="$CARGO_COOLDOWN_BINARY_SHA256_MACOS_ARM64"
             ;;
           *)
             echo "::error::cargo-cooldown: unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}"
@@ -67,16 +83,26 @@ runs:
           --output "$ARCHIVE" \
           "https://github.com/dertin/cargo-cooldown/releases/download/v${CARGO_COOLDOWN_VERSION}/${ASSET}"
         if command -v sha256sum >/dev/null; then
-          echo "$EXPECTED  $ARCHIVE" | sha256sum --check --strict
+          echo "$EXPECTED_ARCHIVE  $ARCHIVE" | sha256sum --check --strict
         elif command -v shasum >/dev/null; then
-          echo "$EXPECTED  $ARCHIVE" | shasum -a 256 --check
+          echo "$EXPECTED_ARCHIVE  $ARCHIVE" | shasum -a 256 --check
         else
           echo "::error::cargo-cooldown: sha256sum or shasum is required"
           exit 1
         fi
         tar -xzf "$ARCHIVE" -C "$TMP"
-        install -m 0755 "$TMP/$ROOT/cargo-cooldown" "$BIN_DIR/cargo-cooldown"
+        BIN="$BIN_DIR/cargo-cooldown"
+        install -m 0755 "$TMP/$ROOT/cargo-cooldown" "$BIN"
+        if command -v sha256sum >/dev/null; then
+          echo "$EXPECTED_BINARY  $BIN" | sha256sum --check --strict
+        else
+          echo "$EXPECTED_BINARY  $BIN" | shasum -a 256 --check
+        fi
         echo "$BIN_DIR" >> "$GITHUB_PATH"
+        {
+          echo "CARGO_COOLDOWN_BIN=$BIN"
+          echo "CARGO_COOLDOWN_SHA256=$EXPECTED_BINARY"
+        } >> "$GITHUB_ENV"
 
     - name: Install cargo-cooldown on Windows
       if: runner.os == 'Windows'
@@ -84,6 +110,7 @@ runs:
       env:
         CARGO_COOLDOWN_VERSION: "0.3.4"
         CARGO_COOLDOWN_SHA256_WINDOWS_X64: e3ec5ad658caa1e94ed133437ff93f503ccc3184a8a5cd56911682a55374fe9c
+        CARGO_COOLDOWN_BINARY_SHA256_WINDOWS_X64: e5d9b0c8dc8f823e9b9a87333ae80cd377c7bac5b8d467ccac5624734cd5e9e7
       run: | # zizmor: ignore[github-env] binDir is created under RUNNER_TEMP, not derived from user input.
         $ErrorActionPreference = "Stop"
         if ($env:RUNNER_ARCH -ne "X64") {
@@ -104,10 +131,18 @@ runs:
           Write-Error "cargo-cooldown: checksum mismatch for $asset"
         }
         Expand-Archive -Path $archive -DestinationPath $tmp
-        Copy-Item (Join-Path $tmp "$root/cargo-cooldown.exe") (Join-Path $binDir "cargo-cooldown.exe")
+        $bin = Join-Path $binDir "cargo-cooldown.exe"
+        Copy-Item (Join-Path $tmp "$root/cargo-cooldown.exe") $bin
+        $binaryActual = (Get-FileHash -Algorithm SHA256 $bin).Hash.ToLowerInvariant()
+        if ($binaryActual -ne $env:CARGO_COOLDOWN_BINARY_SHA256_WINDOWS_X64) {
+          Write-Error "cargo-cooldown: binary checksum mismatch"
+        }
         Add-Content -Path $env:GITHUB_PATH -Value $binDir
+        Add-Content -Path $env:GITHUB_ENV -Value "CARGO_COOLDOWN_BIN=$bin"
+        Add-Content -Path $env:GITHUB_ENV -Value "CARGO_COOLDOWN_SHA256=$env:CARGO_COOLDOWN_BINARY_SHA256_WINDOWS_X64"
 
     - name: Check dependency cooldown
+      id: check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
@@ -118,6 +153,29 @@ runs:
         COOLDOWN_VERBOSE: ${{ inputs.verbose }}
       run: |
         set -euo pipefail
+        VERIFIER="${CARGO_COOLDOWN_BIN:?cargo-cooldown verifier path is required}"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          VERIFIER_EXEC="$(cygpath -u "$VERIFIER")"
+        else
+          VERIFIER_EXEC="$VERIFIER"
+        fi
+        if [[ ! -x "$VERIFIER_EXEC" ]]; then
+          echo "::error::cargo-cooldown verifier is not executable: $VERIFIER"
+          exit 1
+        fi
+        if command -v sha256sum >/dev/null; then
+          ACTUAL_SHA256="$(sha256sum "$VERIFIER_EXEC" | awk '{print $1}')"
+        else
+          ACTUAL_SHA256="$(shasum -a 256 "$VERIFIER_EXEC" | awk '{print $1}')"
+        fi
+        if [[ "$ACTUAL_SHA256" != "$CARGO_COOLDOWN_SHA256" ]]; then
+          echo "::error::cargo-cooldown verifier checksum mismatch"
+          exit 1
+        fi
+        {
+          echo "verifier-path=$VERIFIER"
+          echo "verifier-sha256=$CARGO_COOLDOWN_SHA256"
+        } >> "$GITHUB_OUTPUT"
         if [[ ! "$COOLDOWN_DAYS" =~ ^[1-9][0-9]*$ ]]; then
           echo "::error::cooldown-days must be a positive whole number"
           exit 1
@@ -134,11 +192,11 @@ runs:
         export CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE="${COOLDOWN_DAYS} days"
         case "$COOLDOWN_MODE" in
           verify)
-            cargo cooldown --workspace --all-features tree \
+            "$VERIFIER_EXEC" cooldown --workspace --all-features tree \
               --locked --depth 0 >/dev/null
             ;;
           check)
-            cargo cooldown --workspace --all-features check --locked
+            "$VERIFIER_EXEC" cooldown --workspace --all-features check --locked
             ;;
           *)
             echo "::error::mode must be 'verify' or 'check'"
