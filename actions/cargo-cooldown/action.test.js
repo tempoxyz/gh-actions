@@ -37,6 +37,8 @@ test("action installs a pinned cargo-cooldown and runs it fail closed", async ()
   assert.match(action, /GITHUB_OUTPUT/);
   assert.doesNotMatch(action, /GITHUB_ENV/);
   assert.match(action, /cargo-cooldown verifier checksum mismatch/);
+  assert.match(action, /cargo-cooldown requires cygpath on Windows/);
+  assert.match(action, /USER_CARGO_HOME="\$\(cygpath -u "\$USER_CARGO_HOME"\)"/);
   assert.match(action, /CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE/);
   assert.match(action, /COOLDOWN_INCOMPATIBLE_PUBLISH_AGE: deny/);
   assert.match(action, /COOLDOWN_LOCKFILE_BASELINE: ignore/);

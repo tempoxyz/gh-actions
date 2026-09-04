@@ -440,3 +440,54 @@ jobs:
           [[ "$STABLE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::stable resolved to '$STABLE'"; exit 1; }
           [[ "$NIGHTLY" =~ ^nightly-[0-9a-f]{40}$ ]] || { echo "::error::nightly resolved to '$NIGHTLY'"; exit 1; }
           echo "stable=$STABLE nightly=$NIGHTLY"
+
+  cargo-cooldown-windows:
+    name: cargo-cooldown-windows
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: ./vendor/dtolnay/rust-toolchain
+      - name: Create Windows cargo-cooldown fixture and user policy
+        shell: pwsh
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP "cargo-cooldown-windows-fixture"
+          $userCargoHome = Join-Path $env:RUNNER_TEMP "cargo-cooldown-windows-home"
+          New-Item -ItemType Directory -Force (Join-Path $fixture "src"), $userCargoHome | Out-Null
+          Set-Content -Path (Join-Path $fixture "Cargo.toml") -Value @'
+          [package]
+          name = "cargo-cooldown-windows-fixture"
+          version = "0.1.0"
+          edition = "2024"
+          '@
+          Set-Content -Path (Join-Path $fixture "src/main.rs") -Value 'fn main() {}'
+          Set-Content -Path (Join-Path $userCargoHome "cooldown.toml") -Value @'
+          [registry]
+          global-min-publish-age = "0"
+          '@
+          cargo generate-lockfile --manifest-path (Join-Path $fixture "Cargo.toml")
+          git -C $fixture init
+          git -C $fixture add Cargo.lock Cargo.toml src/main.rs
+          git -C $fixture -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m "test: add fixture"
+      - name: Reject native Windows user cargo-cooldown policy
+        id: cargo-cooldown-windows-user-policy
+        continue-on-error: true
+        env:
+          CARGO_HOME: ${{ runner.temp }}\cargo-cooldown-windows-home
+        uses: ./actions/cargo-cooldown
+        with:
+          working-directory: ${{ runner.temp }}\cargo-cooldown-windows-fixture
+      - name: Assert native Windows user policy was rejected
+        if: always()
+        shell: pwsh
+        env:
+          OUTCOME: ${{ steps.cargo-cooldown-windows-user-policy.outcome }}
+        run: |
+          if ($env:OUTCOME -ne "failure") {
+            Write-Error "Native Windows CARGO_HOME policy was not rejected (outcome=$env:OUTCOME)"
+          }

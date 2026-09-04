@@ -169,6 +169,10 @@ runs:
         set -euo pipefail
         VERIFIER="${CARGO_COOLDOWN_BIN:?cargo-cooldown verifier path is required}"
         if [[ "$RUNNER_OS" == "Windows" ]]; then
+          if ! command -v cygpath >/dev/null 2>&1; then
+            echo "::error::cargo-cooldown requires cygpath on Windows"
+            exit 1
+          fi
           VERIFIER_EXEC="$(cygpath -u "$VERIFIER")"
         else
           VERIFIER_EXEC="$VERIFIER"
@@ -228,6 +232,9 @@ runs:
         fi
 
         USER_CARGO_HOME="${CARGO_HOME:-${HOME:?HOME is required}/.cargo}"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          USER_CARGO_HOME="$(cygpath -u "$USER_CARGO_HOME")"
+        fi
         if [[ "$ALLOW_USER_POLICY" != "true" && -f "$USER_CARGO_HOME/cooldown.toml" ]]; then
           echo "::error::user cargo-cooldown policy is not allowed: $USER_CARGO_HOME/cooldown.toml"
           exit 1
