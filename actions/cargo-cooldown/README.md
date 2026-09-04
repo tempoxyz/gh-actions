@@ -46,6 +46,12 @@ By default, the action rejects `$CARGO_HOME/cooldown.toml` because runner-level 
 the reviewed project. Set `allow-user-policy: true` only when that file is an intentional, trusted
 part of the runner configuration.
 
+Set `strict-project-config: true` when the project policy must be limited to reviewed exact-version
+exceptions. Strict mode requires `<working-directory>/cooldown.toml` to be a regular tracked file
+that matches `HEAD`, rejects `allow-user-policy`, and accepts only blank lines, comments, and
+complete `[[allow.exact]]` blocks with one `crate` and one `version` field. The intentionally narrow
+syntax rejects inline comments, duplicate rules, and every other cargo-cooldown configuration key.
+
 ## Inputs
 
 | Name | Description | Required | Default |
@@ -55,6 +61,7 @@ part of the runner configuration.
 | `mode` | Validation mode: `verify` or `check` | No | `verify` |
 | `verbose` | Enable verbose `cargo-cooldown` output | No | `false` |
 | `allow-user-policy` | Allow policy from `$CARGO_HOME/cooldown.toml` | No | `false` |
+| `strict-project-config` | Require tracked, clean, exact-only project policy | No | `false` |
 
 ## Outputs
 
@@ -85,6 +92,8 @@ jobs:
       - uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@<full-commit-sha>
       - id: cargo-cooldown
         uses: tempoxyz/gh-actions/actions/cargo-cooldown@<full-commit-sha>
+        with:
+          strict-project-config: true
       - name: Use the same verified binary later
         env:
           VERIFIER: ${{ steps.cargo-cooldown.outputs.verifier-path }}

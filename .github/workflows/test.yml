@@ -275,11 +275,13 @@ jobs:
         env:
           CARGO_REGISTRIES_CRATES_IO_MIN_PUBLISH_AGE: invalid
           CARGO_REGISTRY_MIN_PUBLISH_AGE: invalid
+          COOLDOWN_FALLBACK_ACCEPT: invalid
           COOLDOWN_NOW: invalid
           COOLDOWN_SKIP_REGISTRIES: "["
         uses: ./actions/cargo-cooldown
         with:
           cooldown-days: 7
+          strict-project-config: true
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
       - name: Assert cargo-cooldown verifier outputs
         env:
@@ -319,6 +321,22 @@ jobs:
           cooldown-days: 7
           mode: check
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Make strict cargo-cooldown policy dirty
+        env:
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-fixture
+        run: printf '\n# uncommitted exception policy\n' >> "$FIXTURE/cooldown.toml"
+      - name: Reject dirty strict cargo-cooldown policy
+        id: cargo-cooldown-dirty-policy
+        continue-on-error: true
+        uses: ./actions/cargo-cooldown
+        with:
+          strict-project-config: true
+          working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Assert dirty strict policy was rejected
+        if: always()
+        env:
+          OUTCOME: ${{ steps.cargo-cooldown-dirty-policy.outcome }}
+        run: test "$OUTCOME" = failure
       - name: Create cargo-cooldown non-default member fixture
         env:
           FIXTURE: ${{ runner.temp }}/cargo-cooldown-nondefault-fixture
