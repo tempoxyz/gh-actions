@@ -13,8 +13,8 @@ Set `mode: check` to run
 - `lockfile-baseline = "ignore"` checks versions already present in `Cargo.lock`, rather than
   treating them as trusted. This protects the consumption of a lockfile that already contains a
   fresh release.
-- `git diff --exit-code HEAD -- Cargo.lock` fails when `cargo-cooldown` finds a safe downgrade, so the
-  changed lockfile must be reviewed and committed separately.
+- `git diff --exit-code HEAD -- Cargo.lock` fails when `cargo-cooldown` finds a safe downgrade. The
+  action restores the original lockfile before exiting, so callers never inherit an unreviewed graph.
 
 The workspace must contain a committed `Cargo.lock`. The tool version, release archives, and
 extracted binaries are verified against SHA-256 digests pinned in this action before the binary is
@@ -37,8 +37,14 @@ min-publish-age = "1 day"
 ```
 
 The action environment fixes the default global cooldown, incompatible-publish-age policy, and
-lockfile baseline. More-specific registry settings and explicit allow rules in `cooldown.toml` can
-intentionally reduce that policy for selected dependencies.
+lockfile baseline. It removes inherited `COOLDOWN_NOW`, `COOLDOWN_SKIP_REGISTRIES`,
+`CARGO_REGISTRY_MIN_PUBLISH_AGE`, and `CARGO_REGISTRIES_*_MIN_PUBLISH_AGE` values before running the
+verifier. More-specific registry settings and explicit allow rules in the project `cooldown.toml`
+can intentionally reduce that policy for selected dependencies.
+
+By default, the action rejects `$CARGO_HOME/cooldown.toml` because runner-level policy is outside
+the reviewed project. Set `allow-user-policy: true` only when that file is an intentional, trusted
+part of the runner configuration.
 
 ## Inputs
 
@@ -48,6 +54,7 @@ intentionally reduce that policy for selected dependencies.
 | `working-directory` | Cargo workspace to check | No | `.` |
 | `mode` | Validation mode: `verify` or `check` | No | `verify` |
 | `verbose` | Enable verbose `cargo-cooldown` output | No | `false` |
+| `allow-user-policy` | Allow policy from `$CARGO_HOME/cooldown.toml` | No | `false` |
 
 ## Outputs
 
@@ -56,10 +63,10 @@ intentionally reduce that policy for selected dependencies.
 | `verifier-path` | Absolute path to the checksum-verified `cargo-cooldown` binary |
 | `verifier-sha256` | Pinned SHA-256 digest of the installed binary |
 
-The same values are exported as `CARGO_COOLDOWN_BIN` and `CARGO_COOLDOWN_SHA256` for subsequent
-steps in the job. Callers that execute the verifier later should hash `CARGO_COOLDOWN_BIN`, compare
-it with `CARGO_COOLDOWN_SHA256`, and invoke the binary directly as
-`"$CARGO_COOLDOWN_BIN" cooldown ...`.
+These values are action outputs rather than job environment exports. Callers that execute the
+verifier later should map the outputs into the exact consuming step, verify the digest again, and
+invoke the binary directly. This prevents an intervening process from replacing the trust anchor
+through `GITHUB_ENV`.
 
 ## Usage
 
@@ -93,7 +100,8 @@ The explicit `--workspace` also covers non-default members when a workspace conf
 `default-members`. In `check` mode, the action runs `cargo check --locked` only after fresh versions
 have been removed or rejected. Both modes apply the same cooldown policy.
 
-The action requires `Cargo.lock` to match `HEAD` before validation and fails if the tool changes it.
+The action requires `Cargo.lock` to match `HEAD` before validation, fails if the tool changes it,
+and restores the original file on exit.
 Run one required gate job per workflow and make jobs that consume the workspace dependency graph
 depend on it. Downstream Cargo commands should still use `--locked` so they cannot resolve a
 different graph after the gate.

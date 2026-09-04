@@ -272,6 +272,11 @@ jobs:
           git -C "$FIXTURE" -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m fixture
       - name: Smoke test cargo-cooldown
         id: cargo-cooldown
+        env:
+          CARGO_REGISTRIES_CRATES_IO_MIN_PUBLISH_AGE: invalid
+          CARGO_REGISTRY_MIN_PUBLISH_AGE: invalid
+          COOLDOWN_NOW: invalid
+          COOLDOWN_SKIP_REGISTRIES: "["
         uses: ./actions/cargo-cooldown
         with:
           cooldown-days: 7
@@ -284,13 +289,30 @@ jobs:
           set -euo pipefail
           test -x "$VERIFIER_PATH"
           echo "$VERIFIER_SHA256  $VERIFIER_PATH" | sha256sum --check --strict
-          test "$CARGO_COOLDOWN_BIN" = "$VERIFIER_PATH"
-          test "$CARGO_COOLDOWN_SHA256" = "$VERIFIER_SHA256"
       - name: Assert cargo-cooldown did not modify caller files
         env:
           FIXTURE: ${{ runner.temp }}/cargo-cooldown-fixture
         run: |
           git -C "$FIXTURE" diff --exit-code HEAD -- Cargo.lock Cargo.toml cooldown.toml src/main.rs
+      - name: Create untrusted user cargo-cooldown policy
+        env:
+          USER_CARGO_HOME: ${{ runner.temp }}/cargo-cooldown-user-home
+        run: |
+          mkdir -p "$USER_CARGO_HOME"
+          printf '[registry]\nglobal-min-publish-age = "0"\n' > "$USER_CARGO_HOME/cooldown.toml"
+      - name: Reject untrusted user cargo-cooldown policy
+        id: cargo-cooldown-user-policy
+        continue-on-error: true
+        env:
+          CARGO_HOME: ${{ runner.temp }}/cargo-cooldown-user-home
+        uses: ./actions/cargo-cooldown
+        with:
+          working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
+      - name: Assert untrusted user policy was rejected
+        if: always()
+        env:
+          OUTCOME: ${{ steps.cargo-cooldown-user-policy.outcome }}
+        run: test "$OUTCOME" = failure
       - name: Smoke test cargo-cooldown check mode
         uses: ./actions/cargo-cooldown
         with:
@@ -325,6 +347,37 @@ jobs:
         env:
           OUTCOME: ${{ steps.cargo-cooldown-nondefault.outcome }}
         run: test "$OUTCOME" = failure
+      - name: Create cargo-cooldown downgrade fixture
+        env:
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-downgrade-fixture
+        run: |
+          set -euo pipefail
+          mkdir -p "$FIXTURE/src"
+          printf '[package]\nname = "cooldown-downgrade-fixture"\nversion = "0.1.0"\nedition = "2024"\n\n[dependencies]\nitoa = "1"\n' > "$FIXTURE/Cargo.toml"
+          printf 'fn main() { let mut buffer = itoa::Buffer::new(); println!("{}", buffer.format(42)); }\n' > "$FIXTURE/src/main.rs"
+          printf 'now = "2024-01-01T00:00:00Z"\n' > "$FIXTURE/cooldown.toml"
+          cargo generate-lockfile --manifest-path "$FIXTURE/Cargo.toml"
+          git -C "$FIXTURE" init
+          git -C "$FIXTURE" add Cargo.lock Cargo.toml cooldown.toml src/main.rs
+          git -C "$FIXTURE" -c user.name=cargo-cooldown-test -c user.email=cargo-cooldown-test@example.invalid commit -m fixture
+          sha256sum "$FIXTURE/Cargo.lock" | cut -d ' ' -f 1 > "$FIXTURE/Cargo.lock.sha256"
+      - name: Reject and restore a safe dependency downgrade
+        id: cargo-cooldown-downgrade
+        continue-on-error: true
+        uses: ./actions/cargo-cooldown
+        with:
+          cooldown-days: 7
+          working-directory: ${{ runner.temp }}/cargo-cooldown-downgrade-fixture
+      - name: Assert failed downgrade left Cargo.lock unchanged
+        if: always()
+        env:
+          FIXTURE: ${{ runner.temp }}/cargo-cooldown-downgrade-fixture
+          OUTCOME: ${{ steps.cargo-cooldown-downgrade.outcome }}
+        run: |
+          set -euo pipefail
+          test "$OUTCOME" = failure
+          test "$(cat "$FIXTURE/Cargo.lock.sha256")" = "$(sha256sum "$FIXTURE/Cargo.lock" | cut -d ' ' -f 1)"
+          git -C "$FIXTURE" diff --exit-code HEAD -- Cargo.lock
       - name: Smoke test cargo-install (cached binary)
         uses: ./actions/cargo-install
         with:

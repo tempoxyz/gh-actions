@@ -18,19 +18,24 @@ inputs:
     description: "Enable verbose cargo-cooldown output"
     required: false
     default: "false"
+  allow-user-policy:
+    description: "Allow policy from $CARGO_HOME/cooldown.toml"
+    required: false
+    default: "false"
 
 outputs:
   verifier-path:
     description: "Absolute path to the checksum-verified cargo-cooldown binary"
-    value: ${{ steps.check.outputs.verifier-path }}
+    value: ${{ steps.install-unix.outputs.verifier-path || steps.install-windows.outputs.verifier-path }}
   verifier-sha256:
     description: "Pinned SHA-256 digest of the installed cargo-cooldown binary"
-    value: ${{ steps.check.outputs.verifier-sha256 }}
+    value: ${{ steps.install-unix.outputs.verifier-sha256 || steps.install-windows.outputs.verifier-sha256 }}
 
 runs:
   using: "composite"
   steps:
     - name: Install cargo-cooldown
+      id: install-unix
       if: runner.os != 'Windows'
       shell: bash
       env:
@@ -100,11 +105,12 @@ runs:
         fi
         echo "$BIN_DIR" >> "$GITHUB_PATH"
         {
-          echo "CARGO_COOLDOWN_BIN=$BIN"
-          echo "CARGO_COOLDOWN_SHA256=$EXPECTED_BINARY"
-        } >> "$GITHUB_ENV"
+          echo "verifier-path=$BIN"
+          echo "verifier-sha256=$EXPECTED_BINARY"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Install cargo-cooldown on Windows
+      id: install-windows
       if: runner.os == 'Windows'
       shell: pwsh
       env:
@@ -138,14 +144,16 @@ runs:
           Write-Error "cargo-cooldown: binary checksum mismatch"
         }
         Add-Content -Path $env:GITHUB_PATH -Value $binDir
-        Add-Content -Path $env:GITHUB_ENV -Value "CARGO_COOLDOWN_BIN=$bin"
-        Add-Content -Path $env:GITHUB_ENV -Value "CARGO_COOLDOWN_SHA256=$env:CARGO_COOLDOWN_BINARY_SHA256_WINDOWS_X64"
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "verifier-path=$bin"
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "verifier-sha256=$env:CARGO_COOLDOWN_BINARY_SHA256_WINDOWS_X64"
 
     - name: Check dependency cooldown
-      id: check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
+        ALLOW_USER_POLICY: ${{ inputs.allow-user-policy }}
+        CARGO_COOLDOWN_BIN: ${{ steps.install-unix.outputs.verifier-path || steps.install-windows.outputs.verifier-path }}
+        CARGO_COOLDOWN_SHA256: ${{ steps.install-unix.outputs.verifier-sha256 || steps.install-windows.outputs.verifier-sha256 }}
         COOLDOWN_DAYS: ${{ inputs.cooldown-days }}
         COOLDOWN_INCOMPATIBLE_PUBLISH_AGE: deny
         COOLDOWN_LOCKFILE_BASELINE: ignore
@@ -172,12 +180,12 @@ runs:
           echo "::error::cargo-cooldown verifier checksum mismatch"
           exit 1
         fi
-        {
-          echo "verifier-path=$VERIFIER"
-          echo "verifier-sha256=$CARGO_COOLDOWN_SHA256"
-        } >> "$GITHUB_OUTPUT"
         if [[ ! "$COOLDOWN_DAYS" =~ ^[1-9][0-9]*$ ]]; then
           echo "::error::cooldown-days must be a positive whole number"
+          exit 1
+        fi
+        if [[ "$ALLOW_USER_POLICY" != "false" && "$ALLOW_USER_POLICY" != "true" ]]; then
+          echo "::error::allow-user-policy must be 'true' or 'false'"
           exit 1
         fi
         if [[ ! -f Cargo.lock ]] || ! git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
@@ -188,6 +196,29 @@ runs:
           echo "::error::Cargo.lock must match the committed version"
           exit 1
         fi
+
+        USER_CARGO_HOME="${CARGO_HOME:-${HOME:?HOME is required}/.cargo}"
+        if [[ "$ALLOW_USER_POLICY" != "true" && -f "$USER_CARGO_HOME/cooldown.toml" ]]; then
+          echo "::error::user cargo-cooldown policy is not allowed: $USER_CARGO_HOME/cooldown.toml"
+          exit 1
+        fi
+
+        unset COOLDOWN_NOW COOLDOWN_SKIP_REGISTRIES CARGO_REGISTRY_MIN_PUBLISH_AGE
+        while IFS= read -r VARIABLE; do
+          case "$VARIABLE" in
+            CARGO_REGISTRIES_*_MIN_PUBLISH_AGE) unset "$VARIABLE" ;;
+          esac
+        done < <(compgen -e)
+
+        LOCKFILE_SNAPSHOT="$(mktemp)"
+        cp -p Cargo.lock "$LOCKFILE_SNAPSHOT"
+        restore_lockfile() {
+          if ! cmp -s "$LOCKFILE_SNAPSHOT" Cargo.lock; then
+            cp -p "$LOCKFILE_SNAPSHOT" Cargo.lock
+          fi
+          rm -f "$LOCKFILE_SNAPSHOT"
+        }
+        trap restore_lockfile EXIT
 
         export CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE="${COOLDOWN_DAYS} days"
         case "$COOLDOWN_MODE" in
