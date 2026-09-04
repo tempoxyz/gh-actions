@@ -273,11 +273,13 @@ jobs:
       - name: Smoke test cargo-cooldown
         id: cargo-cooldown
         env:
+          COOLDOWN_CACHE_DIR: ${{ runner.temp }}/cargo-cooldown-fixture/Cargo.toml
           CARGO_REGISTRIES_CRATES_IO_MIN_PUBLISH_AGE: invalid
           CARGO_REGISTRY_MIN_PUBLISH_AGE: invalid
           COOLDOWN_FALLBACK_ACCEPT: invalid
           COOLDOWN_NOW: invalid
           COOLDOWN_SKIP_REGISTRIES: "["
+          COOLDOWN_TTL_SECONDS: invalid
         uses: ./actions/cargo-cooldown
         with:
           cooldown-days: 7

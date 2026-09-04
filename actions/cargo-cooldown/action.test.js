@@ -51,7 +51,8 @@ test("action installs a pinned cargo-cooldown and runs it fail closed", async ()
   assert.match(action, /git diff --quiet HEAD -- cooldown\.toml/);
   assert.match(action, /validate-strict-config\.awk/);
   assert.match(action, /user cargo-cooldown policy is not allowed/);
-  assert.match(action, /unset COOLDOWN_FALLBACK_ACCEPT COOLDOWN_NOW COOLDOWN_SKIP_REGISTRIES/);
+  assert.match(action, /unset COOLDOWN_CACHE_DIR COOLDOWN_FALLBACK_ACCEPT COOLDOWN_NOW/);
+  assert.match(action, /COOLDOWN_SKIP_REGISTRIES COOLDOWN_TTL_SECONDS/);
   assert.match(action, /CARGO_REGISTRIES_\*_MIN_PUBLISH_AGE/);
   assert.match(action, /trap restore_lockfile EXIT/);
   assert.match(action, /cp -p Cargo\.lock "\$LOCKFILE_SNAPSHOT"/);

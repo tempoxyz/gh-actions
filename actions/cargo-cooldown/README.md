@@ -37,10 +37,11 @@ min-publish-age = "1 day"
 ```
 
 The action environment fixes the default global cooldown, incompatible-publish-age policy, and
-lockfile baseline. It removes inherited `COOLDOWN_NOW`, `COOLDOWN_SKIP_REGISTRIES`,
-`CARGO_REGISTRY_MIN_PUBLISH_AGE`, and `CARGO_REGISTRIES_*_MIN_PUBLISH_AGE` values before running the
-verifier. More-specific registry settings and explicit allow rules in the project `cooldown.toml`
-can intentionally reduce that policy for selected dependencies.
+lockfile baseline. It removes inherited `COOLDOWN_CACHE_DIR`, `COOLDOWN_TTL_SECONDS`,
+`COOLDOWN_NOW`, `COOLDOWN_SKIP_REGISTRIES`, `CARGO_REGISTRY_MIN_PUBLISH_AGE`, and
+`CARGO_REGISTRIES_*_MIN_PUBLISH_AGE` values before running the verifier. More-specific registry
+settings and explicit allow rules in the project `cooldown.toml` can intentionally reduce that
+policy for selected dependencies.
 
 By default, the action rejects `$CARGO_HOME/cooldown.toml` because runner-level policy is outside
 the reviewed project. Set `allow-user-policy: true` only when that file is an intentional, trusted
