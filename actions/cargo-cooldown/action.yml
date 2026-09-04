@@ -1,0 +1,148 @@
+name: "Cargo cooldown"
+description: "Reject Cargo dependency graphs containing releases newer than the configured cooldown"
+
+inputs:
+  cooldown-days:
+    description: "Minimum whole days a registry release must have been published"
+    required: false
+    default: "7"
+  working-directory:
+    description: "Cargo workspace directory to check"
+    required: false
+    default: "."
+  mode:
+    description: "Validation mode: verify checks policy only; check also compiles the workspace"
+    required: false
+    default: "verify"
+  verbose:
+    description: "Enable verbose cargo-cooldown output"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install cargo-cooldown
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        CARGO_COOLDOWN_VERSION: "0.3.4"
+        CARGO_COOLDOWN_SHA256_LINUX_X64: 5706c1636415b90ec8244631ff707d1c49d502779d14235d7abb65c080ac8ba6
+        CARGO_COOLDOWN_SHA256_LINUX_ARM64: bc5488d892da21575f1834ad31c64077f2a681ea70d22e4409fa3f21857cf63a
+        CARGO_COOLDOWN_SHA256_MACOS_X64: fd7e8627a8248f3e803a866a893cd3ec2db29c215dee16357caa4d23a36c86f0
+        CARGO_COOLDOWN_SHA256_MACOS_ARM64: 0499a6ff956cd1bfb4b29466cbbf1ceb4571a1d1c0eabfe84bffa487e2b11d4b
+      run: | # zizmor: ignore[github-env] BIN_DIR is created under RUNNER_TEMP, not derived from user input.
+        set -euo pipefail
+        case "${RUNNER_OS}/${RUNNER_ARCH}" in
+          Linux/X64)
+            TARGET=x86_64-unknown-linux-gnu
+            EXPECTED="$CARGO_COOLDOWN_SHA256_LINUX_X64"
+            ;;
+          Linux/ARM64)
+            TARGET=aarch64-unknown-linux-gnu
+            EXPECTED="$CARGO_COOLDOWN_SHA256_LINUX_ARM64"
+            ;;
+          macOS/X64)
+            TARGET=x86_64-apple-darwin
+            EXPECTED="$CARGO_COOLDOWN_SHA256_MACOS_X64"
+            ;;
+          macOS/ARM64)
+            TARGET=aarch64-apple-darwin
+            EXPECTED="$CARGO_COOLDOWN_SHA256_MACOS_ARM64"
+            ;;
+          *)
+            echo "::error::cargo-cooldown: unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}"
+            exit 1
+            ;;
+        esac
+
+        ROOT="cargo-cooldown-${TARGET}-v${CARGO_COOLDOWN_VERSION}"
+        ASSET="${ROOT}.tgz"
+        TMP="${RUNNER_TEMP:?}/cargo-cooldown-${CARGO_COOLDOWN_VERSION}"
+        ARCHIVE="$TMP/$ASSET"
+        BIN_DIR="$TMP/bin"
+        rm -rf "$TMP"
+        mkdir -p "$BIN_DIR"
+        curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --retry 3 \
+          --output "$ARCHIVE" \
+          "https://github.com/dertin/cargo-cooldown/releases/download/v${CARGO_COOLDOWN_VERSION}/${ASSET}"
+        if command -v sha256sum >/dev/null; then
+          echo "$EXPECTED  $ARCHIVE" | sha256sum --check --strict
+        elif command -v shasum >/dev/null; then
+          echo "$EXPECTED  $ARCHIVE" | shasum -a 256 --check
+        else
+          echo "::error::cargo-cooldown: sha256sum or shasum is required"
+          exit 1
+        fi
+        tar -xzf "$ARCHIVE" -C "$TMP"
+        install -m 0755 "$TMP/$ROOT/cargo-cooldown" "$BIN_DIR/cargo-cooldown"
+        echo "$BIN_DIR" >> "$GITHUB_PATH"
+
+    - name: Install cargo-cooldown on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        CARGO_COOLDOWN_VERSION: "0.3.4"
+        CARGO_COOLDOWN_SHA256_WINDOWS_X64: e3ec5ad658caa1e94ed133437ff93f503ccc3184a8a5cd56911682a55374fe9c
+      run: | # zizmor: ignore[github-env] binDir is created under RUNNER_TEMP, not derived from user input.
+        $ErrorActionPreference = "Stop"
+        if ($env:RUNNER_ARCH -ne "X64") {
+          Write-Error "cargo-cooldown: unsupported runner Windows/$env:RUNNER_ARCH"
+        }
+
+        $target = "x86_64-pc-windows-msvc"
+        $root = "cargo-cooldown-$target-v$env:CARGO_COOLDOWN_VERSION"
+        $asset = "$root.zip"
+        $tmp = Join-Path $env:RUNNER_TEMP "cargo-cooldown-$env:CARGO_COOLDOWN_VERSION"
+        $archive = Join-Path $tmp $asset
+        $binDir = Join-Path $tmp "bin"
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force $binDir | Out-Null
+        Invoke-WebRequest -Uri "https://github.com/dertin/cargo-cooldown/releases/download/v$env:CARGO_COOLDOWN_VERSION/$asset" -OutFile $archive
+        $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+        if ($actual -ne $env:CARGO_COOLDOWN_SHA256_WINDOWS_X64) {
+          Write-Error "cargo-cooldown: checksum mismatch for $asset"
+        }
+        Expand-Archive -Path $archive -DestinationPath $tmp
+        Copy-Item (Join-Path $tmp "$root/cargo-cooldown.exe") (Join-Path $binDir "cargo-cooldown.exe")
+        Add-Content -Path $env:GITHUB_PATH -Value $binDir
+
+    - name: Check dependency cooldown
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        COOLDOWN_DAYS: ${{ inputs.cooldown-days }}
+        COOLDOWN_INCOMPATIBLE_PUBLISH_AGE: deny
+        COOLDOWN_LOCKFILE_BASELINE: ignore
+        COOLDOWN_MODE: ${{ inputs.mode }}
+        COOLDOWN_VERBOSE: ${{ inputs.verbose }}
+      run: |
+        set -euo pipefail
+        if [[ ! "$COOLDOWN_DAYS" =~ ^[1-9][0-9]*$ ]]; then
+          echo "::error::cooldown-days must be a positive whole number"
+          exit 1
+        fi
+        if [[ ! -f Cargo.lock ]] || ! git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
+          echo "::error::Cargo.lock must exist and be committed"
+          exit 1
+        fi
+        if ! git diff --quiet HEAD -- Cargo.lock; then
+          echo "::error::Cargo.lock must match the committed version"
+          exit 1
+        fi
+
+        export CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE="${COOLDOWN_DAYS} days"
+        case "$COOLDOWN_MODE" in
+          verify)
+            cargo cooldown --workspace --all-features tree \
+              --locked --depth 0 >/dev/null
+            ;;
+          check)
+            cargo cooldown --workspace --all-features check --locked
+            ;;
+          *)
+            echo "::error::mode must be 'verify' or 'check'"
+            exit 1
+            ;;
+        esac
+        git diff --exit-code HEAD -- Cargo.lock
