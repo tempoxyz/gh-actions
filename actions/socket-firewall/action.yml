@@ -21,13 +21,13 @@ runs:
   steps:
     - name: Exchange GitHub OIDC token for a Socket token
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@d39e8866ecee5b7fd360986c7d74eee485146055
+      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@0f195471b66fe3e39f538383f67bfc0676a3aaa5
       with:
         dev: ${{ inputs.dev }}
 
     - name: Install Socket Firewall Enterprise
       id: firewall
-      uses: SocketDev/action@be1f253a41351d59095f8d7f1425985097dd1054 # main
+      uses: tempoxyz/gh-actions/vendor/SocketDev/action@0f195471b66fe3e39f538383f67bfc0676a3aaa5
       with:
         mode: firewall-enterprise
         socket-token: ${{ steps.socket-token.outputs.token }}
