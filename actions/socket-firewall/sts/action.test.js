@@ -3,7 +3,7 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { host } = require("./http.cjs");
+const { host, retry } = require("./http.cjs");
 const { publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 
@@ -11,6 +11,20 @@ test("selects the fixed development and production endpoints", () => {
   assert.equal(host("true"), "socket-sts.tehq.dev");
   assert.equal(host("false"), "socket-sts.tehq.net");
   assert.throws(() => host("yes"), /dev must be either true or false/);
+});
+
+test("does not retry an exchange after receiving an HTTP response", async () => {
+  let attempts = 0;
+  const response = await retry(
+    async () => {
+      attempts += 1;
+      return { status: 502, body: "upstream failure" };
+    },
+    { retryHttpResponses: false },
+  );
+
+  assert.equal(attempts, 1);
+  assert.equal(response.status, 502);
 });
 
 test("main fails closed without GitHub id-token permission", () => {

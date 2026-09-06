@@ -23,12 +23,19 @@ function request(url, options = {}, body) {
   });
 }
 
-async function retry(operation) {
+async function retry(operation, options = {}) {
+  const retryHttpResponses = options.retryHttpResponses !== false;
   let last;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       last = await operation();
-      if (!TRANSIENT.has(last.status) || attempt === 3) return last;
+      if (
+        !retryHttpResponses ||
+        !TRANSIENT.has(last.status) ||
+        attempt === 3
+      ) {
+        return last;
+      }
     } catch (error) {
       if (attempt === 3) throw error;
     }
