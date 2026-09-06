@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: true
+      online-audits:
+        description: "Enable zizmor audits that query GitHub. Set false when the caller token cannot read referenced private repositories; static audits still run."
+        required: false
+        type: boolean
+        default: true
       pinact:
         description: "Run pinact policy checks in addition to the zizmor security scan."
         required: false
@@ -183,7 +188,7 @@ jobs:
         with:
           inputs: ${{ inputs.paths }}
           persona: regular
-          online-audits: true
+          online-audits: ${{ inputs.online-audits }}
           advanced-security: false
           annotations: true
           config: ${{ steps.zizmor-config.outputs.config }}
