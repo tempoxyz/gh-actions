@@ -50,15 +50,17 @@ async function main() {
     throw new Error("GitHub OIDC response is invalid");
   }
 
-  const exchange = await retry(() =>
-    request(`https://${endpoint}/sts/exchange`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${oidc}`,
-        "content-length": "0",
-        "user-agent": "tempoxyz-socket-sts-action",
-      },
-    }),
+  const exchange = await retry(
+    () =>
+      request(`https://${endpoint}/sts/exchange`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${oidc}`,
+          "content-length": "0",
+          "user-agent": "tempoxyz-socket-sts-action",
+        },
+      }),
+    { retryHttpResponses: false },
   );
   let result = {};
   try {
