@@ -48,13 +48,16 @@ on:
         required: false
         type: number
         default: 7
+    secrets:
+      STEP_SECURITY_API_KEY:
+        description: "StepSecurity API key used to read attached Harden Runner policies."
+        required: true
 
 permissions: {}
 
 jobs:
-  # zizmor annotations, actionlint, and optional pinact checks are read-only. The
-  # id-token permission authenticates Harden Runner to the StepSecurity policy store;
-  # this workflow never requests security-events: write.
+  # zizmor annotations, actionlint, and optional pinact checks are read-only. This
+  # workflow never requests security-events: write.
   # SARIF upload to code scanning is available via the composite action instead
   # (see actions/scan-github-actions), which runs in a job you control.
   scan-github-actions:
@@ -63,10 +66,11 @@ jobs:
     permissions:
       actions: read
       contents: read
-      id-token: write
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
+        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

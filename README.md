@@ -13,7 +13,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems
 | [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
-| [`harden-runner`](actions/harden-runner) | Start Harden Runner with a short-lived StepSecurity policy-store token minted through GitHub OIDC
+| [`harden-runner`](actions/harden-runner) | Start Harden Runner with authenticated StepSecurity policy-store access
 | [`socket-firewall`](actions/socket-firewall) | Install Socket Firewall with a short-lived, repository-scoped token
 | [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR
 | [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands
@@ -131,10 +131,9 @@ steps:
 
 ### Harden Runner with the StepSecurity policy store
 
-Use `harden-runner` as the first step in a job and grant the job permission to mint a GitHub
-OIDC token. A pre-job bootstrap exchanges that identity for a short-lived StepSecurity API
-token and masks the credential before Harden Runner's own pre entrypoint fetches its policy.
-The wrapper clears the temporary environment variable before returning control to the caller.
+Use `harden-runner` as the first step in a job and pass the organization-level
+`STEP_SECURITY_API_KEY` secret explicitly. Composite actions cannot read the `secrets`
+context themselves, so the caller must provide the credential as an input.
 
 ```yaml
 jobs:
@@ -142,9 +141,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: tempoxyz/gh-actions/actions/harden-runner@<commit-sha>
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }}
 
       - uses: actions/checkout@<commit-sha>
 
@@ -181,7 +181,7 @@ Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>
 
 ### `pr-audit`
 
-Publishes a `pr_audit` event when a pull request receives a configured label. This reusable workflow is **read-only** against repository contents; `id-token: write` is used only to authenticate Harden Runner to the StepSecurity policy store. Comment-driven audit commands are handled separately by the [`pr-audit-comment`](actions/pr-audit-comment) composite action in a caller-owned job (see below).
+Publishes a `pr_audit` event when a pull request receives a configured label. This reusable workflow is **read-only** against repository contents. Callers must forward the `STEP_SECURITY_API_KEY` organization secret for Harden Runner policy-store authentication. Comment-driven audit commands are handled separately by the [`pr-audit-comment`](actions/pr-audit-comment) composite action in a caller-owned job (see below).
 
 #### Label audits (read-only)
 
@@ -197,13 +197,13 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
     permissions:
       contents: read
-      id-token: write
     with:
       environment: pr-audit
       required-labels: |
         cyclops
         agentic-audit
     secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
       EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
       EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
       EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
@@ -234,12 +234,12 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
     permissions:
       contents: read
-      id-token: write
       pull-requests: read
       statuses: write
     with:
       require-completed-audit: true
     secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
       EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
       EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
       EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
@@ -263,10 +263,10 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
     permissions:
       contents: read
-      id-token: write
     with:
       environment: pr-audit
     secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
       EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
       EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
       EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
@@ -341,11 +341,12 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/label-prs.yml@main
     permissions:
       contents: read
-      id-token: write
       issues: write
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
 ```
 
-Caller workflows must grant these permissions on the reusable-workflow job. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels to the pull request through GitHub's Issues API; and `id-token: write` authenticates Harden Runner to the StepSecurity policy store.
+Caller workflows must grant these permissions on the reusable-workflow job and forward the `STEP_SECURITY_API_KEY` organization secret. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels to the pull request through GitHub's Issues API.
 
 The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`, so the bundled label script matches the pinned reusable workflow revision.
 
@@ -355,7 +356,7 @@ Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com
 
 Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold, so repository configuration remains review-sensitive. Existing callers remain unchanged because the pinact check is opt-in.
 
-zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is read-only against repository and Actions data and never requests `security-events: write`; `id-token: write` is used only to authenticate Harden Runner to the StepSecurity policy store. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
+zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is read-only against repository and Actions data and never requests `security-events: write`. Callers must forward the `STEP_SECURITY_API_KEY` organization secret for Harden Runner policy-store authentication. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
 ```yaml
 name: Scan GitHub Actions
@@ -371,7 +372,8 @@ jobs:
     permissions:
       actions: read
       contents: read
-      id-token: write
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
     with:
       pinact: true
 ```
@@ -419,13 +421,14 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/reproducible-build.yml@main
     permissions:
       contents: read
-      id-token: write
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
     with:
       ref: ${{ inputs.ref }}
       binary-name: tempo
 ```
 
-Caller workflows must grant `contents: read` so the reusable workflow can check out the repository being built and `id-token: write` so Harden Runner can authenticate to the StepSecurity policy store.
+Caller workflows must grant `contents: read` so the reusable workflow can check out the repository being built and forward the `STEP_SECURITY_API_KEY` organization secret for Harden Runner policy-store authentication.
 
 Required input:
 
@@ -460,7 +463,8 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
     permissions:
       contents: read
-      id-token: write
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
 ```
 
 Optional inputs:
@@ -515,7 +519,8 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-build-binaries.yml@main
     permissions:
       contents: read
-      id-token: write
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
     with:
       profile: release
       binaries: |
@@ -552,6 +557,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
 ```
 
 The calling repository must carry a trust policy at
@@ -582,13 +589,14 @@ on:
     types: [opened, reopened]
 
 permissions:
-  id-token: write
   issues: write
   pull-requests: write
 
 jobs:
   auto-assign:
     uses: tempoxyz/gh-actions/.github/workflows/auto-assign-pr.yml@main
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
 ```
 
-Caller workflows must grant `issues: write`, `pull-requests: write`, and `id-token: write`.
+Caller workflows must grant `issues: write` and `pull-requests: write`, and forward the `STEP_SECURITY_API_KEY` organization secret.

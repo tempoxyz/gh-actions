@@ -13,6 +13,10 @@ on:
         default: "chore(deps): weekly `cargo update`"
         required: false
         type: "string"
+    secrets:
+      STEP_SECURITY_API_KEY:
+        description: "StepSecurity API key used to read attached Harden Runner policies."
+        required: true
 
 permissions: {}
 
@@ -46,7 +50,9 @@ jobs:
       id-token: write
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
+        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

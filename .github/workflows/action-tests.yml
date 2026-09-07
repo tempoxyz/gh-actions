@@ -11,13 +11,13 @@ jobs:
   discover:
     name: Discover action tests
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     outputs:
       tests: ${{ steps.tests.outputs.tests }}
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
+        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,15 +40,15 @@ jobs:
     name: ${{ matrix.test }}
     needs: discover
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
         test: ${{ fromJSON(needs.discover.outputs.tests) }}
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
+        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -65,11 +65,11 @@ jobs:
     if: ${{ always() }}
     needs: [discover, test]
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
+        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Check matrix results
         env:
