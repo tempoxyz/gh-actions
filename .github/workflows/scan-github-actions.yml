@@ -70,7 +70,7 @@ jobs:
       contents: read
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@9f72170b927ba7f69cbeca429b31861edf4070b6
+        uses: tempoxyz/gh-actions/actions/harden-runner@46988f3d9ece5e4d6cc89b25a6e648616ee0f850
         with:
           sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 

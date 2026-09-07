@@ -40,7 +40,7 @@ runs:
   steps:
     - name: Exchange GitHub OIDC token for a Step Security API key
       id: step-security-token
-      uses: tempoxyz/gh-actions/actions/step-security-sts@f9d3cd794f7fd9f5100ddd0d40ff986e8c4b7d71
+      uses: tempoxyz/gh-actions/actions/step-security-sts@46988f3d9ece5e4d6cc89b25a6e648616ee0f850
       with:
         sts-url: ${{ inputs.sts-url }}
 
