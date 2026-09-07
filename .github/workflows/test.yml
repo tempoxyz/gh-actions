@@ -26,10 +26,8 @@ jobs:
       contents: read
       id-token: write
     steps:
-      # Canary the pre-hook implementation in this stacked pull request. Repin
-      # to the squash-merge commit before merging this change to main.
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@ad21b56382d20a37e6af54d478f9fe1690d9bc78
+        uses: tempoxyz/gh-actions/actions/harden-runner@8e0fe7e32ac73821289a8eafb52ba8c0d0041a5a # main
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

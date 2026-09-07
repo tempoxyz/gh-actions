@@ -11,7 +11,7 @@ const wrapperPattern =
 test("mints the credential in an earlier pinned pre entrypoint", () => {
   assert.match(
     manifest,
-    /tempoxyz\/gh-actions\/actions\/harden-runner-token@0947059453e8f500259563c79801f95e996379be/,
+    /tempoxyz\/gh-actions\/actions\/harden-runner-token@7ddc58cd37fa531a6b5282fbac75f89ceab7bd7d/,
   );
   assert.ok(
     manifest.indexOf("actions/harden-runner-token@") <
