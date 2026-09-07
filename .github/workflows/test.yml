@@ -32,6 +32,17 @@ jobs:
       run-typos: false
       run-deny: false
 
+  rust-lint-no-secret:
+    name: Rust lint without a StepSecurity API key
+    uses: ./.github/workflows/rust-lint.yml
+    permissions:
+      contents: read
+    with:
+      run-clippy: false
+      run-fmt: false
+      run-typos: false
+      run-deny: false
+
   integration:
     name: integration
     runs-on: ubuntu-latest

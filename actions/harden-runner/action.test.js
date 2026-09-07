@@ -20,7 +20,7 @@ test("passes a caller-supplied API key directly to Harden Runner", () => {
   assert.doesNotMatch(manifest, /harden-runner-token|STEPSECURITY_API_KEY|GITHUB_ENV/);
 });
 
-test("every repository workflow job passes the organization API key to the wrapper", () => {
+test("every repository workflow job preserves Harden Runner and its secret contract", () => {
   let runnableJobs = 0;
   let protectedJobs = 0;
 
@@ -39,10 +39,13 @@ test("every repository workflow job passes the organization API key to the wrapp
     );
 
     if (/^\s{2}workflow_call:/m.test(workflow) && wrapperPattern.test(workflow)) {
+      const required = filename === "rust-lint.yml" ? "false" : "true";
       assert.match(
         workflow,
-        /secrets:\s*\n\s+STEP_SECURITY_API_KEY:\s*\n(?:\s+description:[^\n]+\n)?\s+required: true/,
-        `${filename} must require STEP_SECURITY_API_KEY from reusable-workflow callers`,
+        new RegExp(
+          String.raw`secrets:\s*\n\s+STEP_SECURITY_API_KEY:\s*\n(?:\s+description:[^\n]+\n)?\s+required: ${required}`,
+        ),
+        `${filename} must declare STEP_SECURITY_API_KEY with required: ${required}`,
       );
     }
 
@@ -64,13 +67,21 @@ test("every repository workflow job passes the organization API key to the wrapp
 
       runnableJobs += 1;
       if (usesProtectedWorkflow) {
-        assert.match(
-          jobBlock,
-          new RegExp(
-            String.raw`secrets:\s*\n\s+STEP_SECURITY_API_KEY:\s+${secretExpression}`,
-          ),
-          `${filename} must pass STEP_SECURITY_API_KEY to its reusable workflow`,
-        );
+        const optionalSecretSmokeTest =
+          filename === "test.yml" &&
+          /^  rust-lint-no-secret:/m.test(jobBlock) &&
+          reusableWorkflow[1] === "rust-lint.yml";
+        if (optionalSecretSmokeTest) {
+          assert.doesNotMatch(jobBlock, /^    secrets:/m);
+        } else {
+          assert.match(
+            jobBlock,
+            new RegExp(
+              String.raw`secrets:\s*\n\s+STEP_SECURITY_API_KEY:\s+${secretExpression}`,
+            ),
+            `${filename} must pass STEP_SECURITY_API_KEY to its reusable workflow`,
+          );
+        }
         protectedJobs += 1;
       } else {
         const steps = jobBlock.split(/\n    steps:\s*\n/, 2)[1] || "";
@@ -88,4 +99,17 @@ test("every repository workflow job passes the organization API key to the wrapp
 
   assert.ok(runnableJobs > 0, "expected at least one runnable workflow job");
   assert.equal(protectedJobs, runnableJobs);
+});
+
+test("Rust lint smoke test omits the optional secret entirely", () => {
+  const workflow = fs.readFileSync(
+    path.join(workflowsDirectory, "test.yml"),
+    "utf8",
+  );
+  const jobBlock = workflow
+    .split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/)
+    .find((block) => /^  rust-lint-no-secret:/m.test(block));
+  assert.ok(jobBlock, "expected a no-secret Rust lint smoke test");
+  assert.match(jobBlock, /uses: \.\/\.github\/workflows\/rust-lint.yml/);
+  assert.doesNotMatch(jobBlock, /^    secrets:/m);
 });

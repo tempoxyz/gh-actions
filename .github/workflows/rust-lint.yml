@@ -80,8 +80,8 @@ on:
         default: --all-features
     secrets:
       STEP_SECURITY_API_KEY:
-        description: "StepSecurity API key used to read attached Harden Runner policies."
-        required: true
+        description: "Optional StepSecurity policy-store API key; Harden Runner uses audit mode when absent."
+        required: false
 
 permissions: {}
 

@@ -496,7 +496,10 @@ jobs:
 
 The deny action runs in Docker and manages its own Rust toolchain;
 `deny-rust-toolchain` configures only the host runner. Callers grant `contents: read`
-for checkout and pass `STEP_SECURITY_API_KEY` for Harden Runner, as shown above.
+for checkout. `STEP_SECURITY_API_KEY` is optional: pass it as shown above to use
+centrally managed Harden Runner policies, or omit the `secrets` block to run in
+audit mode without policy-store access. Harden Runner still runs when the key is
+absent, including on fork pull requests.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
 
 The `lint success` gate accepts explicitly disabled checks and fails on failures,
