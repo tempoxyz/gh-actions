@@ -6,6 +6,9 @@ The caller must grant `id-token: write`. The action does not require stored
 credentials: the STS verifies the signed GitHub OIDC token and authorizes it
 against the trust policy in the target repository.
 
+The action sends token exchanges with `POST /sts/exchange`; legacy action
+versions that use `GET` remain compatible during the coordinated rollout.
+
 ## Inputs
 
 | Name | Description | Required | Default |
