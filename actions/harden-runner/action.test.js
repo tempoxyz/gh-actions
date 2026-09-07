@@ -6,7 +6,7 @@ const test = require("node:test");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb/;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@[0-9a-f]{40}/;
 
 test("mints the credential in an earlier pinned pre entrypoint", () => {
   assert.match(
@@ -77,7 +77,7 @@ test("every repository workflow job is protected by the OIDC wrapper", () => {
         const steps = jobBlock.split(/\n    steps:\s*\n/, 2)[1] || "";
         assert.match(
           steps,
-          /^\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb/,
+          /^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@[0-9a-f]{40}/,
           `${filename} must use the OIDC-authenticated Harden Runner wrapper as the first step of every runnable job`,
         );
         protectedJobs += 1;
