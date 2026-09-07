@@ -142,6 +142,11 @@ export function compareVersions(a, b) {
   return 0;
 }
 
+// Older Git versions print UTC as +00:00 for %cI; newer versions use Z.
+export function normalizeCommitDate(date) {
+  return date.trim().replace(/\+00:00$/, "Z");
+}
+
 // Verify the manifest pin still matches upstream (tags only), then extract exactly that commit into dest.
 export function fetchUpstream(entry, dest, { verify = true } = {}) {
   const url = upstreamUrl(entry.name);
@@ -157,7 +162,7 @@ export function fetchUpstream(entry, dest, { verify = true } = {}) {
   try {
     sh("git", ["init", "-q", tmp]);
     sh("git", ["-C", tmp, "fetch", "-q", "--depth", "1", url, entry.sha]);
-    const date = sh("git", ["-C", tmp, "log", "-1", "--format=%cI", "FETCH_HEAD"]).trim();
+    const date = normalizeCommitDate(sh("git", ["-C", tmp, "log", "-1", "--format=%cI", "FETCH_HEAD"]));
     mkdirSync(dest, { recursive: true });
     sh("sh", ["-c", `git -C "${tmp}" archive FETCH_HEAD | tar -x -C "${dest}"`]);
     return { url, date };

@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { globToRegExp, matchesAny, rewriteUsesText, compareVersions, updateReadmeText, README_BEGIN, README_END } from "./lib.mjs";
+import { globToRegExp, matchesAny, rewriteUsesText, compareVersions, normalizeCommitDate, updateReadmeText, README_BEGIN, README_END } from "./lib.mjs";
+
+test("commit timestamps are stable across Git UTC formats and preserve non-UTC offsets", () => {
+  assert.equal(normalizeCommitDate("2024-02-15T00:16:04+00:00\n"), "2024-02-15T00:16:04Z");
+  assert.equal(normalizeCommitDate("2024-02-15T00:16:04Z\n"), "2024-02-15T00:16:04Z");
+  assert.equal(normalizeCommitDate("2024-02-15T05:46:04+05:30\n"), "2024-02-15T05:46:04+05:30");
+  assert.equal(normalizeCommitDate("2024-02-14T16:16:04-08:00\n"), "2024-02-14T16:16:04-08:00");
+});
 
 test("glob patterns are anchored at the tree root and match whole directories", () => {
   assert.ok(globToRegExp("src/").test("src/index.ts"));
