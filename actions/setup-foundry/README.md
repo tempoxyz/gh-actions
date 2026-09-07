@@ -40,6 +40,10 @@ the newest tagged release of that kind through the GitHub API.
 
 The action downloads the tarball, checks the `.sha256`, then runs `gh attestation verify` requiring
 provenance from `foundry-rs/foundry` at the resolved tag (or `master` for nightlies), signed by
-`.github/workflows/release.yml`. `gh` is preinstalled on GitHub-hosted runners; the check adds a
-few seconds. Binaries are installed under `RUNNER_TEMP` and added to `PATH`; `foundryup` itself is
-not installed.
+`.github/workflows/release.yml`. The action reuses `gh` when it supports the required attestation
+flags. Otherwise, on Linux x86_64 or ARM64 it installs GitHub CLI 2.100.0 under `RUNNER_TEMP`,
+checks an archive SHA-256 pinned in the action, and verifies the CLI's own provenance before
+adding it to `PATH`. No root access or preinstalled `gh` is required; the runner needs Bash,
+curl, tar, gzip, sha256sum, and mktemp. Foundry's checksum and attestation checks still run.
+
+Binaries are installed under `RUNNER_TEMP` and added to `PATH`; `foundryup` itself is not installed.
