@@ -145,9 +145,16 @@ runs:
                   ;;
               esac
 
+              # Check the pipeline separately: jq would mask a failed read
+              # if the command substitution were passed as an argument.
+              if ! contents="$(git cat-file blob "$oid" | base64 | tr -d '\n')"; then
+                echo "::error::could not read staged blob for '$path'" >&2
+                exit 1
+              fi
+
               ADDITIONS="$(
                 jq --arg path "$path" \
-                  --arg contents "$(git cat-file blob "$oid" | base64 | tr -d '\n')" \
+                  --arg contents "$contents" \
                   '. + [{path: $path, contents: $contents}]' <<<"$ADDITIONS"
               )"
               ;;

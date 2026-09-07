@@ -44,6 +44,7 @@ async function setupFixture() {
     ghPath,
     `#!/usr/bin/env bash
 set -euo pipefail
+printf '%s\\n' "$*" >> "$RUNNER_TEMP/gh-calls"
 case "$*" in
   "api repos/test/repo/git/ref/heads/test-branch") exit 1 ;;
   "api graphql"*) echo "0123456789abcdef" ;;
@@ -99,6 +100,7 @@ test("commits regular files from their staged blobs", async (t) => {
   t.after(() => rm(fixture.directory, { recursive: true, force: true }));
 
   await writeFile(path.join(fixture.repository, "generated.txt"), "generated\n");
+  await writeFile(path.join(fixture.repository, "empty.txt"), "");
   const result = spawnSync("bash", ["-c", fixture.script], {
     cwd: fixture.repository,
     encoding: "utf8",
@@ -112,7 +114,46 @@ test("commits regular files from their staged blobs", async (t) => {
   const additions = request.variables.input.fileChanges.additions;
   const generated = additions.find(({ path: filePath }) => filePath === "generated.txt");
   assert.equal(Buffer.from(generated.contents, "base64").toString(), "generated\n");
+  assert.equal(additions.find(({ path: filePath }) => filePath === "empty.txt").contents, "");
 });
+
+for (const partialOutput of ["", "partial content"]) {
+  test(`stops before submitting a commit when a blob read fails (${partialOutput ? "partial output" : "no output"})`, async (t) => {
+    const fixture = await setupFixture();
+    t.after(() => rm(fixture.directory, { recursive: true, force: true }));
+
+    await writeFile(path.join(fixture.repository, "generated.txt"), "generated\n");
+    const gitPath = path.join(fixture.directory, "bin", "git");
+    await writeFile(gitPath, `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "cat-file" ]]; then
+  printf '%s' "$PARTIAL_OUTPUT"
+  echo 'simulated blob read failure' >&2
+  exit 1
+fi
+exec "$REAL_GIT" "$@"
+`);
+    await chmod(gitPath, 0o755);
+
+    const result = spawnSync("bash", ["-c", fixture.script], {
+      cwd: fixture.repository,
+      encoding: "utf8",
+      env: {
+        ...fixture.env,
+        REAL_GIT: run("sh", ["-c", "command -v git"]).stdout.trim(),
+        PARTIAL_OUTPUT: partialOutput,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /simulated blob read failure/);
+    await assert.rejects(
+      readFile(path.join(fixture.runnerTemp, "create-commit.json")),
+      { code: "ENOENT" },
+    );
+    const calls = await readFile(path.join(fixture.runnerTemp, "gh-calls"), "utf8");
+    assert.doesNotMatch(calls, /api graphql|pr create|pr edit/);
+  });
+}
 
 test("rejects symlinks without reading their targets", async (t) => {
   const fixture = await setupFixture();
