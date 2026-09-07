@@ -1,0 +1,18 @@
+name: "Step Security STS"
+description: "Exchange a GitHub Actions OIDC token for a short-lived Step Security API key"
+
+inputs:
+  sts-url:
+    description: "Secret URL of the Step Security STS endpoint"
+    required: true
+
+outputs:
+  token:
+    description: "Sensitive: short-lived Step Security API key, registered with GitHub's secret masker"
+  expires-at:
+    description: "Time when Step Security STS will revoke the API key"
+
+runs:
+  using: "node24"
+  main: "main.cjs"
+  post: "post.cjs"
