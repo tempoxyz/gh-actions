@@ -63,7 +63,7 @@ jobs:
       binaries: ${{ steps.binaries.outputs.json }}
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        uses: tempoxyz/gh-actions/actions/harden-runner@9f72170b927ba7f69cbeca429b31861edf4070b6
         with:
           sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
@@ -98,7 +98,7 @@ jobs:
         binary: ${{ fromJSON(needs.resolve.outputs.binaries) }}
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        uses: tempoxyz/gh-actions/actions/harden-runner@9f72170b927ba7f69cbeca429b31861edf4070b6
         with:
           sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
