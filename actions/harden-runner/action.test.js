@@ -6,21 +6,21 @@ const test = require("node:test");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@[0-9a-f]{40}/;
-const secretExpression = String.raw`\$\{\{ secrets\.STEP_SECURITY_API_KEY \}\}`;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@9f72170b927ba7f69cbeca429b31861edf4070b6/;
+const secretExpression = String.raw`\$\{\{ secrets\.STEP_SECURITY_STS_PRD_URL \}\}`;
 
-test("passes a caller-supplied API key directly to Harden Runner", () => {
-  assert.match(manifest, /api-key:\n\s+description:[^\n]+\n\s+required: true/);
+test("passes a caller-supplied STS URL to Harden Runner", () => {
+  assert.match(manifest, /sts-url:\n\s+description:[^\n]+\n\s+required: true/);
   assert.match(
     manifest,
     /step-security\/harden-runner@e14015d583714f6e62063499dc959a02595150a1/,
   );
-  assert.match(manifest, /api-key: \$\{\{ inputs\.api-key \}\}/);
+  assert.match(manifest, /sts-url: \$\{\{ inputs\.sts-url \}\}/);
   assert.match(manifest, /use-policy-store: true/);
   assert.doesNotMatch(manifest, /harden-runner-token|STEPSECURITY_API_KEY|GITHUB_ENV/);
 });
 
-test("every repository workflow job passes the organization API key to the wrapper", () => {
+test("every repository workflow job passes the organization STS URL to the wrapper", () => {
   let runnableJobs = 0;
   let protectedJobs = 0;
 
@@ -41,8 +41,8 @@ test("every repository workflow job passes the organization API key to the wrapp
     if (/^\s{2}workflow_call:/m.test(workflow) && wrapperPattern.test(workflow)) {
       assert.match(
         workflow,
-        /secrets:\s*\n\s+STEP_SECURITY_API_KEY:\s*\n(?:\s+description:[^\n]+\n)?\s+required: true/,
-        `${filename} must require STEP_SECURITY_API_KEY from reusable-workflow callers`,
+        /secrets:\s*\n\s+STEP_SECURITY_STS_PRD_URL:\s*\n(?:\s+description:[^\n]+\n)?\s+required: true/,
+        `${filename} must require STEP_SECURITY_STS_PRD_URL from reusable-workflow callers`,
       );
     }
 
@@ -63,13 +63,18 @@ test("every repository workflow job passes the organization API key to the wrapp
       if (!runsOnRunner && !reusableWorkflow) continue;
 
       runnableJobs += 1;
+      assert.match(
+        jobBlock,
+        /^    permissions:\n(?:      [^\n]+\n)*      id-token: write$/m,
+        `${filename} must grant id-token: write for the STS exchange`,
+      );
       if (usesProtectedWorkflow) {
         assert.match(
           jobBlock,
           new RegExp(
-            String.raw`secrets:\s*\n\s+STEP_SECURITY_API_KEY:\s+${secretExpression}`,
+            String.raw`secrets:\s*\n\s+STEP_SECURITY_STS_PRD_URL:\s+${secretExpression}`,
           ),
-          `${filename} must pass STEP_SECURITY_API_KEY to its reusable workflow`,
+          `${filename} must pass STEP_SECURITY_STS_PRD_URL to its reusable workflow`,
         );
         protectedJobs += 1;
       } else {
@@ -77,9 +82,9 @@ test("every repository workflow job passes the organization API key to the wrapp
         assert.match(
           steps,
           new RegExp(
-            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@[0-9a-f]{40}[^\n]*\n\s+with:\s*\n\s+api-key:\s+${secretExpression}`,
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@9f72170b927ba7f69cbeca429b31861edf4070b6[^\n]*\n\s+with:\s*\n\s+sts-url:\s+${secretExpression}`,
           ),
-          `${filename} must pass STEP_SECURITY_API_KEY to the Harden Runner wrapper as the first step of every runnable job`,
+          `${filename} must pass STEP_SECURITY_STS_PRD_URL to the Harden Runner wrapper as the first step of every runnable job`,
         );
         protectedJobs += 1;
       }
