@@ -442,6 +442,7 @@ Optional inputs:
 ### `rust-lint`
 
 Runs a common Rust lint set: `cargo clippy`, `cargo fmt`, `typos`, and `cargo deny`.
+All checks run by default and can be enabled or disabled independently.
 
 ```yaml
 name: Lint
@@ -473,7 +474,7 @@ Optional inputs:
 - `checkout-submodules` (default: `false`) — passed to clippy checkout only
 - `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
 
-For a deny-only job migrating from `tempoxyz/ci/.github/workflows/deny.yml`:
+To run only `cargo deny`, disable the other checks:
 
 ```yaml
 jobs:
@@ -486,20 +487,16 @@ jobs:
       run-clippy: false
       run-fmt: false
       run-typos: false
-      deny-rust-toolchain: nightly
 ```
 
-Pin the reusable workflow to a commit containing these inputs before migrating callers.
-Map the old workflow's `rust-toolchain` input to `deny-rust-toolchain` (the old default
-was `nightly`); `deny-flags` is unchanged. This controls runner setup, as in the old
-workflow; the vendored cargo-deny action manages Rust inside its Docker container.
-Existing `rust-lint` callers retain stable Rust on the deny runner and nightly for
-clippy/fmt. Callers must grant `id-token: write` for
-Harden Runner, in addition to `contents: read`.
+The deny action runs in Docker and manages its own Rust toolchain;
+`deny-rust-toolchain` configures only the host runner. Callers grant `contents: read`
+for checkout and `id-token: write` for Harden Runner, as shown above. Pin production
+callers to a commit SHA (see [Versioning](#versioning)).
 
-The `lint success` job permits skips only for checks disabled by these inputs.
-Failures, cancellations, and unexpected skips still fail the gate. Disabling all
-four checks is a successful no-op, with only the gate running.
+The `lint success` gate accepts explicitly disabled checks and fails on failures,
+cancellations, or unexpected skips. If all four checks are disabled, only the
+gate runs and succeeds.
 
 ### `rust-build-binaries`
 
