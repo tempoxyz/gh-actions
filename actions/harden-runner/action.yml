@@ -1,0 +1,60 @@
+name: "Harden Runner"
+description: >-
+  Mint a short-lived StepSecurity API token with GitHub OIDC and start
+  Harden Runner with policy-store access
+
+inputs:
+  egress-policy:
+    description: "Fallback outbound policy when no stored policy applies (audit or block)"
+    required: false
+    default: "audit"
+  allowed-endpoints:
+    description: "Endpoints allowed when the fallback egress policy is block"
+    required: false
+    default: ""
+  denied-endpoints:
+    description: "Endpoints denied when endpoint blocking is enabled"
+    required: false
+    default: ""
+  disable-telemetry:
+    description: "Disable StepSecurity telemetry; valid only with a block egress policy"
+    required: false
+    default: "false"
+  disable-sudo-and-containers:
+    description: "Disable sudo and container access for the runner account"
+    required: false
+    default: "false"
+  disable-file-monitoring:
+    description: "Disable file monitoring"
+    required: false
+    default: "false"
+  deploy-on-self-hosted-vm:
+    description: "Deploy Harden Runner directly on an ephemeral self-hosted Linux VM"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Mint StepSecurity API token
+      id: stepsecurity-token
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        STEPSECURITY_TOKEN_SCRIPT: ${{ github.action_path }}/mint.cjs
+      with:
+        script: |
+          const { mintStepSecurityToken } = require(process.env.STEPSECURITY_TOKEN_SCRIPT)
+          await mintStepSecurityToken({ core })
+
+    - name: Harden the runner with the StepSecurity policy store
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      with:
+        allowed-endpoints: ${{ inputs.allowed-endpoints }}
+        api-key: ${{ steps.stepsecurity-token.outputs.token }}
+        denied-endpoints: ${{ inputs.denied-endpoints }}
+        deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
+        disable-file-monitoring: ${{ inputs.disable-file-monitoring }}
+        disable-sudo-and-containers: ${{ inputs.disable-sudo-and-containers }}
+        disable-telemetry: ${{ inputs.disable-telemetry }}
+        egress-policy: ${{ inputs.egress-policy }}
+        use-policy-store: true
