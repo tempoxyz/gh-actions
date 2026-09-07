@@ -3,8 +3,8 @@ description: >-
   Start Harden Runner with authenticated StepSecurity policy-store access
 
 inputs:
-  api-key:
-    description: "StepSecurity API key used to read attached policies"
+  sts-url:
+    description: "Secret URL of the Step Security STS endpoint"
     required: true
   egress-policy:
     description: "Fallback outbound policy when no stored policy applies (audit or block)"
@@ -38,11 +38,17 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Exchange GitHub OIDC token for a Step Security API key
+      id: step-security-token
+      uses: tempoxyz/gh-actions/actions/step-security-sts@c0e614b3f9ad5d350ac895229dd9e2debf2f3cb1
+      with:
+        sts-url: ${{ inputs.sts-url }}
+
     - name: Harden the runner with the StepSecurity policy store
       uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
       with:
         allowed-endpoints: ${{ inputs.allowed-endpoints }}
-        api-key: ${{ inputs.api-key }}
+        api-key: ${{ steps.step-security-token.outputs.token }}
         denied-endpoints: ${{ inputs.denied-endpoints }}
         deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
         disable-file-monitoring: ${{ inputs.disable-file-monitoring }}
