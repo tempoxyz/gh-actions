@@ -8,24 +8,32 @@ const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
   /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb/;
 
-test("mints a policy-store credential with the pinned GitHub Script action", () => {
+test("mints the credential in an earlier pinned pre entrypoint", () => {
   assert.match(
     manifest,
-    /actions\/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3/,
+    /tempoxyz\/gh-actions\/actions\/harden-runner-token@0947059453e8f500259563c79801f95e996379be/,
   );
-  assert.match(manifest, /mintStepSecurityToken/);
+  assert.ok(
+    manifest.indexOf("actions/harden-runner-token@") <
+      manifest.indexOf("step-security/harden-runner@"),
+    "token pre entrypoint must be referenced before Harden Runner",
+  );
 });
 
-test("passes the minted credential to the pinned Harden Runner action", () => {
+test("passes and then clears the minted credential", () => {
   assert.match(
     manifest,
     /step-security\/harden-runner@e14015d583714f6e62063499dc959a02595150a1/,
   );
   assert.match(
     manifest,
-    /api-key: \$\{\{ steps\.stepsecurity-token\.outputs\.token \}\}/,
+    /api-key: \$\{\{ env\.STEPSECURITY_API_KEY \}\}/,
   );
   assert.match(manifest, /use-policy-store: true/);
+  assert.match(
+    manifest,
+    /echo "STEPSECURITY_API_KEY=" >> "\$GITHUB_ENV"/,
+  );
 });
 
 test("every repository workflow job is protected by the OIDC wrapper", () => {
