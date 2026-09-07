@@ -20,11 +20,12 @@ function maskSecret(value) {
   console.log(`::add-mask::${escaped}`);
 }
 
-function publishToken(token, expiresAt) {
+function publishToken(token, expiresAt, leaseId) {
   maskSecret(token);
   append(required("GITHUB_OUTPUT"), "token", token);
   append(required("GITHUB_OUTPUT"), "expires-at", expiresAt);
   append(required("GITHUB_STATE"), "token", token);
+  append(required("GITHUB_STATE"), "lease_id", leaseId);
 }
 
 async function main() {
@@ -80,11 +81,15 @@ async function main() {
     typeof result.token !== "string" ||
     !/^\S{20,4096}$/.test(result.token) ||
     typeof result.expires_at !== "string" ||
-    !Number.isFinite(Date.parse(result.expires_at))
+    !Number.isFinite(Date.parse(result.expires_at)) ||
+    typeof result.lease_id !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      result.lease_id,
+    )
   ) {
     throw new Error("Step Security STS response is invalid");
   }
-  publishToken(result.token, result.expires_at);
+  publishToken(result.token, result.expires_at, result.lease_id);
   append(required("GITHUB_STATE"), "sts_url", rawEndpoint);
 }
 

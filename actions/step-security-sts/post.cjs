@@ -1,7 +1,7 @@
 const { endpoint, request, retry } = require("./http.cjs");
 
-function buildRevokeRequest(token, rawEndpoint) {
-  const body = JSON.stringify({ token });
+function buildRevokeRequest(token, leaseId, rawEndpoint) {
+  const body = JSON.stringify({ token, lease_id: leaseId });
   return {
     url: `${endpoint(rawEndpoint).origin}/sts/exchange`,
     options: {
@@ -24,7 +24,18 @@ async function main() {
   }
   if (!/^\S{20,4096}$/.test(token))
     throw new Error("stored Step Security API key is invalid");
-  const revoke = buildRevokeRequest(token, process.env.STATE_sts_url || "");
+  const leaseId = process.env.STATE_lease_id || "";
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      leaseId,
+    )
+  )
+    throw new Error("stored Step Security STS lease ID is invalid");
+  const revoke = buildRevokeRequest(
+    token,
+    leaseId,
+    process.env.STATE_sts_url || "",
+  );
   const response = await retry(() =>
     request(revoke.url, revoke.options, revoke.body),
   );
@@ -33,7 +44,7 @@ async function main() {
       `Step Security STS revocation failed (HTTP ${response.status})`,
     );
   }
-  console.log("Step Security API key revoked.");
+  console.log("Step Security STS lease closed.");
 }
 
 if (require.main === module) {

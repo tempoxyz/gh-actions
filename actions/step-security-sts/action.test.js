@@ -8,6 +8,7 @@ const { publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 
 const secretUrl = "https://sts.example.test";
+const leaseId = "11111111-1111-4111-8111-111111111111";
 
 test("uses a validated secret endpoint without embedding deployment hosts", () => {
   assert.deepEqual(endpoint(secretUrl), {
@@ -79,7 +80,11 @@ test("masks the token before publishing it as output or state", () => {
   process.env.GITHUB_STATE = "github-state";
 
   try {
-    publishToken("step%key-with-sensitive-value", "2026-09-06T03:00:00Z");
+    publishToken(
+      "step%key-with-sensitive-value",
+      "2026-09-06T03:00:00Z",
+      leaseId,
+    );
   } finally {
     fs.appendFileSync = originalAppendFileSync;
     console.log = originalLog;
@@ -94,17 +99,18 @@ test("masks the token before publishing it as output or state", () => {
     ["append", "github-output", "token=step%key-with-sensitive-value\n"],
     ["append", "github-output", "expires-at=2026-09-06T03:00:00Z\n"],
     ["append", "github-state", "token=step%key-with-sensitive-value\n"],
+    ["append", "github-state", `lease_id=${leaseId}\n`],
   ]);
 });
 
-test("revokes API keys through the secret endpoint", () => {
+test("closes STS leases through the secret endpoint", () => {
   const token = "step_test_short_lived_api_key";
-  const revoke = buildRevokeRequest(token, secretUrl);
+  const revoke = buildRevokeRequest(token, leaseId, secretUrl);
 
   assert.equal(revoke.url, `${secretUrl}/sts/exchange`);
   assert.equal(revoke.options.method, "DELETE");
   assert.equal(revoke.options.headers["content-type"], "application/json");
-  assert.deepEqual(JSON.parse(revoke.body), { token });
+  assert.deepEqual(JSON.parse(revoke.body), { token, lease_id: leaseId });
 });
 
 test("post is a no-op when no API key was minted", () => {
