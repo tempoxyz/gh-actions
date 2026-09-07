@@ -7,36 +7,20 @@ const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
   /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@[0-9a-f]{40}/;
+const secretExpression = String.raw`\$\{\{ secrets\.STEP_SECURITY_API_KEY \}\}`;
 
-test("mints the credential in an earlier pinned pre entrypoint", () => {
-  assert.match(
-    manifest,
-    /tempoxyz\/gh-actions\/actions\/harden-runner-token@7ddc58cd37fa531a6b5282fbac75f89ceab7bd7d/,
-  );
-  assert.ok(
-    manifest.indexOf("actions/harden-runner-token@") <
-      manifest.indexOf("step-security/harden-runner@"),
-    "token pre entrypoint must be referenced before Harden Runner",
-  );
-});
-
-test("passes and then clears the minted credential", () => {
+test("passes a caller-supplied API key directly to Harden Runner", () => {
+  assert.match(manifest, /api-key:\n\s+description:[^\n]+\n\s+required: true/);
   assert.match(
     manifest,
     /step-security\/harden-runner@e14015d583714f6e62063499dc959a02595150a1/,
   );
-  assert.match(
-    manifest,
-    /api-key: \$\{\{ env\.STEPSECURITY_API_KEY \}\}/,
-  );
+  assert.match(manifest, /api-key: \$\{\{ inputs\.api-key \}\}/);
   assert.match(manifest, /use-policy-store: true/);
-  assert.match(
-    manifest,
-    /echo "STEPSECURITY_API_KEY=" >> "\$GITHUB_ENV"/,
-  );
+  assert.doesNotMatch(manifest, /harden-runner-token|STEPSECURITY_API_KEY|GITHUB_ENV/);
 });
 
-test("every repository workflow job is protected by the OIDC wrapper", () => {
+test("every repository workflow job passes the organization API key to the wrapper", () => {
   let runnableJobs = 0;
   let protectedJobs = 0;
 
@@ -51,7 +35,7 @@ test("every repository workflow job is protected by the OIDC wrapper", () => {
     assert.doesNotMatch(
       workflow,
       /uses:\s+step-security\/harden-runner@/,
-      `${filename} must use the OIDC-authenticated Harden Runner wrapper`,
+      `${filename} must use the authenticated Harden Runner wrapper`,
     );
 
     const jobBlocks = workflow.split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/);
@@ -72,23 +56,25 @@ test("every repository workflow job is protected by the OIDC wrapper", () => {
 
       runnableJobs += 1;
       if (usesProtectedWorkflow) {
+        assert.match(
+          jobBlock,
+          new RegExp(
+            String.raw`secrets:\s*\n\s+STEP_SECURITY_API_KEY:\s+${secretExpression}`,
+          ),
+          `${filename} must pass STEP_SECURITY_API_KEY to its reusable workflow`,
+        );
         protectedJobs += 1;
       } else {
         const steps = jobBlock.split(/\n    steps:\s*\n/, 2)[1] || "";
         assert.match(
           steps,
-          /^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@[0-9a-f]{40}/,
-          `${filename} must use the OIDC-authenticated Harden Runner wrapper as the first step of every runnable job`,
+          new RegExp(
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@[0-9a-f]{40}[^\n]*\n\s+with:\s*\n\s+api-key:\s+${secretExpression}`,
+          ),
+          `${filename} must pass STEP_SECURITY_API_KEY to the Harden Runner wrapper as the first step of every runnable job`,
         );
         protectedJobs += 1;
       }
-
-      const jobHeader = jobBlock.split(/\n    steps:\s*\n/, 1)[0];
-      assert.match(
-        jobHeader,
-        /^      id-token: write$/m,
-        `${filename} must grant id-token: write to every job using the wrapper`,
-      );
     }
   }
 

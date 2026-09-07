@@ -1,9 +1,11 @@
 name: "Harden Runner"
 description: >-
-  Mint a short-lived StepSecurity API token with GitHub OIDC and start
-  Harden Runner with policy-store access
+  Start Harden Runner with authenticated StepSecurity policy-store access
 
 inputs:
+  api-key:
+    description: "StepSecurity API key used to read attached policies"
+    required: true
   egress-policy:
     description: "Fallback outbound policy when no stored policy applies (audit or block)"
     required: false
@@ -36,16 +38,11 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # Embedded pre entrypoints run in reference order. This action exports the
-    # credential before Harden Runner's pre entrypoint reads its inputs.
-    - name: Prepare StepSecurity API token
-      uses: tempoxyz/gh-actions/actions/harden-runner-token@7ddc58cd37fa531a6b5282fbac75f89ceab7bd7d # main
-
     - name: Harden the runner with the StepSecurity policy store
       uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
       with:
         allowed-endpoints: ${{ inputs.allowed-endpoints }}
-        api-key: ${{ env.STEPSECURITY_API_KEY }}
+        api-key: ${{ inputs.api-key }}
         denied-endpoints: ${{ inputs.denied-endpoints }}
         deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
         disable-file-monitoring: ${{ inputs.disable-file-monitoring }}
@@ -53,7 +50,3 @@ runs:
         disable-telemetry: ${{ inputs.disable-telemetry }}
         egress-policy: ${{ inputs.egress-policy }}
         use-policy-store: true
-
-    - name: Clear StepSecurity API token
-      shell: bash
-      run: echo "STEPSECURITY_API_KEY=" >> "$GITHUB_ENV"
