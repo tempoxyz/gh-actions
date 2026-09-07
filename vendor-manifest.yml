@@ -913,6 +913,30 @@ actions:
       .nvmrc, .dockerignore, CHANGELOG*, **/*.test.*, .envrc, release.sh, test_projects/ kept
       although usually excludable: lib/ (referenced)
 
+  - name: peter-evans/create-pull-request
+    ref: v8.1.1
+    ref_type: tag
+    sha: 5f6978faf089d4d20b00c7766989d076bb2fc7f1
+    exclude:
+      - src/
+      - __test__/
+      - docs/
+      - tsconfig*.json
+      - jest.config.*
+      - .eslintrc*
+      - .eslintignore
+      - .prettierrc*
+      - .prettierignore
+      - package-lock.json
+      - '**/*.test.*'
+    keep:
+      - package-lock.json
+    notes: >-
+      Node action; runs dist/index.js. excluded: src/, __test__/, docs/, tsconfig*.json,
+      jest.config.*, .eslintrc*, .eslintignore, .prettierrc*, .prettierignore, package-lock.json,
+      **/*.test.* Manual: Keep the upstream package-lock.json so dependency scanners resolve
+      the pinned release's dependency versions instead of current versions from manifest ranges.
+
   - name: planetscale/setup-pscale-action
     ref: v1
     ref_type: tag
