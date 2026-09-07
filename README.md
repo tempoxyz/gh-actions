@@ -445,6 +445,7 @@ Optional inputs:
 ### `rust-lint`
 
 Runs a common Rust lint set: `cargo clippy`, `cargo fmt`, `typos`, and `cargo deny`.
+All checks run by default and can be enabled or disabled independently.
 
 ```yaml
 name: Lint
@@ -468,12 +469,39 @@ jobs:
 
 Optional inputs:
 
+- `run-clippy`, `run-fmt`, `run-typos`, `run-deny` (default: `true`) — enable each check independently
 - `rust-toolchain` (default: `nightly`) — used for clippy and fmt
+- `deny-rust-toolchain` (default: `stable`) — installed on the deny runner
 - `clippy-flags` (default: `--all-targets --all-features --locked`)
 - `fmt-flags` (default: `--all --check`)
 - `deny-flags` (default: `--all-features`)
 - `checkout-submodules` (default: `false`) — passed to clippy checkout only
 - `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
+
+To run only `cargo deny`, disable the other checks:
+
+```yaml
+jobs:
+  deny:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
+    permissions:
+      contents: read
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
+    with:
+      run-clippy: false
+      run-fmt: false
+      run-typos: false
+```
+
+The deny action runs in Docker and manages its own Rust toolchain;
+`deny-rust-toolchain` configures only the host runner. Callers grant `contents: read`
+for checkout and pass `STEP_SECURITY_API_KEY` for Harden Runner, as shown above.
+Pin production callers to a commit SHA (see [Versioning](#versioning)).
+
+The `lint success` gate accepts explicitly disabled checks and fails on failures,
+cancellations, or unexpected skips. If all four checks are disabled, only the
+gate runs and succeeds.
 
 ### `rust-build-binaries`
 

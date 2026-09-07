@@ -3,6 +3,26 @@ name: rust lint
 on:
   workflow_call:
     inputs:
+      run-clippy:
+        description: Run cargo clippy.
+        required: false
+        type: boolean
+        default: true
+      run-fmt:
+        description: Run cargo fmt.
+        required: false
+        type: boolean
+        default: true
+      run-typos:
+        description: Run typos.
+        required: false
+        type: boolean
+        default: true
+      run-deny:
+        description: Run cargo deny.
+        required: false
+        type: boolean
+        default: true
       clippy-runner:
         description: Runner used for cargo clippy.
         required: false
@@ -38,6 +58,11 @@ on:
         required: false
         type: string
         default: nightly
+      deny-rust-toolchain:
+        description: Rust toolchain installed on the deny runner.
+        required: false
+        type: string
+        default: stable
       clippy-flags:
         description: Flags passed to cargo clippy.
         required: false
@@ -67,6 +92,7 @@ env:
 jobs:
   clippy:
     name: clippy
+    if: ${{ inputs.run-clippy }}
     runs-on: ${{ inputs.clippy-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     env:
@@ -131,6 +157,7 @@ jobs:
 
   fmt:
     name: fmt
+    if: ${{ inputs.run-fmt }}
     runs-on: ${{ inputs.fmt-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -160,6 +187,7 @@ jobs:
 
   typos:
     name: typos
+    if: ${{ inputs.run-typos }}
     runs-on: ${{ inputs.typos-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -203,6 +231,7 @@ jobs:
 
   deny:
     name: cargo deny check
+    if: ${{ inputs.run-deny }}
     runs-on: ${{ inputs.deny-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -217,9 +246,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
+        env:
+          RUST_TOOLCHAIN: ${{ inputs.deny-rust-toolchain }}
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
       - uses: tempoxyz/gh-actions/vendor/EmbarkStudios/cargo-deny-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
         with:
           command: check all
@@ -245,3 +276,8 @@ jobs:
         uses: tempoxyz/gh-actions/actions/check-needs@ab45d76f6e7420a094281a22aee1973ecc0754f8
         with:
           jobs: ${{ toJSON(needs) }}
+          allowed-skips: >-
+            ${{ !inputs.run-clippy && 'clippy' || '' }}
+            ${{ !inputs.run-fmt && 'fmt' || '' }}
+            ${{ !inputs.run-typos && 'typos' || '' }}
+            ${{ !inputs.run-deny && 'deny' || '' }}

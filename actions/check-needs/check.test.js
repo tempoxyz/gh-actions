@@ -24,3 +24,21 @@ test("parseList accepts commas, spaces and newlines", () => {
   assert.deepEqual(parseList("a, b\nc  d"), ["a", "b", "c", "d"]);
   assert.deepEqual(parseList(""), []);
 });
+
+test("deny-only gate accepts disabled checks but rejects every unsuccessful enabled result", () => {
+  const jobs = {
+    clippy: { result: "skipped" },
+    fmt: { result: "skipped" },
+    typos: { result: "skipped" },
+    deny: { result: "success" },
+  };
+  const options = { allowedSkips: parseList("clippy\nfmt\ntypos") };
+  assert.equal(evaluate(jobs, options).ok, true);
+  for (const result of ["failure", "cancelled", "skipped", "unknown"]) {
+    assert.equal(evaluate({ ...jobs, deny: { result } }, options).ok, false, result);
+  }
+  // Allowing a disabled job to skip must not allow it to fail or cancel.
+  for (const result of ["failure", "cancelled"]) {
+    assert.equal(evaluate({ ...jobs, clippy: { result } }, options).ok, false, result);
+  }
+});
