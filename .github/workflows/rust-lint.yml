@@ -59,7 +59,7 @@ on:
         type: string
         default: nightly
       deny-rust-toolchain:
-        description: Rust toolchain installed on the deny runner.
+        description: Rust toolchain installed on the deny runner and used inside the cargo-deny container.
         required: false
         type: string
         default: stable
@@ -253,6 +253,7 @@ jobs:
           rustup default "$RUST_TOOLCHAIN"
       - uses: tempoxyz/gh-actions/vendor/EmbarkStudios/cargo-deny-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
         with:
+          rust-version: ${{ inputs.deny-rust-toolchain }}
           command: check all
           arguments: ${{ inputs.deny-flags }}
 

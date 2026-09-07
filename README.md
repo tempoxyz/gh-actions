@@ -472,7 +472,7 @@ Optional inputs:
 
 - `run-clippy`, `run-fmt`, `run-typos`, `run-deny` (default: `true`) — enable each check independently
 - `rust-toolchain` (default: `nightly`) — used for clippy and fmt
-- `deny-rust-toolchain` (default: `stable`) — installed on the deny runner
+- `deny-rust-toolchain` (default: `stable`) — installed on the deny runner and used inside the cargo-deny container
 - `clippy-flags` (default: `--all-targets --all-features --locked`)
 - `fmt-flags` (default: `--all --check`)
 - `deny-flags` (default: `--all-features`)
@@ -496,7 +496,7 @@ jobs:
 ```
 
 The deny action runs in Docker and manages its own Rust toolchain;
-`deny-rust-toolchain` configures only the host runner. Callers grant `contents: read`
+`deny-rust-toolchain` is forwarded to its `rust-version` input. Callers grant `contents: read`
 for checkout and pass `STEP_SECURITY_API_KEY` for Harden Runner, as shown above.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
 
