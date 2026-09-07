@@ -39,7 +39,7 @@ runs:
     # Embedded pre entrypoints run in reference order. This action exports the
     # credential before Harden Runner's pre entrypoint reads its inputs.
     - name: Prepare StepSecurity API token
-      uses: tempoxyz/gh-actions/actions/harden-runner-token@0947059453e8f500259563c79801f95e996379be # main
+      uses: tempoxyz/gh-actions/actions/harden-runner-token@7ddc58cd37fa531a6b5282fbac75f89ceab7bd7d # main
 
     - name: Harden the runner with the StepSecurity policy store
       uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
