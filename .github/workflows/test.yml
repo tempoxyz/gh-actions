@@ -19,6 +19,53 @@ on:
 permissions: {}
 
 jobs:
+  setup-foundry-bootstrap:
+    name: setup-foundry with ${{ matrix.cli }} GitHub CLI
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cli: [missing, incompatible]
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner with the StepSecurity policy store
+        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Remove the hosted runner's GitHub CLI
+        env:
+          CLI: ${{ matrix.cli }}
+        run: |
+          set -euo pipefail
+          sudo mv "$(command -v gh)" "$RUNNER_TEMP/hosted-gh"
+          hash -r
+          if command -v gh; then
+            echo "::error::fixture still has a GitHub CLI on PATH"
+            exit 1
+          fi
+          if [[ "$CLI" == incompatible ]]; then
+            mkdir -p "$RUNNER_TEMP/old-gh"
+            printf '#!/bin/sh\necho "unknown command: attestation" >&2\nexit 1\n' > "$RUNNER_TEMP/old-gh/gh"
+            chmod +x "$RUNNER_TEMP/old-gh/gh"
+            echo "$RUNNER_TEMP/old-gh" >> "$GITHUB_PATH"
+          fi
+      - name: Install attested Foundry with bootstrapped GitHub CLI
+        uses: ./actions/setup-foundry
+        with:
+          version: nightly
+          cache: "false"
+      - name: Verify the CLI and Foundry are available to later steps
+        run: |
+          set -euo pipefail
+          gh --version
+          [[ "$(command -v gh)" == "$RUNNER_TEMP"/foundry-gh.*/bin/gh ]]
+          forge --version
+
   setup-mold-non-linux:
     name: setup-mold skips installation (${{ matrix.os }})
     strategy:
