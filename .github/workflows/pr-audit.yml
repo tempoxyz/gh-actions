@@ -30,7 +30,7 @@ on:
         type: boolean
         default: false
     secrets:
-      STEP_SECURITY_API_KEY:
+      STEP_SECURITY_STS_PRD_URL:
         description: "StepSecurity API key used to read attached Harden Runner policies."
         required: true
       EVENTS_KEY:
@@ -40,7 +40,8 @@ on:
       EVENTS_ARGS:
         required: true
 
-permissions: {}
+permissions:
+  id-token: write
 
 jobs:
   publish:
@@ -48,12 +49,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
+      id-token: write
       contents: read
     steps:
       - name: Harden the runner with the StepSecurity policy store
         uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
         with:
-          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Resolve target
         id: target
@@ -203,13 +205,14 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       pull-requests: read
       statuses: write
     steps:
       - name: Harden the runner with the StepSecurity policy store
         uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
         with:
-          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Report audit status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -262,12 +265,13 @@ jobs:
     if: inputs.require-completed-audit && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       statuses: write
     steps:
       - name: Harden the runner with the StepSecurity policy store
         uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
         with:
-          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Pass merge group
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

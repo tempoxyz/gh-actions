@@ -79,11 +79,12 @@ on:
         type: string
         default: --all-features
     secrets:
-      STEP_SECURITY_API_KEY:
+      STEP_SECURITY_STS_PRD_URL:
         description: "StepSecurity API key used to read attached Harden Runner policies."
         required: true
 
-permissions: {}
+permissions:
+  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -98,12 +99,13 @@ jobs:
     env:
       RUSTC_WRAPPER: sccache
     permissions:
+      id-token: write
       contents: read
     steps:
       - name: Harden the runner with the StepSecurity policy store
         uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
         with:
-          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -161,12 +163,13 @@ jobs:
     runs-on: ${{ inputs.fmt-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
+      id-token: write
       contents: read
     steps:
       - name: Harden the runner with the StepSecurity policy store
         uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
         with:
-          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -191,12 +194,13 @@ jobs:
     runs-on: ${{ inputs.typos-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
+      id-token: write
       contents: read
     steps:
       - name: Harden the runner with the StepSecurity policy store
         uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
         with:
-          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -235,12 +239,13 @@ jobs:
     runs-on: ${{ inputs.deny-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
+      id-token: write
       contents: read
     steps:
       - name: Harden the runner with the StepSecurity policy store
         uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
         with:
-          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -260,6 +265,8 @@ jobs:
   lint-success:
     name: lint success
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     if: always()
     needs:
       - clippy
@@ -271,7 +278,7 @@ jobs:
       - name: Harden the runner with the StepSecurity policy store
         uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
         with:
-          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Decide whether the needed jobs succeeded or failed
         uses: tempoxyz/gh-actions/actions/check-needs@ab45d76f6e7420a094281a22aee1973ecc0754f8
