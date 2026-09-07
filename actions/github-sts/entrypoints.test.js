@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const test = require("node:test");
-const { buildExchangeUrl } = require("./main.js");
+const { buildExchangeUrl, exchangeRequestOptions } = require("./main.js");
 const {
   revocationRequestOptions,
   revokeToken,
@@ -19,6 +19,15 @@ test("exchange request forwards ttl only when specified", () => {
 
   const defaultTtl = buildExchangeUrl("gh-sts.tehq.net", "tempoxyz/example", "deploy", "");
   assert.equal(defaultTtl.searchParams.has("ttl"), false);
+});
+
+test("exchange request uses POST with the OIDC bearer token", () => {
+  const options = exchangeRequestOptions("test-oidc");
+
+  assert.equal(options.method, "POST");
+  assert.equal(options.headers.Accept, "application/json");
+  assert.equal(options.headers.Authorization, "Bearer test-oidc");
+  assert.equal(options.headers["User-Agent"], "tempoxyz-gh-actions-github-sts");
 });
 
 test("main entrypoint executes as CommonJS", () => {

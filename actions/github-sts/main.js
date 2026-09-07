@@ -32,6 +32,17 @@ function buildExchangeUrl(host, scope, policy, ttl) {
   return url;
 }
 
+function exchangeRequestOptions(oidc) {
+  return {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${oidc}`,
+      "User-Agent": "tempoxyz-gh-actions-github-sts",
+    },
+  };
+}
+
 async function main() {
   const repositoryOwner = process.env.GITHUB_REPOSITORY_OWNER || "";
   if (repositoryOwner.toLowerCase() !== "tempoxyz") {
@@ -65,9 +76,7 @@ async function main() {
   // modified or older action cannot bypass policy constraints.
   const exchangeUrl = buildExchangeUrl(host, scope, input("policy"), input("ttl"));
   const exchangeResponse = await retry(
-    () => request(exchangeUrl, {
-      headers: { Authorization: `Bearer ${oidc}` },
-    }),
+    () => request(exchangeUrl, exchangeRequestOptions(oidc)),
     { label: "STS worker exchange", isTransient: (response) => isTransientStatus(response.status) },
   );
 
@@ -101,4 +110,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildExchangeUrl };
+module.exports = { buildExchangeUrl, exchangeRequestOptions };
