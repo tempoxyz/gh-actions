@@ -52,9 +52,9 @@ on:
 permissions: {}
 
 jobs:
-  # zizmor annotations, actionlint, and optional pinact checks are read-only, so
-  # this workflow never requests `security-events: write` and callers only need
-  # read scopes.
+  # zizmor annotations, actionlint, and optional pinact checks are read-only. The
+  # id-token permission authenticates Harden Runner to the StepSecurity policy store;
+  # this workflow never requests security-events: write.
   # SARIF upload to code scanning is available via the composite action instead
   # (see actions/scan-github-actions), which runs in a job you control.
   scan-github-actions:
@@ -63,12 +63,10 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-          use-policy-store: true
+      - name: Harden the runner with the StepSecurity policy store
+        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

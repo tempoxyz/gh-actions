@@ -4,6 +4,9 @@ const path = require("node:path");
 const test = require("node:test");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
+const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
+const wrapperPattern =
+  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb/;
 
 test("mints a policy-store credential with the pinned GitHub Script action", () => {
   assert.match(
@@ -23,4 +26,49 @@ test("passes the minted credential to the pinned Harden Runner action", () => {
     /api-key: \$\{\{ steps\.stepsecurity-token\.outputs\.token \}\}/,
   );
   assert.match(manifest, /use-policy-store: true/);
+});
+
+test("repository workflows use the OIDC wrapper with id-token permission", () => {
+  let wrapperJobs = 0;
+
+  for (const filename of fs
+    .readdirSync(workflowsDirectory)
+    .filter((entry) => entry.endsWith(".yml") || entry.endsWith(".yaml"))) {
+    const workflow = fs.readFileSync(
+      path.join(workflowsDirectory, filename),
+      "utf8",
+    );
+
+    assert.doesNotMatch(
+      workflow,
+      /uses:\s+step-security\/harden-runner@/,
+      `${filename} must use the OIDC-authenticated Harden Runner wrapper`,
+    );
+
+    const jobBlocks = workflow.split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/);
+    for (const jobBlock of jobBlocks) {
+      const reusableWorkflow = jobBlock.match(
+        /uses:\s+\.\/\.github\/workflows\/([^\s]+)/,
+      );
+      const usesProtectedWorkflow =
+        reusableWorkflow &&
+        wrapperPattern.test(
+          fs.readFileSync(
+            path.join(workflowsDirectory, reusableWorkflow[1]),
+            "utf8",
+          ),
+        );
+      if (!wrapperPattern.test(jobBlock) && !usesProtectedWorkflow) continue;
+
+      wrapperJobs += 1;
+      const jobHeader = jobBlock.split(/\n    steps:\s*\n/, 1)[0];
+      assert.match(
+        jobHeader,
+        /^      id-token: write$/m,
+        `${filename} must grant id-token: write to every job using the wrapper`,
+      );
+    }
+  }
+
+  assert.ok(wrapperJobs > 0, "expected at least one workflow to use the wrapper");
 });

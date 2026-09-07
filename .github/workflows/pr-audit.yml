@@ -46,12 +46,10 @@ jobs:
     environment: ${{ inputs.environment }}
     permissions:
       contents: read
+      id-token: write
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-          use-policy-store: true
+      - name: Harden the runner with the StepSecurity policy store
+        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
 
       - name: Resolve target
         id: target
@@ -201,14 +199,12 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       pull-requests: read
       statuses: write
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-          use-policy-store: true
+      - name: Harden the runner with the StepSecurity policy store
+        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
 
       - name: Report audit status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -261,13 +257,11 @@ jobs:
     if: inputs.require-completed-audit && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       statuses: write
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-          use-policy-store: true
+      - name: Harden the runner with the StepSecurity policy store
+        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
 
       - name: Pass merge group
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

@@ -180,7 +180,7 @@ Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>
 
 ### `pr-audit`
 
-Publishes a `pr_audit` event when a pull request receives a configured label. This reusable workflow is **read-only** (`contents: read`); comment-driven audit commands are handled separately by the [`pr-audit-comment`](actions/pr-audit-comment) composite action in a caller-owned job (see below).
+Publishes a `pr_audit` event when a pull request receives a configured label. This reusable workflow is **read-only** against repository contents; `id-token: write` is used only to authenticate Harden Runner to the StepSecurity policy store. Comment-driven audit commands are handled separately by the [`pr-audit-comment`](actions/pr-audit-comment) composite action in a caller-owned job (see below).
 
 #### Label audits (read-only)
 
@@ -196,6 +196,7 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
     permissions:
       contents: read
+      id-token: write
     with:
       environment: pr-audit
       required-labels: |
@@ -232,6 +233,7 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
     permissions:
       contents: read
+      id-token: write
       pull-requests: read
       statuses: write
     with:
@@ -260,6 +262,7 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/pr-audit.yml@main
     permissions:
       contents: read
+      id-token: write
     with:
       environment: pr-audit
     secrets:
@@ -337,10 +340,11 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/label-prs.yml@main
     permissions:
       contents: read
+      id-token: write
       issues: write
 ```
 
-Caller workflows must grant these permissions on the reusable-workflow job. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels to the pull request through GitHub's Issues API.
+Caller workflows must grant these permissions on the reusable-workflow job. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels to the pull request through GitHub's Issues API; and `id-token: write` authenticates Harden Runner to the StepSecurity policy store.
 
 The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`, so the bundled label script matches the pinned reusable workflow revision.
 
@@ -350,7 +354,7 @@ Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com
 
 Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold, so repository configuration remains review-sensitive. Existing callers remain unchanged because the pinact check is opt-in.
 
-zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is **read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`, so callers only grant read scopes. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
+zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is read-only against repository and Actions data and never requests `security-events: write`; `id-token: write` is used only to authenticate Harden Runner to the StepSecurity policy store. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
 ```yaml
 name: Scan GitHub Actions
@@ -366,6 +370,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
     with:
       pinact: true
 ```
@@ -413,12 +418,13 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/reproducible-build.yml@main
     permissions:
       contents: read
+      id-token: write
     with:
       ref: ${{ inputs.ref }}
       binary-name: tempo
 ```
 
-Caller workflows must grant `contents: read` on the reusable-workflow job so it can check out the repository being built.
+Caller workflows must grant `contents: read` so the reusable workflow can check out the repository being built and `id-token: write` so Harden Runner can authenticate to the StepSecurity policy store.
 
 Required input:
 
@@ -452,6 +458,7 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
     permissions:
       contents: read
+      id-token: write
 ```
 
 Optional inputs:
@@ -480,6 +487,7 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-build-binaries.yml@main
     permissions:
       contents: read
+      id-token: write
     with:
       profile: release
       binaries: |
@@ -546,6 +554,7 @@ on:
     types: [opened, reopened]
 
 permissions:
+  id-token: write
   issues: write
   pull-requests: write
 
@@ -554,4 +563,4 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/auto-assign-pr.yml@main
 ```
 
-Caller workflows must grant `issues: write` and `pull-requests: write`.
+Caller workflows must grant `issues: write`, `pull-requests: write`, and `id-token: write`.

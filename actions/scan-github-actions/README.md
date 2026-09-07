@@ -5,7 +5,7 @@ Security scan **and** lint for GitHub Actions workflows. Runs two complementary 
 - [zizmor](https://github.com/zizmorcore/zizmor) — **security**: template injection, credential leakage, excessive permissions, unpinned actions, and more.
 - [actionlint](https://github.com/rhysd/actionlint) — **correctness/lint**: workflow syntax, `${{ }}` expression checks, and [shellcheck](https://github.com/koalaman/shellcheck)/[pyflakes](https://github.com/PyCQA/pyflakes) on `run:` scripts.
 
-Both tools run together as a single check (a `Scan GitHub Actions` job in the reusable workflow, or two steps in your own job with the composite action). The **reusable workflow is read-only** (`actions: read`, `contents: read`) and never requests `security-events: write`. SARIF upload to GitHub code scanning is available **only via the composite action** (`advanced-security: true`), which runs in a job you control and where you grant `security-events: write`.
+Both tools run together as a single check (a `Scan GitHub Actions` job in the reusable workflow, or two steps in your own job with the composite action). The **reusable workflow is read-only against Actions and repository data** (`actions: read`, `contents: read`) and never requests `security-events: write`. It also requires `id-token: write` solely to authenticate Harden Runner to the StepSecurity policy store. SARIF upload to GitHub code scanning is available **only via the composite action** (`advanced-security: true`), which runs in a job you control and where you grant `security-events: write`.
 
 **Opinionated defaults** — zizmor online audits enabled, GitHub workflow annotations enabled, regular persona, and SARIF upload disabled; actionlint enabled. Disable the lint pass with `actionlint: false`. Override individual zizmor rules via a `zizmor.yml` config file, and actionlint rules via `.github/actionlint.yaml`, if needed.
 
@@ -31,6 +31,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
 ```
 
 Disable the lint pass or point zizmor at a custom config:
@@ -45,6 +46,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
 ```
 
 The reusable workflow can also run Pinact policy checks by setting `pinact: true`. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive.
