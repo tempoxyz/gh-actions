@@ -486,7 +486,8 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
     permissions:
       contents: read
-      id-token: write
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
     with:
       run-clippy: false
       run-fmt: false
@@ -495,8 +496,8 @@ jobs:
 
 The deny action runs in Docker and manages its own Rust toolchain;
 `deny-rust-toolchain` configures only the host runner. Callers grant `contents: read`
-for checkout and `id-token: write` for Harden Runner, as shown above. Pin production
-callers to a commit SHA (see [Versioning](#versioning)).
+for checkout and pass `STEP_SECURITY_API_KEY` for Harden Runner, as shown above.
+Pin production callers to a commit SHA (see [Versioning](#versioning)).
 
 The `lint success` gate accepts explicitly disabled checks and fails on failures,
 cancellations, or unexpected skips. If all four checks are disabled, only the

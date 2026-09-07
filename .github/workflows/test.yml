@@ -24,7 +24,8 @@ jobs:
     uses: ./.github/workflows/rust-lint.yml
     permissions:
       contents: read
-      id-token: write
+    secrets:
+      STEP_SECURITY_API_KEY: ${{ secrets.STEP_SECURITY_API_KEY }}
     with:
       run-clippy: false
       run-fmt: false
