@@ -13,6 +13,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems
 | [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
+| [`harden-runner`](actions/harden-runner) | Start Harden Runner with a short-lived StepSecurity policy-store token minted through GitHub OIDC
 | [`socket-firewall`](actions/socket-firewall) | Install Socket Firewall with a short-lived, repository-scoped token
 | [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR
 | [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands
@@ -127,6 +128,30 @@ steps:
       event-type: registry_package
       tag: sha-${{ steps.shortsha.outputs.shortsha }}
 ```
+
+### Harden Runner with the StepSecurity policy store
+
+Use `harden-runner` as the first step in a job and grant the job permission to mint a GitHub
+OIDC token. The action exchanges that identity for a short-lived StepSecurity API token, masks
+the credential, and supplies it to Harden Runner with policy-store access enabled.
+
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: tempoxyz/gh-actions/actions/harden-runner@<commit-sha>
+
+      - uses: actions/checkout@<commit-sha>
+
+      - run: make test
+```
+
+The default fallback egress policy is `audit`. Set `egress-policy: block` and, if needed,
+`allowed-endpoints` for workflows that should fail closed when no stored policy applies.
 
 ## Versioning
 
