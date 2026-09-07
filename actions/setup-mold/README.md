@@ -5,6 +5,9 @@ linker. Replaces `rui314/setup-mold`, which piped an unverified download into `t
 publishes no checksums or signatures, so the release tarball digests are pinned in the action
 and change together with the version.
 
+Installation runs only on Linux. On macOS and Windows, the action skips installation
+and leaves the system linker unchanged, matching `rui314/setup-mold`.
+
 ## Inputs
 
 | Name | Description | Required | Default |
