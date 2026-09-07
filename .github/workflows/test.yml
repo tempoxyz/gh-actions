@@ -19,6 +19,30 @@ on:
 permissions: {}
 
 jobs:
+  setup-mold-non-linux:
+    name: setup-mold skips installation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner with the StepSecurity policy store
+        uses: tempoxyz/gh-actions/actions/harden-runner@f281498746dabb3260beac7a2dd047a8ba90d7b9
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Invoke unconditionally, as release workflows do in cross-platform matrices.
+      # The action itself must skip the Linux-only installer on these runners.
+      - name: Smoke test setup-mold on non-Linux runners
+        uses: ./actions/setup-mold
+
   rust-lint-disabled:
     name: Rust lint with all checks disabled
     uses: ./.github/workflows/rust-lint.yml
