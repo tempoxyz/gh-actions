@@ -41,6 +41,10 @@ on:
         required: false
         type: number
         default: 7
+    secrets:
+      STEP_SECURITY_API_KEY:
+        description: "StepSecurity API key used to read attached Harden Runner policies."
+        required: true
 
 permissions: {}
 
@@ -52,13 +56,13 @@ jobs:
   resolve:
     name: resolve binaries
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     outputs:
       binaries: ${{ steps.binaries.outputs.json }}
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
+        uses: tempoxyz/gh-actions/actions/harden-runner@cb52bca343b38ec0043a8da32cc18451684cb89b
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - name: Resolve binary matrix
         id: binaries
@@ -84,14 +88,15 @@ jobs:
       RUSTC_WRAPPER: sccache
     permissions:
       contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
         binary: ${{ fromJSON(needs.resolve.outputs.binaries) }}
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb # main
+        uses: tempoxyz/gh-actions/actions/harden-runner@cb52bca343b38ec0043a8da32cc18451684cb89b
+        with:
+          api-key: ${{ secrets.STEP_SECURITY_API_KEY }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
