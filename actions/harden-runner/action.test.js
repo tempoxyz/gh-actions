@@ -38,6 +38,14 @@ test("every repository workflow job passes the organization API key to the wrapp
       `${filename} must use the authenticated Harden Runner wrapper`,
     );
 
+    if (/^\s{2}workflow_call:/m.test(workflow) && wrapperPattern.test(workflow)) {
+      assert.match(
+        workflow,
+        /secrets:\s*\n\s+STEP_SECURITY_API_KEY:\s*\n(?:\s+description:[^\n]+\n)?\s+required: true/,
+        `${filename} must require STEP_SECURITY_API_KEY from reusable-workflow callers`,
+      );
+    }
+
     const jobBlocks = workflow.split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/);
     for (const jobBlock of jobBlocks) {
       const runsOnRunner = /^    runs-on:/m.test(jobBlock);
