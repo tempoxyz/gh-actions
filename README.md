@@ -95,6 +95,7 @@ what is excluded from each copy and why are in the manifest `notes`.
 | [`openai/codex-action`](https://github.com/openai/codex-action/blob/86365089eb2b84e0a8fb0717b304f8bdcb13b20e/README.md) | v1.12 (`8636508`) | Run `codex exec` with a prompt. |
 | [`oven-sh/setup-bun`](https://github.com/oven-sh/setup-bun/blob/0c5077e51419868618aeaa5fe8019c62421857d6/README.md) | v2.2.0 (`0c5077e`) | Download, install, and setup Bun to your path. |
 | [`peaceiris/actions-gh-pages`](https://github.com/peaceiris/actions-gh-pages/blob/84c30a85c19949d7eee79c4ff27748b70285e453/README.md) | v4.1.0 (`84c30a8`) | GitHub Actions for GitHub Pages 🚀 Deploy static files and publish your site easily. Static-Site-Generators-friendly. |
+| [`peter-evans/create-pull-request`](https://github.com/peter-evans/create-pull-request/blob/5f6978faf089d4d20b00c7766989d076bb2fc7f1/README.md) | v8.1.1 (`5f6978f`) | Creates a pull request for changes to your repository in the actions workspace |
 | [`planetscale/setup-pscale-action`](https://github.com/planetscale/setup-pscale-action/blob/b6a50ee45b4b24944e1d8de6e57b3a5f6476a1af/README.md) | v1 (`b6a50ee`) | Installs the PlanetScale CLI |
 | [`pnpm/action-setup`](https://github.com/pnpm/action-setup/blob/0977fd99725f1db4007ccb2928dbb4e90d06cc86/README.md) | v6.0.10 (`0977fd9`) | Install pnpm package manager |
 | [`ruby/setup-ruby`](https://github.com/ruby/setup-ruby/blob/95ef2b042f9d7a56d8268cba8559e2842e2ad01b/README.md) | v1.321.0 (`95ef2b0`) | Download a prebuilt Ruby and add it to the PATH in 5 seconds |

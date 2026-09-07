@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/peter-evans/create-pull-request",
+  "ref": "v8.1.1",
+  "ref_type": "tag",
+  "sha": "5f6978faf089d4d20b00c7766989d076bb2fc7f1",
+  "upstream_commit_date": "2026-04-10T17:23:55+01:00",
+  "readme_url": "https://github.com/peter-evans/create-pull-request/blob/5f6978faf089d4d20b00c7766989d076bb2fc7f1/README.md",
+  "description": "Creates a pull request for changes to your repository in the actions workspace",
+  "consume_as": "tempoxyz/gh-actions/vendor/peter-evans/create-pull-request@<gh-actions-sha>",
+  "files_removed": 40,
+  "nested_rewrites": []
+}
