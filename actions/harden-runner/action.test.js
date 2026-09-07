@@ -28,8 +28,9 @@ test("passes the minted credential to the pinned Harden Runner action", () => {
   assert.match(manifest, /use-policy-store: true/);
 });
 
-test("repository workflows use the OIDC wrapper with id-token permission", () => {
-  let wrapperJobs = 0;
+test("every repository workflow job is protected by the OIDC wrapper", () => {
+  let runnableJobs = 0;
+  let protectedJobs = 0;
 
   for (const filename of fs
     .readdirSync(workflowsDirectory)
@@ -47,6 +48,7 @@ test("repository workflows use the OIDC wrapper with id-token permission", () =>
 
     const jobBlocks = workflow.split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/);
     for (const jobBlock of jobBlocks) {
+      const runsOnRunner = /^    runs-on:/m.test(jobBlock);
       const reusableWorkflow = jobBlock.match(
         /uses:\s+\.\/\.github\/workflows\/([^\s]+)/,
       );
@@ -58,9 +60,21 @@ test("repository workflows use the OIDC wrapper with id-token permission", () =>
             "utf8",
           ),
         );
-      if (!wrapperPattern.test(jobBlock) && !usesProtectedWorkflow) continue;
+      if (!runsOnRunner && !reusableWorkflow) continue;
 
-      wrapperJobs += 1;
+      runnableJobs += 1;
+      if (usesProtectedWorkflow) {
+        protectedJobs += 1;
+      } else {
+        const steps = jobBlock.split(/\n    steps:\s*\n/, 2)[1] || "";
+        assert.match(
+          steps,
+          /^\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@904d020d877cc74df9ba1524d0e4e53e9c2088cb/,
+          `${filename} must use the OIDC-authenticated Harden Runner wrapper as the first step of every runnable job`,
+        );
+        protectedJobs += 1;
+      }
+
       const jobHeader = jobBlock.split(/\n    steps:\s*\n/, 1)[0];
       assert.match(
         jobHeader,
@@ -70,5 +84,6 @@ test("repository workflows use the OIDC wrapper with id-token permission", () =>
     }
   }
 
-  assert.ok(wrapperJobs > 0, "expected at least one workflow to use the wrapper");
+  assert.ok(runnableJobs > 0, "expected at least one runnable workflow job");
+  assert.equal(protectedJobs, runnableJobs);
 });
