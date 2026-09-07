@@ -132,8 +132,9 @@ steps:
 ### Harden Runner with the StepSecurity policy store
 
 Use `harden-runner` as the first step in a job and grant the job permission to mint a GitHub
-OIDC token. The action exchanges that identity for a short-lived StepSecurity API token, masks
-the credential, and supplies it to Harden Runner with policy-store access enabled.
+OIDC token. A pre-job bootstrap exchanges that identity for a short-lived StepSecurity API
+token and masks the credential before Harden Runner's own pre entrypoint fetches its policy.
+The wrapper clears the temporary environment variable before returning control to the caller.
 
 ```yaml
 jobs:
