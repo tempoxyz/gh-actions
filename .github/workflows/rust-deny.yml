@@ -1,0 +1,44 @@
+name: rust deny
+
+on:
+  workflow_call:
+    inputs:
+      rust-toolchain:
+        description: Rust toolchain installed on the runner and used inside the cargo-deny container.
+        required: false
+        type: string
+        default: stable
+      flags:
+        description: Additional flags passed to cargo deny check all.
+        required: false
+        type: string
+        default: --all-features
+      runner:
+        description: Runner used for cargo deny.
+        required: false
+        type: string
+        default: ubuntu-latest
+      timeout-minutes:
+        description: Timeout for each job.
+        required: false
+        type: number
+        default: 30
+
+permissions: {}
+
+jobs:
+  deny:
+    # A relative reusable-workflow reference uses the same commit as this wrapper.
+    uses: ./.github/workflows/rust-lint.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      run-clippy: false
+      run-fmt: false
+      run-typos: false
+      run-deny: true
+      deny-rust-toolchain: ${{ inputs.rust-toolchain }}
+      deny-flags: ${{ inputs.flags }}
+      deny-runner: ${{ inputs.runner }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}

@@ -176,6 +176,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
+| [`rust-deny`](#rust-deny) | Deny-only wrapper around rust-lint | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
@@ -457,6 +458,7 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
     permissions:
       contents: read
+      id-token: write
 ```
 
 Optional inputs:
@@ -470,28 +472,46 @@ Optional inputs:
 - `checkout-submodules` (default: `false`) — passed to clippy checkout only
 - `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
 
-To run only `cargo deny`, disable the other checks:
-
-```yaml
-jobs:
-  deny:
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
-    permissions:
-      contents: read
-    with:
-      run-clippy: false
-      run-fmt: false
-      run-typos: false
-```
+For only `cargo deny`, use [`rust-deny`](#rust-deny).
 
 The deny action runs in Docker and manages its own Rust toolchain;
 `deny-rust-toolchain` is forwarded to its `rust-version` input. Callers grant `contents: read`
-for checkout, as shown above.
+for checkout and `id-token: write` for Harden Runner OIDC/STS authentication.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
 
 The `lint success` gate accepts explicitly disabled checks and fails on failures,
 cancellations, or unexpected skips. If all four checks are disabled, only the
 gate runs and succeeds.
+
+### `rust-deny`
+
+Runs `cargo deny check all` through `rust-lint.yml` at the same commit, with clippy,
+fmt, and typos disabled internally. It shares the existing Harden Runner setup,
+checkout, Rust installation, cargo-deny container, and `lint success` gate.
+
+```yaml
+jobs:
+  deny:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-deny.yml@main
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      rust-toolchain: nightly
+```
+
+Optional inputs:
+
+- `rust-toolchain` (default: `stable`) — installed on the runner and used inside the cargo-deny container
+- `flags` (default: `--all-features`) — additional flags passed to `cargo deny check all`
+- `runner` (default: `ubuntu-latest`)
+- `timeout-minutes` (default: `30`) — timeout for each job, including the success gate
+
+The example explicitly selects nightly; omitting `with` uses stable. Callers must
+grant both permissions shown above; no persistent StepSecurity API key is required.
+Pin production callers to a commit SHA (see [Versioning](#versioning)). The additional
+workflow nesting can change displayed check names, so verify required status checks
+when switching an existing caller from `rust-lint`.
 
 ### `rust-build-binaries`
 
