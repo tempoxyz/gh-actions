@@ -57,7 +57,7 @@ jobs:
     outputs:
       binaries: ${{ steps.binaries.outputs.json }}
     steps:
-      - name: Secure the runner with Harden Runner and Socket Firewall
+      - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4
 
       - name: Resolve binary matrix
@@ -90,7 +90,7 @@ jobs:
       matrix:
         binary: ${{ fromJSON(needs.resolve.outputs.binaries) }}
     steps:
-      - name: Secure the runner with Harden Runner and Socket Firewall
+      - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

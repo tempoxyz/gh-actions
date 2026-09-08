@@ -133,10 +133,10 @@ steps:
       tag: sha-${{ steps.shortsha.outputs.shortsha }}
 ```
 
-### Harden Runner with the StepSecurity policy store
+### Secure runner
 
-Use `harden-runner` as the first step in a job. It uses the production endpoint by default;
-set `dev: true` to use the development endpoint.
+Use `secure-runner` as the first step in a job. It uses the production STS endpoints by default;
+set `dev: true` to use the development endpoints.
 
 ```yaml
 jobs:
@@ -144,8 +144,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
-      - uses: tempoxyz/gh-actions/actions/harden-runner@<commit-sha>
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@<commit-sha>
 
       - uses: actions/checkout@<commit-sha>
 
@@ -154,7 +156,7 @@ jobs:
 
 The default fallback egress policy is `audit`. Set `egress-policy: block` and, if needed,
 `allowed-endpoints` for workflows that should fail closed when no stored policy applies.
-The wrapper performs the STS exchange in its pre-job entrypoint before starting Harden Runner,
+The nested Harden Runner wrapper performs its STS exchange in its pre-job entrypoint before starting Harden Runner,
 because Harden Runner fetches its policy in its own pre-job entrypoint. The short-lived API key is
 passed only to the vendored Harden Runner process and is revoked during post-job cleanup.
 
