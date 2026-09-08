@@ -1,0 +1,62 @@
+name: "Secure Runner"
+description: >-
+  Start Harden Runner with StepSecurity policy-store access, then install Socket Firewall
+
+inputs:
+  dev:
+    description: "Use the development Step Security STS endpoint"
+    required: false
+    default: "false"
+  egress-policy:
+    description: "Fallback outbound policy when no stored policy applies (audit or block)"
+    required: false
+    default: "audit"
+  allowed-endpoints:
+    description: "Endpoints allowed when the fallback egress policy is block"
+    required: false
+    default: ""
+  denied-endpoints:
+    description: "Endpoints denied when endpoint blocking is enabled"
+    required: false
+    default: ""
+  disable-telemetry:
+    description: "Disable StepSecurity telemetry; valid only with a block egress policy"
+    required: false
+    default: "false"
+  disable-sudo-and-containers:
+    description: "Disable sudo and container access for the runner account"
+    required: false
+    default: "false"
+  disable-file-monitoring:
+    description: "Disable file monitoring"
+    required: false
+    default: "false"
+  deploy-on-self-hosted-vm:
+    description: "Deploy Harden Runner directly on an ephemeral self-hosted Linux VM"
+    required: false
+    default: "false"
+  token:
+    description: "GitHub token used by Harden Runner to avoid API rate limiting"
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Harden the runner with the StepSecurity policy store
+      uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
+      with:
+        dev: ${{ inputs.dev }}
+        egress-policy: ${{ inputs.egress-policy }}
+        allowed-endpoints: ${{ inputs.allowed-endpoints }}
+        denied-endpoints: ${{ inputs.denied-endpoints }}
+        disable-telemetry: ${{ inputs.disable-telemetry }}
+        disable-sudo-and-containers: ${{ inputs.disable-sudo-and-containers }}
+        disable-file-monitoring: ${{ inputs.disable-file-monitoring }}
+        deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
+        token: ${{ inputs.token }}
+
+    - name: Install Socket Firewall
+      uses: tempoxyz/gh-actions/actions/socket-firewall@75e9688b97b8e3fae84d4def91f6180af09b33b7
+      with:
+        dev: ${{ inputs.dev }}
