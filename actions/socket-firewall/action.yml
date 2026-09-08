@@ -11,7 +11,7 @@ inputs:
 outputs:
   firewall-path-binary:
     description: "Path to the installed Socket Firewall binary"
-    value: ${{ steps.firewall.outputs.firewall-path-binary }}
+    value: ${{ steps.windows-binary.outputs.path || steps.firewall.outputs.firewall-path-binary }}
   firewall-path-report:
     description: "Path to the Socket Firewall report JSON"
     value: ${{ steps.firewall.outputs.firewall-path-report }}
@@ -31,3 +31,11 @@ runs:
       with:
         mode: firewall-enterprise
         socket-token: ${{ steps.socket-token.outputs.token }}
+
+    - name: Make Socket Firewall executable by Windows shims
+      if: runner.os == 'Windows'
+      id: windows-binary
+      shell: pwsh
+      env:
+        FIREWALL_PATH_BINARY: ${{ steps.firewall.outputs.firewall-path-binary }}
+      run: node "$env:GITHUB_ACTION_PATH/windows-binary.cjs"

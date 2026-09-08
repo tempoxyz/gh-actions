@@ -564,6 +564,27 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Test Windows Socket Firewall executable compatibility
+        shell: pwsh
+        run: node --test actions/socket-firewall/windows-binary.test.js
+      - name: Install Socket Firewall from this checkout
+        id: socket-firewall-windows
+        uses: ./actions/socket-firewall
+      - name: Verify Windows Socket Firewall executable and Cargo shim
+        shell: pwsh
+        env:
+          FIREWALL_BINARY: ${{ steps.socket-firewall-windows.outputs.firewall-path-binary }}
+        run: |
+          if (-not $env:FIREWALL_BINARY.EndsWith('.exe')) {
+            throw "Socket Firewall output must point to a Windows executable"
+          }
+          & $env:FIREWALL_BINARY --version
+          if ($LASTEXITCODE -ne 0) { throw "Socket Firewall executable failed" }
+          if ((Get-Command cargo).Source -ne (Join-Path $env:SFW_SHIM_DIR 'cargo.cmd')) {
+            throw "Cargo must resolve to the Socket Firewall shim"
+          }
+          cargo --version
+          if ($LASTEXITCODE -ne 0) { throw "Socket Firewall Cargo shim failed" }
       - name: Install Rust
         uses: ./vendor/dtolnay/rust-toolchain
       - name: Create Windows cargo-cooldown fixture and user policy

@@ -23,7 +23,7 @@ test("composes the pinned Socket STS and vendored Firewall actions", () => {
 test("forwards both Firewall outputs", () => {
   assert.match(
     manifest,
-    /value: \$\{\{ steps\.firewall\.outputs\.firewall-path-binary \}\}/,
+    /value: \$\{\{ steps\.windows-binary\.outputs\.path \|\| steps\.firewall\.outputs\.firewall-path-binary \}\}/,
   );
   assert.match(
     manifest,
