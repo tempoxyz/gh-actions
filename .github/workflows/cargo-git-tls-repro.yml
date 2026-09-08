@@ -22,7 +22,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        uses: ./vendor/dtolnay/rust-toolchain
         with:
           toolchain: stable
       - name: Fetch Git dependency through Socket
