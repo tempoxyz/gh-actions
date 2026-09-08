@@ -2,10 +2,6 @@ name: Auto Assign PR to Author
 
 on:
   workflow_call:
-    secrets:
-      STEP_SECURITY_STS_PRD_URL:
-        description: "StepSecurity API key used to read attached Harden Runner policies."
-        required: true
 
 permissions:
   id-token: write
@@ -25,9 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@5006e0ee3f89173e45e2ab30e2fa2e2ff3713d80
-        with:
-          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+        uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
 
       - name: Auto assign PR to author (with permission checks)
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
