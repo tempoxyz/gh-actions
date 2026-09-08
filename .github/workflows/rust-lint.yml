@@ -117,7 +117,20 @@ jobs:
           use-policy-store: false
           api-key: ""
           policy: ""
-          token: ""
+          token: ${{ github.token }}
+
+      - name: Verify network blocking and OIDC isolation
+        run: |
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::Rust lint must not receive OIDC request credentials"
+            exit 1
+          fi
+          # The pinned upstream pre-hook can log errors and still exit successfully.
+          # Fail closed before checkout unless the Linux agent started in block mode.
+          test -s /home/agent/agent.status
+          pgrep -x agent > /dev/null
+          jq -e '.egress_policy == "block" and (.allowed_endpoints | length > 0)' \
+            /home/agent/agent.json > /dev/null
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -192,7 +205,20 @@ jobs:
           use-policy-store: false
           api-key: ""
           policy: ""
-          token: ""
+          token: ${{ github.token }}
+
+      - name: Verify network blocking and OIDC isolation
+        run: |
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::Rust lint must not receive OIDC request credentials"
+            exit 1
+          fi
+          # The pinned upstream pre-hook can log errors and still exit successfully.
+          # Fail closed before checkout unless the Linux agent started in block mode.
+          test -s /home/agent/agent.status
+          pgrep -x agent > /dev/null
+          jq -e '.egress_policy == "block" and (.allowed_endpoints | length > 0)' \
+            /home/agent/agent.json > /dev/null
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -234,7 +260,20 @@ jobs:
           use-policy-store: false
           api-key: ""
           policy: ""
-          token: ""
+          token: ${{ github.token }}
+
+      - name: Verify network blocking and OIDC isolation
+        run: |
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::Rust lint must not receive OIDC request credentials"
+            exit 1
+          fi
+          # The pinned upstream pre-hook can log errors and still exit successfully.
+          # Fail closed before checkout unless the Linux agent started in block mode.
+          test -s /home/agent/agent.status
+          pgrep -x agent > /dev/null
+          jq -e '.egress_policy == "block" and (.allowed_endpoints | length > 0)' \
+            /home/agent/agent.json > /dev/null
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -292,14 +331,20 @@ jobs:
           use-policy-store: false
           api-key: ""
           policy: ""
-          token: ""
+          token: ${{ github.token }}
 
-      - name: Verify OIDC request credentials are unavailable
+      - name: Verify network blocking and OIDC isolation
         run: |
           if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
             echo "::error::Rust lint must not receive OIDC request credentials"
             exit 1
           fi
+          # The pinned upstream pre-hook can log errors and still exit successfully.
+          # Fail closed before checkout unless the Linux agent started in block mode.
+          test -s /home/agent/agent.status
+          pgrep -x agent > /dev/null
+          jq -e '.egress_policy == "block" and (.allowed_endpoints | length > 0)' \
+            /home/agent/agent.json > /dev/null
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -339,14 +384,20 @@ jobs:
           use-policy-store: false
           api-key: ""
           policy: ""
-          token: ""
+          token: ${{ github.token }}
 
-      - name: Verify OIDC request credentials are unavailable
+      - name: Verify network blocking and OIDC isolation
         run: |
           if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
             echo "::error::Rust lint must not receive OIDC request credentials"
             exit 1
           fi
+          # The pinned upstream pre-hook can log errors and still exit successfully.
+          # Fail closed before checkout unless the Linux agent started in block mode.
+          test -s /home/agent/agent.status
+          pgrep -x agent > /dev/null
+          jq -e '.egress_policy == "block" and (.allowed_endpoints | length > 0)' \
+            /home/agent/agent.json > /dev/null
 
       - name: Decide whether the needed jobs succeeded or failed
         uses: tempoxyz/gh-actions/actions/check-needs@ab45d76f6e7420a094281a22aee1973ecc0754f8

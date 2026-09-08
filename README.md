@@ -480,7 +480,9 @@ for checkout. Every Rust lint job explicitly disables OIDC permissions and uses
 Harden Runner in **block mode** without STS or policy-store authentication. Fixed,
 per-job endpoint allowlists live in the pinned reusable workflow; callers cannot
 override them. Organization policy-store rules are not fetched. The read-only
-GitHub token remains available for checkout and release verification.
+GitHub token remains available for agent initialization, checkout, and release
+verification. It is not an OIDC token or a policy-store key; explicitly emptying
+it prevents the pinned Harden Runner from installing its agent.
 
 The allowlists cover HTTPS checkout and GitHub-hosted dependencies/advisories,
 GitHub release assets, Rust toolchains, and crates.io index/package downloads only
@@ -498,6 +500,10 @@ before job steps; the allowlists are intended for execution after Harden Runner
 starts, not as a sandbox for action image preparation. CI exercises all lint jobs
 and the deny wrapper against `tests/fixtures/rust-lint` on GitHub-hosted Linux;
 custom runner policies and real consumer dependencies still need validation.
+Each job fails closed before checkout unless OIDC request credentials are absent
+and the Linux agent has a status file, a running process, and nonempty block-mode
+configuration. Runners without these local agent interfaces (including ARC-only
+installations) require a separately reviewed readiness check before adoption.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
 
 The `lint success` gate accepts explicitly disabled checks and fails on failures,

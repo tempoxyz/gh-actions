@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { hardenRunnerEnv } = require("./run.cjs");
@@ -30,7 +31,16 @@ test("Rust lint workflows cannot grant OIDC or accept caller secrets", () => {
       if (!/^    runs-on:/m.test(job)) continue;
       assert.match(job, unauthenticatedPattern);
       assert.match(job, /^          egress-policy: block$/m);
-      assert.match(job, /use-policy-store: false\n          api-key: ""\n          policy: ""\n          token: ""/);
+      assert.match(job, /use-policy-store: false\n          api-key: ""\n          policy: ""\n          token: \$\{\{ github.token \}\}/);
+      const guardPosition = job.indexOf("- name: Verify network blocking and OIDC isolation");
+      assert.ok(guardPosition > 0, "each job must fail closed when hardening fails");
+      const checkoutPosition = job.indexOf("- uses: actions/checkout@");
+      assert.ok(checkoutPosition === -1 || guardPosition < checkoutPosition);
+      assert.match(job, /test -s \/home\/agent\/agent.status/);
+      assert.match(job, /pgrep -x agent > \/dev\/null/);
+      assert.match(job, /\.egress_policy == "block" and \(\.allowed_endpoints \| length > 0\)/);
+      assert.match(job, /ACTIONS_ID_TOKEN_REQUEST_URL/);
+      assert.match(job, /ACTIONS_ID_TOKEN_REQUEST_TOKEN/);
       const allowed = job.match(/^          allowed-endpoints: (?:>-\n((?:            [^\n]+\n)+)|([^\n]+))/m);
       assert.ok(allowed, "every job needs a nonempty, literal allowlist");
       const endpoints = (allowed[1] || allowed[2]).trim().split(/\s+/);
@@ -73,6 +83,48 @@ test("network smoke tests exercise both reusable Rust workflows without OIDC", (
   }
   const wrapper = fs.readFileSync(path.join(workflowsDirectory, "rust-deny.yml"), "utf8");
   assert.match(wrapper, /working-directory: \$\{\{ inputs.working-directory \}\}/);
+});
+
+test("Rust hardening guard fails closed before running repository code", () => {
+  const workflow = fs.readFileSync(path.join(workflowsDirectory, "rust-lint.yml"), "utf8");
+  const guards = [...workflow.matchAll(/- name: Verify network blocking and OIDC isolation\n        run: \|\n((?:          [^\n]*\n)+)/g)]
+    .map((match) => match[1].replace(/^          /gm, ""));
+  assert.equal(guards.length, 5);
+  assert.equal(new Set(guards).size, 1, "all jobs must enforce the same readiness boundary");
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "rust-hardening-test-"));
+  try {
+    fs.writeFileSync(path.join(temporary, "pgrep"), '#!/bin/sh\nexit "${TEST_AGENT_EXIT:-0}"\n', { mode: 0o755 });
+    const script = guards[0].replaceAll("/home/agent", temporary);
+    const run = (extra = {}) => spawnSync("bash", ["-e", "-c", script], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${temporary}:${process.env.PATH}`,
+        ACTIONS_ID_TOKEN_REQUEST_URL: "",
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
+        TEST_AGENT_EXIT: "0",
+        ...extra,
+      },
+    });
+    const configure = (policy, endpoints) => fs.writeFileSync(
+      path.join(temporary, "agent.json"),
+      JSON.stringify({ egress_policy: policy, allowed_endpoints: endpoints }),
+    );
+    configure("block", "github.com:443");
+    assert.notEqual(run().status, 0, "a missing readiness file must fail");
+    fs.writeFileSync(path.join(temporary, "agent.status"), "ready\n");
+    assert.equal(run().status, 0, "ready block-mode agent must pass");
+    assert.notEqual(run({ TEST_AGENT_EXIT: "1" }).status, 0, "a stopped agent must fail");
+    for (const variable of ["ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"]) {
+      assert.notEqual(run({ [variable]: "test-placeholder" }).status, 0, "OIDC capability must fail");
+    }
+    configure("audit", "github.com:443");
+    assert.notEqual(run().status, 0, "audit mode must fail");
+    configure("block", "");
+    assert.notEqual(run().status, 0, "an empty allowlist must fail");
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 });
 
 test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
