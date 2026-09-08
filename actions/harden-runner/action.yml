@@ -34,25 +34,13 @@ inputs:
     description: "Deploy Harden Runner directly on an ephemeral self-hosted Linux VM"
     required: false
     default: "false"
+  token:
+    description: "GitHub token used by Harden Runner to avoid API rate limiting"
+    required: false
+    default: ${{ github.token }}
 
 runs:
-  using: "composite"
-  steps:
-    - name: Exchange GitHub OIDC token for a Step Security API key
-      id: step-security-token
-      uses: tempoxyz/gh-actions/actions/step-security-sts@46988f3d9ece5e4d6cc89b25a6e648616ee0f850
-      with:
-        sts-url: ${{ inputs.sts-url }}
-
-    - name: Harden the runner with the StepSecurity policy store
-      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-      with:
-        allowed-endpoints: ${{ inputs.allowed-endpoints }}
-        api-key: ${{ steps.step-security-token.outputs.token }}
-        denied-endpoints: ${{ inputs.denied-endpoints }}
-        deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
-        disable-file-monitoring: ${{ inputs.disable-file-monitoring }}
-        disable-sudo-and-containers: ${{ inputs.disable-sudo-and-containers }}
-        disable-telemetry: ${{ inputs.disable-telemetry }}
-        egress-policy: ${{ inputs.egress-policy }}
-        use-policy-store: true
+  using: "node24"
+  pre: "pre.cjs"
+  main: "main.cjs"
+  post: "post.cjs"
