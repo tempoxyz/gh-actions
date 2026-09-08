@@ -28,7 +28,8 @@ permissions:
   id-token: write
 
 steps:
-  - uses: tempoxyz/gh-actions/actions/secure-runner@<commit-sha>
+  - name: Secure runner
+    uses: tempoxyz/gh-actions/actions/secure-runner@<commit-sha>
     with:
       egress-policy: audit
 

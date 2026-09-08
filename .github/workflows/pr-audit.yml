@@ -49,8 +49,8 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Secure the runner with Harden Runner and Socket Firewall
-        uses: tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500
 
       - name: Resolve target
         id: target
@@ -204,8 +204,8 @@ jobs:
       pull-requests: read
       statuses: write
     steps:
-      - name: Secure the runner with Harden Runner and Socket Firewall
-        uses: tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500
 
       - name: Report audit status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -261,8 +261,8 @@ jobs:
       id-token: write
       statuses: write
     steps:
-      - name: Secure the runner with Harden Runner and Socket Firewall
-        uses: tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500
 
       - name: Pass merge group
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

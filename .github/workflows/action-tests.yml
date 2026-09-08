@@ -17,8 +17,8 @@ jobs:
     outputs:
       tests: ${{ steps.tests.outputs.tests }}
     steps:
-      - name: Secure the runner with Harden Runner and Socket Firewall
-        uses: tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,8 +48,8 @@ jobs:
       matrix:
         test: ${{ fromJSON(needs.discover.outputs.tests) }}
     steps:
-      - name: Secure the runner with Harden Runner and Socket Firewall
-        uses: tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,8 +69,8 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Secure the runner with Harden Runner and Socket Firewall
-        uses: tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500
 
       - name: Check matrix results
         env:
