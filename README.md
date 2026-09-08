@@ -177,6 +177,8 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-deny`](#rust-deny) | Deny-only wrapper around rust-lint | rust repos |
+| [`rust-fmt`](#rust-fmt-and-rust-clippy) | Formatting-only wrapper around rust-lint | rust repos |
+| [`rust-clippy`](#rust-fmt-and-rust-clippy) | Clippy-only wrapper around rust-lint | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
@@ -472,7 +474,8 @@ Optional inputs:
 - `checkout-submodules` (default: `false`) — passed to clippy checkout only
 - `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
 
-For only `cargo deny`, use [`rust-deny`](#rust-deny).
+For individual checks, use [`rust-deny`](#rust-deny),
+[`rust-fmt`, or `rust-clippy`](#rust-fmt-and-rust-clippy).
 
 The deny action runs in Docker and manages its own Rust toolchain;
 `deny-rust-toolchain` is forwarded to its `rust-version` input. Callers grant `contents: read`
@@ -512,6 +515,37 @@ grant both permissions shown above; no persistent StepSecurity API key is requir
 Pin production callers to a commit SHA (see [Versioning](#versioning)). The additional
 workflow nesting can change displayed check names, so verify required status checks
 when switching an existing caller from `rust-lint`.
+
+### `rust-fmt` and `rust-clippy`
+
+Run only formatting or Clippy through `rust-lint.yml` at the same commit, sharing
+its STS-backed Harden Runner and success gate. Other checks are disabled internally.
+Clippy also retains the shared mold/sccache setup and warnings-as-errors policy.
+
+```yaml
+jobs:
+  fmt:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-fmt.yml@main
+    permissions:
+      contents: read
+      id-token: write
+  clippy:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-clippy.yml@main
+    permissions:
+      contents: read
+      id-token: write
+```
+
+Both accept `rust-toolchain` (default `nightly`), `runner` (default `ubuntu-latest`),
+`timeout-minutes` (default `30`), and `flags`. Formatting defaults to `--all --check`;
+Clippy defaults to `--all-targets --all-features --locked`. Clippy additionally accepts
+`checkout-submodules` (default `"false"`). Use Linux runners supported by the shared
+Harden Runner setup; Clippy's mold installer requires Linux.
+
+Pin production callers to a commit SHA. Preserve existing cooldown prerequisites
+with `needs`, explicitly carry over custom flags, and update required check names
+if nesting changes them. Both permissions shown above are required for checkout
+and STS authentication; no persistent StepSecurity API key is needed.
 
 ### `rust-build-binaries`
 
