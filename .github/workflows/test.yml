@@ -101,6 +101,24 @@ jobs:
       run-typos: false
       run-deny: false
 
+  rust-fmt-wrapper:
+    name: Rust fmt wrapper
+    uses: ./.github/workflows/rust-fmt.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all --check
+
+  rust-clippy-wrapper:
+    name: Rust clippy wrapper
+    uses: ./.github/workflows/rust-clippy.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all-targets --all-features --locked
+
   integration:
     name: integration
     runs-on: ubuntu-latest

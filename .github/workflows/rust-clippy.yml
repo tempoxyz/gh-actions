@@ -1,0 +1,50 @@
+name: rust clippy
+
+on:
+  workflow_call:
+    inputs:
+      rust-toolchain:
+        description: Rust toolchain used for cargo clippy.
+        required: false
+        type: string
+        default: nightly
+      flags:
+        description: Flags passed to cargo clippy.
+        required: false
+        type: string
+        default: --all-targets --all-features --locked
+      runner:
+        description: Runner used for cargo clippy.
+        required: false
+        type: string
+        default: ubuntu-latest
+      timeout-minutes:
+        description: Timeout for each job.
+        required: false
+        type: number
+        default: 30
+      checkout-submodules:
+        description: Submodule checkout mode passed to actions/checkout.
+        required: false
+        type: string
+        default: "false"
+
+permissions: {}
+
+jobs:
+  clippy:
+    # A relative reusable-workflow reference uses the same commit as this wrapper.
+    uses: ./.github/workflows/rust-lint.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      run-clippy: true
+      run-fmt: false
+      run-typos: false
+      run-deny: false
+      rust-toolchain: ${{ inputs.rust-toolchain }}
+      clippy-flags: ${{ inputs.flags }}
+      clippy-runner: ${{ inputs.runner }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      checkout-submodules: ${{ inputs.checkout-submodules }}

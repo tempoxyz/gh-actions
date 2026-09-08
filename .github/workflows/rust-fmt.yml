@@ -1,0 +1,44 @@
+name: rust fmt
+
+on:
+  workflow_call:
+    inputs:
+      rust-toolchain:
+        description: Rust toolchain used for cargo fmt.
+        required: false
+        type: string
+        default: nightly
+      flags:
+        description: Flags passed to cargo fmt.
+        required: false
+        type: string
+        default: --all --check
+      runner:
+        description: Runner used for cargo fmt.
+        required: false
+        type: string
+        default: ubuntu-latest
+      timeout-minutes:
+        description: Timeout for each job.
+        required: false
+        type: number
+        default: 30
+
+permissions: {}
+
+jobs:
+  fmt:
+    # A relative reusable-workflow reference uses the same commit as this wrapper.
+    uses: ./.github/workflows/rust-lint.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      run-clippy: false
+      run-fmt: true
+      run-typos: false
+      run-deny: false
+      rust-toolchain: ${{ inputs.rust-toolchain }}
+      fmt-flags: ${{ inputs.flags }}
+      fmt-runner: ${{ inputs.runner }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}

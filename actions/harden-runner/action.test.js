@@ -10,6 +10,60 @@ const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
   /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b/;
 
+function usesHardenRunner(filename, visited = new Set()) {
+  if (visited.has(filename)) return false;
+  visited.add(filename);
+  const workflow = fs.readFileSync(
+    path.join(workflowsDirectory, filename),
+    "utf8",
+  );
+  if (wrapperPattern.test(workflow)) return true;
+  return [...workflow.matchAll(/uses:\s+\.\/\.github\/workflows\/([^\s]+)/g)].some(
+    (match) => usesHardenRunner(match[1], visited),
+  );
+}
+
+for (const check of ["fmt", "clippy"]) {
+  test(`${check} wrapper enables only its check and forwards its inputs`, () => {
+    const workflow = fs.readFileSync(
+      path.join(workflowsDirectory, `rust-${check}.yml`),
+      "utf8",
+    );
+    assert.match(workflow, /^permissions: \{\}$/m);
+    assert.match(workflow, /uses: \.\/\.github\/workflows\/rust-lint\.yml/);
+    assert.doesNotMatch(workflow, /\n    (?:steps|runs-on):/);
+    for (const candidate of ["clippy", "fmt", "typos", "deny"]) {
+      assert.match(
+        workflow,
+        new RegExp(`^      run-${candidate}: ${candidate === check}$`, "m"),
+      );
+    }
+    const mappings = {
+      "rust-toolchain": "rust-toolchain",
+      [`${check}-flags`]: "flags",
+      [`${check}-runner`]: "runner",
+      "timeout-minutes": "timeout-minutes",
+      ...(check === "clippy"
+        ? { "checkout-submodules": "checkout-submodules" }
+        : {}),
+    };
+    for (const [target, input] of Object.entries(mappings)) {
+      assert.ok(workflow.includes(target + ": ${{ inputs." + input + " }}"));
+      assert.match(workflow, new RegExp(`^      ${input}:\\n`, "m"));
+    }
+    assert.match(
+      workflow,
+      /rust-toolchain:\n(?:        [^\n]+\n)*        default: nightly/,
+    );
+    assert.match(
+      workflow,
+      /runner:\n(?:        [^\n]+\n)*        default: ubuntu-latest/,
+    );
+    assert.match(workflow, /      contents: read\n      id-token: write/);
+    assert.ok(usesHardenRunner(`rust-${check}.yml`));
+  });
+}
+
 test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
   assert.match(
     manifest,
@@ -88,12 +142,7 @@ test("every repository workflow job uses the production Harden Runner wrapper", 
       );
       const usesProtectedWorkflow =
         reusableWorkflow &&
-        wrapperPattern.test(
-          fs.readFileSync(
-            path.join(workflowsDirectory, reusableWorkflow[1]),
-            "utf8",
-          ),
-        );
+        usesHardenRunner(reusableWorkflow[1]);
       if (!runsOnRunner && !reusableWorkflow) continue;
 
       runnableJobs += 1;
