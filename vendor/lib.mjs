@@ -50,6 +50,9 @@ export function loadManifest(path = MANIFEST_PATH) {
     if (!/^[\w.-]+\/[\w.-]+$/.test(a.name ?? "")) throw new VendorError(`manifest entry with bad name: ${JSON.stringify(a.name)}`);
     if (!/^[0-9a-f]{40}$/.test(a.sha ?? "")) throw new VendorError(`${a.name}: sha must be a full 40-hex commit`);
     if (!a.ref) throw new VendorError(`${a.name}: ref is required`);
+    if (a.strip_dev_dependencies !== undefined && typeof a.strip_dev_dependencies !== "boolean") {
+      throw new VendorError(`${a.name}: strip_dev_dependencies must be a boolean`);
+    }
     a.exclude ??= []; a.keep ??= []; a.pin_nested ??= {};
   }
   return m;
@@ -181,6 +184,19 @@ export function applyExcludes(dest, entry, manifest) {
   }
   removeEmptyDirs(dest);
   return removed;
+}
+
+export function applyPackageTransforms(dest, entry) {
+  if (!entry.strip_dev_dependencies) return [];
+  const packagePath = join(dest, "package.json");
+  if (!existsSync(packagePath)) {
+    throw new VendorError(`${entry.name}: strip_dev_dependencies requires package.json`);
+  }
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+  if (!("devDependencies" in packageJson)) return [];
+  delete packageJson.devDependencies;
+  writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  return ["package.json:devDependencies"];
 }
 
 // ---------- nested `uses:` rewriting ----------

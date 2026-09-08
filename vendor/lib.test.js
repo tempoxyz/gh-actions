@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { globToRegExp, matchesAny, rewriteUsesText, compareVersions, normalizeCommitDate, updateReadmeText, README_BEGIN, README_END } from "./lib.mjs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { applyPackageTransforms, globToRegExp, matchesAny, rewriteUsesText, compareVersions, normalizeCommitDate, updateReadmeText, README_BEGIN, README_END } from "./lib.mjs";
 
 test("commit timestamps are stable across Git UTC formats and preserve non-UTC offsets", () => {
   assert.equal(normalizeCommitDate("2024-02-15T00:16:04+00:00\n"), "2024-02-15T00:16:04Z");
@@ -60,4 +63,31 @@ test("README table replaces only the marked block", () => {
   const out = updateReadmeText(readme, "| a |\n|---|");
   assert.equal(out, `# x\n\n${README_BEGIN}\n| a |\n|---|\n${README_END}\n\nrest\n`);
   assert.throws(() => updateReadmeText("no markers", "x"), /markers/);
+});
+
+test("package transform removes development-only dependencies", () => {
+  const dir = mkdtempSync(join(tmpdir(), "vendor-package-transform-"));
+  try {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "prebuilt-action",
+        dependencies: { runtime: "1.0.0" },
+        devDependencies: { eslint: "7.32.0" },
+      }),
+    );
+    assert.deepEqual(
+      applyPackageTransforms(dir, {
+        name: "owner/action",
+        strip_dev_dependencies: true,
+      }),
+      ["package.json:devDependencies"],
+    );
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, "package.json"))), {
+      name: "prebuilt-action",
+      dependencies: { runtime: "1.0.0" },
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
