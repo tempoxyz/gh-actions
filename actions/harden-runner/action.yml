@@ -3,9 +3,10 @@ description: >-
   Start Harden Runner with authenticated StepSecurity policy-store access
 
 inputs:
-  sts-url:
-    description: "Secret URL of the Step Security STS endpoint"
-    required: true
+  dev:
+    description: "Use the development Step Security STS endpoint"
+    required: false
+    default: "false"
   egress-policy:
     description: "Fallback outbound policy when no stored policy applies (audit or block)"
     required: false

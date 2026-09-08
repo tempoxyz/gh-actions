@@ -12,12 +12,16 @@ const wrapperPattern =
 const secretExpression = String.raw`\$\{\{ secrets\.STEP_SECURITY_STS_PRD_URL \}\}`;
 
 test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
-  assert.match(manifest, /sts-url:\n\s+description:[^\n]+\n\s+required: true/);
+  assert.match(
+    manifest,
+    /dev:\n\s+description:[^\n]+\n\s+required: false\n\s+default: "false"/,
+  );
+  assert.doesNotMatch(manifest, /sts-url:/);
   assert.match(manifest, /using: "node24"/);
   assert.match(manifest, /pre: "pre\.cjs"/);
   const pre = fs.readFileSync(path.join(__dirname, "pre.cjs"), "utf8");
   assert.ok(
-    pre.indexOf("await exchangeToken()") <
+    pre.indexOf("await exchangeToken(stsEndpoint())") <
       pre.indexOf('runHardenRunner("pre", result.token)'),
     "the STS exchange must finish before Harden Runner initializes",
   );
