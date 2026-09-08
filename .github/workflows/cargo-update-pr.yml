@@ -13,11 +13,6 @@ on:
         default: "chore(deps): weekly `cargo update`"
         required: false
         type: "string"
-    secrets:
-      STEP_SECURITY_STS_PRD_URL:
-        description: "StepSecurity API key used to read attached Harden Runner policies."
-        required: true
-
 permissions:
   id-token: write
 
@@ -51,9 +46,7 @@ jobs:
       id-token: write
     steps:
       - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@5006e0ee3f89173e45e2ab30e2fa2e2ff3713d80
-        with:
-          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Harden Runner requires this organization secret as an action input.
+        uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

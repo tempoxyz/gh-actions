@@ -184,7 +184,7 @@ Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>
 
 ### `pr-audit`
 
-Publishes a `pr_audit` event when a pull request receives a configured label. This reusable workflow is **read-only** against repository contents. Callers must forward the `STEP_SECURITY_STS_PRD_URL` organization STS URL secret for Harden Runner policy-store authentication. Comment-driven audit commands are handled separately by the [`pr-audit-comment`](actions/pr-audit-comment) composite action in a caller-owned job (see below).
+Publishes a `pr_audit` event when a pull request receives a configured label. This reusable workflow is **read-only** against repository contents. Comment-driven audit commands are handled separately by the [`pr-audit-comment`](actions/pr-audit-comment) composite action in a caller-owned job (see below).
 
 #### Label audits (read-only)
 
@@ -206,7 +206,6 @@ jobs:
         cyclops
         agentic-audit
     secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
       EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
       EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
       EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
@@ -242,7 +241,6 @@ jobs:
     with:
       require-completed-audit: true
     secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
       EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
       EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
       EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
@@ -269,7 +267,6 @@ jobs:
     with:
       environment: pr-audit
     secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
       EVENTS_KEY: ${{ secrets.EVENTS_KEY }}
       EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
       EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
@@ -345,11 +342,9 @@ jobs:
     permissions:
       contents: read
       issues: write
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
 ```
 
-Caller workflows must grant these permissions on the reusable-workflow job and forward the `STEP_SECURITY_STS_PRD_URL` organization secret. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels to the pull request through GitHub's Issues API.
+Caller workflows must grant these permissions on the reusable-workflow job. `contents: read` is needed to check out `tempoxyz/gh-actions`; `issues: write` reads issue labels and adds labels to the pull request through GitHub's Issues API.
 
 The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`, so the bundled label script matches the pinned reusable workflow revision.
 
@@ -359,7 +354,7 @@ Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com
 
 Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold, so repository configuration remains review-sensitive. Existing callers remain unchanged because the pinact check is opt-in.
 
-zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is read-only against repository and Actions data and never requests `security-events: write`. Callers must forward the `STEP_SECURITY_STS_PRD_URL` organization STS URL secret for Harden Runner policy-store authentication. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
+zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is read-only against repository and Actions data and never requests `security-events: write`. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
 ```yaml
 name: Scan GitHub Actions
@@ -375,8 +370,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
     with:
       pinact: true
 ```
@@ -424,14 +417,12 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/reproducible-build.yml@main
     permissions:
       contents: read
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
     with:
       ref: ${{ inputs.ref }}
       binary-name: tempo
 ```
 
-Caller workflows must grant `contents: read` so the reusable workflow can check out the repository being built and forward the `STEP_SECURITY_STS_PRD_URL` organization STS URL secret for Harden Runner policy-store authentication.
+Caller workflows must grant `contents: read` so the reusable workflow can check out the repository being built.
 
 Required input:
 
@@ -466,8 +457,6 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
     permissions:
       contents: read
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
 ```
 
 Optional inputs:
@@ -489,8 +478,6 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
     permissions:
       contents: read
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
     with:
       run-clippy: false
       run-fmt: false
@@ -499,7 +486,7 @@ jobs:
 
 The deny action runs in Docker and manages its own Rust toolchain;
 `deny-rust-toolchain` is forwarded to its `rust-version` input. Callers grant `contents: read`
-for checkout and pass `STEP_SECURITY_STS_PRD_URL` for Harden Runner, as shown above.
+for checkout, as shown above.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
 
 The `lint success` gate accepts explicitly disabled checks and fails on failures,
@@ -523,8 +510,6 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-build-binaries.yml@main
     permissions:
       contents: read
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
     with:
       profile: release
       binaries: |
@@ -561,8 +546,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
 ```
 
 The calling repository must carry a trust policy at
@@ -599,8 +582,6 @@ permissions:
 jobs:
   auto-assign:
     uses: tempoxyz/gh-actions/.github/workflows/auto-assign-pr.yml@main
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
 ```
 
-Caller workflows must grant `issues: write` and `pull-requests: write`, and forward the `STEP_SECURITY_STS_PRD_URL` organization secret.
+Caller workflows must grant `issues: write` and `pull-requests: write`.

@@ -8,8 +8,7 @@ const { hardenRunnerEnv } = require("./run.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@5006e0ee3f89173e45e2ab30e2fa2e2ff3713d80/;
-const secretExpression = String.raw`\$\{\{ secrets\.STEP_SECURITY_STS_PRD_URL \}\}`;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b/;
 
 test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
   assert.match(
@@ -62,7 +61,7 @@ test("post cleanup succeeds when the STS exchange did not mint a token", () => {
   );
 });
 
-test("every repository workflow job passes the organization STS URL to the wrapper", () => {
+test("every repository workflow job uses the production Harden Runner wrapper", () => {
   let runnableJobs = 0;
   let protectedJobs = 0;
 
@@ -79,14 +78,7 @@ test("every repository workflow job passes the organization STS URL to the wrapp
       /uses:\s+step-security\/harden-runner@/,
       `${filename} must use the authenticated Harden Runner wrapper`,
     );
-
-    if (/^\s{2}workflow_call:/m.test(workflow) && wrapperPattern.test(workflow)) {
-      assert.match(
-        workflow,
-        /secrets:\s*\n\s+STEP_SECURITY_STS_PRD_URL:\s*\n(?:\s+description:[^\n]+\n)?\s+required: true/,
-        `${filename} must require STEP_SECURITY_STS_PRD_URL from reusable-workflow callers`,
-      );
-    }
+    assert.doesNotMatch(workflow, /STEP_SECURITY_STS_(?:DEV|PRD)_URL/);
 
     const jobBlocks = workflow.split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/);
     for (const jobBlock of jobBlocks) {
@@ -111,22 +103,15 @@ test("every repository workflow job passes the organization STS URL to the wrapp
         `${filename} must grant id-token: write for the STS exchange`,
       );
       if (usesProtectedWorkflow) {
-        assert.match(
-          jobBlock,
-          new RegExp(
-            String.raw`secrets:\s*\n\s+STEP_SECURITY_STS_PRD_URL:\s+${secretExpression}`,
-          ),
-          `${filename} must pass STEP_SECURITY_STS_PRD_URL to its reusable workflow`,
-        );
         protectedJobs += 1;
       } else {
         const steps = jobBlock.split(/\n    steps:\s*\n/, 2)[1] || "";
         assert.match(
           steps,
           new RegExp(
-            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@5006e0ee3f89173e45e2ab30e2fa2e2ff3713d80[^\n]*\n\s+with:\s*\n\s+sts-url:\s+${secretExpression}`,
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b[^\n]*`,
           ),
-          `${filename} must pass STEP_SECURITY_STS_PRD_URL to the Harden Runner wrapper as the first step of every runnable job`,
+          `${filename} must use the Harden Runner wrapper as the first step of every runnable job`,
         );
         protectedJobs += 1;
       }
