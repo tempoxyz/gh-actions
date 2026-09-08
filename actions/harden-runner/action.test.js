@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { hardenRunnerEnv } = require("./run.cjs");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
@@ -9,15 +10,38 @@ const wrapperPattern =
   /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@46988f3d9ece5e4d6cc89b25a6e648616ee0f850/;
 const secretExpression = String.raw`\$\{\{ secrets\.STEP_SECURITY_STS_PRD_URL \}\}`;
 
-test("passes a caller-supplied STS URL to Harden Runner", () => {
+test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
   assert.match(manifest, /sts-url:\n\s+description:[^\n]+\n\s+required: true/);
-  assert.match(
-    manifest,
-    /step-security\/harden-runner@e14015d583714f6e62063499dc959a02595150a1/,
+  assert.match(manifest, /using: "node24"/);
+  assert.match(manifest, /pre: "pre\.cjs"/);
+  const pre = fs.readFileSync(path.join(__dirname, "pre.cjs"), "utf8");
+  assert.ok(
+    pre.indexOf("await exchangeToken()") <
+      pre.indexOf('runHardenRunner("pre", result.token)'),
+    "the STS exchange must finish before Harden Runner initializes",
   );
-  assert.match(manifest, /sts-url: \$\{\{ inputs\.sts-url \}\}/);
-  assert.match(manifest, /use-policy-store: true/);
-  assert.doesNotMatch(manifest, /harden-runner-token|STEPSECURITY_API_KEY|GITHUB_ENV/);
+  const env = hardenRunnerEnv("step_test_short_lived_api_key", {
+    EXISTING: "preserved",
+  });
+  assert.equal(env["INPUT_API-KEY"], "step_test_short_lived_api_key");
+  assert.equal(env["INPUT_USE-POLICY-STORE"], "true");
+  assert.equal(env.EXISTING, "preserved");
+  assert.ok(
+    fs.existsSync(
+      path.join(
+        __dirname,
+        "../../vendor/step-security/harden-runner/dist/pre/index.js",
+      ),
+    ),
+    "the pinned Harden Runner pre-job bundle must be vendored",
+  );
+  const implementation = ["pre.cjs", "main.cjs", "post.cjs", "run.cjs"]
+    .map((filename) => fs.readFileSync(path.join(__dirname, filename), "utf8"))
+    .join("\n");
+  assert.doesNotMatch(
+    `${manifest}\n${implementation}`,
+    /harden-runner-token|STEPSECURITY_API_KEY|GITHUB_ENV/,
+  );
 });
 
 test("every repository workflow job passes the organization STS URL to the wrapper", () => {

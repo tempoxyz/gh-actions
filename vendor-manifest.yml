@@ -1043,6 +1043,25 @@ actions:
       action.yml and LICENSE Also a nested dependency (helm/chart-testing-action); vendored at the
       version the org uses directly.
 
+  - name: step-security/harden-runner
+    ref: v2.21.1
+    ref_type: tag
+    sha: e14015d583714f6e62063499dc959a02595150a1
+    exclude:
+      - src/
+      - images/
+      - docs/
+      - tsconfig*.json
+      - jest.config.*
+      - .eslintrc*
+      - package-lock.json
+      - '**/*.test.*'
+      - osv-scanner.toml
+    notes: >-
+      Node action; runs dist/index.js, dist/pre/index.js, dist/post/index.js. excluded: src/,
+      images/, docs/, tsconfig*.json, jest.config.*, .eslintrc*, package-lock.json, **/*.test.*,
+      osv-scanner.toml
+
   - name: taiki-e/install-action
     ref: v2.85.2
     ref_type: tag

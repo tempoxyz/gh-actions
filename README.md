@@ -102,6 +102,7 @@ what is excluded from each copy and why are in the manifest `notes`.
 | [`rust-lang/crates-io-auth-action`](https://github.com/rust-lang/crates-io-auth-action/blob/c6f97d42243bad5fab37ca0427f495c86d5b1a18/README.md) | v1.0.5 (`c6f97d4`) | Retrieve a temporary crates.io access token using trusted publishing. |
 | [`shallwefootball/upload-s3-action`](https://github.com/shallwefootball/upload-s3-action/blob/4350529f410221787ccf424e50133cbc1b52704e/README.md) | v1.3.3 (`4350529`) | Upload directory to S3 |
 | [`sigstore/cosign-installer`](https://github.com/sigstore/cosign-installer/blob/6f9f17788090df1f26f669e9d70d6ae9567deba6/README.md) | v4.1.2 (`6f9f177`) | Installs cosign and includes it in your path |
+| [`step-security/harden-runner`](https://github.com/step-security/harden-runner/blob/e14015d583714f6e62063499dc959a02595150a1/README.md) | v2.21.1 (`e14015d`) | Harden-Runner provides runtime security for GitHub-hosted and self-hosted runners |
 | [`taiki-e/install-action`](https://github.com/taiki-e/install-action/blob/41049aa56687c35e0afa74eed4f09cec4f9afabf/README.md) | v2.85.2 (`41049aa`) | GitHub Action for installing development tools |
 | [`tailscale/github-action`](https://github.com/tailscale/github-action/blob/6cae46e2d796f265265cfcf628b72a32b4d7cade/README.md) | v3.3.0 (`6cae46e`) | Connect your GitHub Action workflow to Tailscale |
 | [`tailscale/gitops-acl-action`](https://github.com/tailscale/gitops-acl-action/blob/4105afd651aa659e0eec9031a10360c39fbc0804/README.md) | v1.5.1 (`4105afd`) | Push changes to Tailscale and run ACL tests in CI |
@@ -155,6 +156,9 @@ jobs:
 
 The default fallback egress policy is `audit`. Set `egress-policy: block` and, if needed,
 `allowed-endpoints` for workflows that should fail closed when no stored policy applies.
+The wrapper performs the STS exchange in its pre-job entrypoint before starting Harden Runner,
+because Harden Runner fetches its policy in its own pre-job entrypoint. The short-lived API key is
+passed only to the vendored Harden Runner process and is revoked during post-job cleanup.
 
 ## Versioning
 

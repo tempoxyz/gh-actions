@@ -28,8 +28,7 @@ function publishToken(token, expiresAt, leaseId) {
   append(required("GITHUB_STATE"), "lease_id", leaseId);
 }
 
-async function main() {
-  const rawEndpoint = required("INPUT_STS-URL");
+async function exchangeToken(rawEndpoint = required("INPUT_STS-URL")) {
   maskSecret(rawEndpoint);
   const sts = endpoint(rawEndpoint);
   const oidcRequestToken = required("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
@@ -89,8 +88,18 @@ async function main() {
   ) {
     throw new Error("Step Security STS response is invalid");
   }
-  publishToken(result.token, result.expires_at, result.lease_id);
-  append(required("GITHUB_STATE"), "sts_url", rawEndpoint);
+  return {
+    token: result.token,
+    expiresAt: result.expires_at,
+    leaseId: result.lease_id,
+    rawEndpoint,
+  };
+}
+
+async function main() {
+  const result = await exchangeToken();
+  publishToken(result.token, result.expiresAt, result.leaseId);
+  append(required("GITHUB_STATE"), "sts_url", result.rawEndpoint);
 }
 
 if (require.main === module) {
@@ -100,4 +109,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, maskSecret, publishToken };
+module.exports = {
+  append,
+  exchangeToken,
+  main,
+  maskSecret,
+  publishToken,
+  required,
+};
