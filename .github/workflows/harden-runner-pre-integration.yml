@@ -1,0 +1,19 @@
+name: Harden Runner pre-job integration
+
+on:
+  pull_request:
+
+permissions:
+  id-token: write
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: tempoxyz/gh-actions/actions/harden-runner@077758e8b0ae8a77706c7a5b621b17867ef5a85a
+        with:
+          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }} # zizmor: ignore[secrets-outside-env] Integration test for the secret-backed wrapper.
+
+      - run: echo 'Harden Runner initialized with its policy-store credential'
