@@ -47,6 +47,9 @@ function request(url, options = {}, body) {
 
 async function retry(operation, options = {}) {
   const retryHttpResponses = options.retryHttpResponses !== false;
+  const sleep =
+    options.sleep ||
+    ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
   let last;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
@@ -61,7 +64,7 @@ async function retry(operation, options = {}) {
     } catch (error) {
       if (attempt === 3) throw error;
     }
-    await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 1000));
+    await sleep(2 ** attempt * 1000);
   }
   return last;
 }

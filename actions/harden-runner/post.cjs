@@ -3,10 +3,13 @@ const { runHardenRunner } = require("./run.cjs");
 
 async function main() {
   const errors = [];
-  try {
-    runHardenRunner("post", process.env.STATE_token || "");
-  } catch (error) {
-    errors.push(error);
+  const token = process.env.STATE_token || "";
+  if (token !== "") {
+    try {
+      runHardenRunner("post", token);
+    } catch (error) {
+      errors.push(error);
+    }
   }
   try {
     await revokeLease();

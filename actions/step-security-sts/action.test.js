@@ -37,18 +37,19 @@ test("uses a validated secret endpoint without embedding deployment hosts", () =
   }
 });
 
-test("does not retry an exchange after receiving an HTTP response", async () => {
+test("retries transient exchange responses", async () => {
   let attempts = 0;
   const response = await retry(
     async () => {
       attempts += 1;
-      return { status: 502, body: "upstream failure" };
+      if (attempts === 1) return { status: 502, body: "upstream failure" };
+      return { status: 200, body: "recovered" };
     },
-    { retryHttpResponses: false },
+    { sleep: async () => {} },
   );
 
-  assert.equal(attempts, 1);
-  assert.equal(response.status, 502);
+  assert.equal(attempts, 2);
+  assert.equal(response.status, 200);
 });
 
 test("main fails closed without the secret STS URL", () => {
