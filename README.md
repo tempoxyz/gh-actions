@@ -13,6 +13,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems
 | [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
+| [`secure-runner`](actions/secure-runner) | Start Harden Runner and install Socket Firewall with short-lived credentials
 | [`harden-runner`](actions/harden-runner) | Start Harden Runner with authenticated StepSecurity policy-store access
 | [`socket-firewall`](actions/socket-firewall) | Install Socket Firewall with a short-lived, repository-scoped token
 | [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR
