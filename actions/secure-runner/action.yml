@@ -57,6 +57,6 @@ runs:
         token: ${{ inputs.token }}
 
     - name: Install Socket Firewall
-      uses: tempoxyz/gh-actions/actions/socket-firewall@75e9688b97b8e3fae84d4def91f6180af09b33b7
+      uses: tempoxyz/gh-actions/actions/socket-firewall@8ce9310d8c5eb9c0fa94505de0b634f42f04ecc4
       with:
         dev: ${{ inputs.dev }}
