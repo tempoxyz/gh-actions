@@ -134,9 +134,8 @@ steps:
 
 ### Harden Runner with the StepSecurity policy store
 
-Use `harden-runner` as the first step in a job and pass the organization-level
-`STEP_SECURITY_STS_PRD_URL` secret explicitly. Composite actions cannot read the `secrets`
-context themselves, so the caller must provide the credential as an input.
+Use `harden-runner` as the first step in a job. It uses the production endpoint by default;
+set `dev: true` to use the development endpoint.
 
 ```yaml
 jobs:
@@ -146,8 +145,6 @@ jobs:
       contents: read
     steps:
       - uses: tempoxyz/gh-actions/actions/harden-runner@<commit-sha>
-        with:
-          sts-url: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
 
       - uses: actions/checkout@<commit-sha>
 
