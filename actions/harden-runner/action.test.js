@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -41,6 +42,19 @@ test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
   assert.doesNotMatch(
     `${manifest}\n${implementation}`,
     /harden-runner-token|STEPSECURITY_API_KEY|GITHUB_ENV/,
+  );
+});
+
+test("post cleanup succeeds when the STS exchange did not mint a token", () => {
+  const result = spawnSync(process.execPath, [path.join(__dirname, "post.cjs")], {
+    encoding: "utf8",
+    env: { ...process.env, STATE_token: "" },
+  });
+
+  assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+  assert.doesNotMatch(
+    `${result.stdout}${result.stderr}`,
+    /stored Step Security API key is invalid/,
   );
 });
 

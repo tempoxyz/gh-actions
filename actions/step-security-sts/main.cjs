@@ -51,17 +51,17 @@ async function exchangeToken(rawEndpoint = required("INPUT_STS-URL")) {
     throw new Error("GitHub OIDC response is invalid");
   }
 
-  const exchange = await retry(
-    () =>
-      request(`${sts.origin}/sts/exchange`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${oidc}`,
-          "content-length": "0",
-          "user-agent": "tempoxyz-step-security-sts-action",
-        },
-      }),
-    { retryHttpResponses: false },
+  // The STS makes exact OIDC assertion replays idempotent, so retrying a
+  // transient response recovers the same lease instead of issuing another one.
+  const exchange = await retry(() =>
+    request(`${sts.origin}/sts/exchange`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${oidc}`,
+        "content-length": "0",
+        "user-agent": "tempoxyz-step-security-sts-action",
+      },
+    }),
   );
   let result = {};
   try {
