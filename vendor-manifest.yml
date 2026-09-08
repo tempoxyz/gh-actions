@@ -1047,6 +1047,7 @@ actions:
     ref: v2.21.1
     ref_type: tag
     sha: e14015d583714f6e62063499dc959a02595150a1
+    strip_dev_dependencies: true
     exclude:
       - src/
       - images/
@@ -1060,7 +1061,8 @@ actions:
     notes: >-
       Node action; runs dist/index.js, dist/pre/index.js, dist/post/index.js. excluded: src/,
       images/, docs/, tsconfig*.json, jest.config.*, .eslintrc*, package-lock.json, **/*.test.*,
-      osv-scanner.toml
+      osv-scanner.toml. Development dependencies are removed from package.json because the
+      checked-in dist bundles run directly and no packages are installed at runtime.
 
   - name: taiki-e/install-action
     ref: v2.85.2

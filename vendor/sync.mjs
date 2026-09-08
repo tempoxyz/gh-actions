@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { ROOT, MANIFEST_FILE, VendorError, loadManifest, fetchUpstream, applyExcludes, rewriteUsesInTree, walk, readmeUrl, writeStamp, readStamps, renderReadmeTable, updateReadmeText, yqJson } from "./lib.mjs";
+import { ROOT, MANIFEST_FILE, VendorError, loadManifest, fetchUpstream, applyExcludes, applyPackageTransforms, rewriteUsesInTree, walk, readmeUrl, writeStamp, readStamps, renderReadmeTable, updateReadmeText, yqJson } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const check = args.includes("--check");
@@ -27,6 +27,7 @@ export function syncEntry(entry, manifest, base) {
   const actionFile = ["action.yml", "action.yaml"].map((f) => join(dest, f)).find(existsSync);
   const description = actionFile ? String(yqJson(actionFile, ".description // \"\"") ?? "") : "";
   const removed = applyExcludes(dest, entry, manifest);
+  const transforms = applyPackageTransforms(dest, entry);
   const uses = rewriteUsesInTree(dest, entry, manifest);
   if (uses.missing.length) throw new VendorError(`${entry.name} references actions that are neither vendored nor allowed by policy:\n  ${uses.missing.join("\n  ")}\nAdd them with: node vendor/add.mjs <owner/repo>@<ref>  (or run add.mjs --with-deps)`);
   if (uses.unpinned.length) throw new VendorError(`${entry.name} has nested GitHub-authored references that are not pinned to a SHA (the org policy requires it):\n  ${uses.unpinned.join("\n  ")}\nRecord the resolved commit under pin_nested in ${MANIFEST_FILE} (add.mjs does this automatically).`);
@@ -35,8 +36,9 @@ export function syncEntry(entry, manifest, base) {
     readme_url, description,
     consume_as: `${manifest.org}/${manifest.vendor_dir}/${entry.name}@<gh-actions-sha>`,
     files_removed: removed.length, nested_rewrites: uses.changes,
+    ...(transforms.length ? { transforms } : {}),
   });
-  return { removed, uses, kept: walk(dest).length };
+  return { removed, transforms, uses, kept: walk(dest).length };
 }
 
 export function refreshReadme(manifest = loadManifest()) {
@@ -56,7 +58,7 @@ export function main() {
   for (const e of entries) {
     try {
       const r = syncEntry(e, manifest, base);
-      log(`${check ? "checked" : "synced "} ${e.name}@${e.ref} (${e.sha.slice(0, 12)}): ${r.kept} files kept, ${r.removed.length} removed${r.uses.changes.length ? `, ${r.uses.changes.length} nested uses rewritten` : ""}`);
+      log(`${check ? "checked" : "synced "} ${e.name}@${e.ref} (${e.sha.slice(0, 12)}): ${r.kept} files kept, ${r.removed.length} removed${r.transforms.length ? `, ${r.transforms.length} transformed` : ""}${r.uses.changes.length ? `, ${r.uses.changes.length} nested uses rewritten` : ""}`);
     } catch (err) { failures.push(`${e.name}: ${err.message}`); console.error(`error: ${e.name}: ${err.message}`); }
   }
   if (failures.length) throw new VendorError(`${failures.length} entr${failures.length === 1 ? "y" : "ies"} failed to sync`);

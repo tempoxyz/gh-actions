@@ -8,5 +8,8 @@
   "description": "Harden-Runner provides runtime security for GitHub-hosted and self-hosted runners",
   "consume_as": "tempoxyz/gh-actions/vendor/step-security/harden-runner@<gh-actions-sha>",
   "files_removed": 61,
-  "nested_rewrites": []
+  "nested_rewrites": [],
+  "transforms": [
+    "package.json:devDependencies"
+  ]
 }
