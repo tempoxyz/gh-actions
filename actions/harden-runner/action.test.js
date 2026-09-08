@@ -8,7 +8,7 @@ const { hardenRunnerEnv } = require("./run.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4/;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500/;
 
 function usesSecureRunner(filename, visited = new Set()) {
   if (visited.has(filename)) return false;
@@ -158,7 +158,7 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
         assert.match(
           steps,
           new RegExp(
-            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/secure-runner@c049faa609e29945cb3ae3a0f42e5b617e95cfa4[^\n]*`,
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500[^\n]*`,
           ),
           `${filename} must use the Secure Runner wrapper as the first step of every runnable job`,
         );
