@@ -7,7 +7,7 @@ const { hardenRunnerEnv } = require("./run.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@46988f3d9ece5e4d6cc89b25a6e648616ee0f850/;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@f104430cf79f1e10a6a12e9d03bd33fd43cf7757/;
 const secretExpression = String.raw`\$\{\{ secrets\.STEP_SECURITY_STS_PRD_URL \}\}`;
 
 test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
@@ -106,7 +106,7 @@ test("every repository workflow job passes the organization STS URL to the wrapp
         assert.match(
           steps,
           new RegExp(
-            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@46988f3d9ece5e4d6cc89b25a6e648616ee0f850[^\n]*\n\s+with:\s*\n\s+sts-url:\s+${secretExpression}`,
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@f104430cf79f1e10a6a12e9d03bd33fd43cf7757[^\n]*\n\s+with:\s*\n\s+sts-url:\s+${secretExpression}`,
           ),
           `${filename} must pass STEP_SECURITY_STS_PRD_URL to the Harden Runner wrapper as the first step of every runnable job`,
         );
