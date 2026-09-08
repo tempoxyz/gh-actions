@@ -257,6 +257,8 @@ jobs:
             api.github.com:443
             codeload.github.com:443
             release-assets.githubusercontent.com:443
+            tmaproduction.blob.core.windows.net:443
+            tuf-repo.github.com:443
           use-policy-store: false
           api-key: ""
           policy: ""

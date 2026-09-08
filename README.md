@@ -485,7 +485,7 @@ verification. It is not an OIDC token or a policy-store key; explicitly emptying
 it prevents the pinned Harden Runner from installing its agent.
 
 The allowlists cover HTTPS checkout and GitHub-hosted dependencies/advisories,
-GitHub release assets, Rust toolchains, and crates.io index/package downloads only
+GitHub release assets and release-attestation verification, Rust toolchains, and crates.io index/package downloads only
 where needed. Harden Runner also manages its own service and GitHub Actions
 infrastructure exceptions. Custom registries, non-GitHub Git dependencies,
 nonstandard toolchain mirrors, and additional build-script downloads may be blocked:

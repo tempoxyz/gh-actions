@@ -53,11 +53,18 @@ test("Rust lint workflows cannot grant OIDC or accept caller secrets", () => {
         "static.rust-lang.org:443",
         "index.crates.io:443",
         "static.crates.io:443",
+        "tmaproduction.blob.core.windows.net:443",
+        "tuf-repo.github.com:443",
       ]);
       for (const endpoint of endpoints) {
         assert.ok(reviewedEndpoints.has(endpoint), `unreviewed endpoint: ${endpoint}`);
       }
       const jobName = job.match(/^  ([A-Za-z0-9_-]+):/)[1];
+      const attestationEndpoints = ["tmaproduction.blob.core.windows.net:443", "tuf-repo.github.com:443"];
+      for (const endpoint of attestationEndpoints) {
+        assert.equal(endpoints.includes(endpoint), jobName === "typos",
+          "only the release-verification job needs attestation endpoints");
+      }
       if (jobName === "clippy" || jobName === "deny") {
         assert.ok(endpoints.includes("index.crates.io:443"));
         assert.ok(endpoints.includes("static.crates.io:443"));
