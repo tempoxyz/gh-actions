@@ -29,8 +29,8 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
+      - name: Secure the runner with Harden Runner and Socket Firewall
+        uses: tempoxyz/gh-actions/actions/secure-runner@891834ec16535af9d8b7f30ce157967243f8ac24
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

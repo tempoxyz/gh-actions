@@ -8,9 +8,9 @@ const { hardenRunnerEnv } = require("./run.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b/;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@891834ec16535af9d8b7f30ce157967243f8ac24/;
 
-function usesHardenRunner(filename, visited = new Set()) {
+function usesSecureRunner(filename, visited = new Set()) {
   if (visited.has(filename)) return false;
   visited.add(filename);
   const workflow = fs.readFileSync(
@@ -19,7 +19,7 @@ function usesHardenRunner(filename, visited = new Set()) {
   );
   if (wrapperPattern.test(workflow)) return true;
   return [...workflow.matchAll(/uses:\s+\.\/\.github\/workflows\/([^\s]+)/g)].some(
-    (match) => usesHardenRunner(match[1], visited),
+    (match) => usesSecureRunner(match[1], visited),
   );
 }
 
@@ -60,7 +60,7 @@ for (const check of ["fmt", "clippy"]) {
       /runner:\n(?:        [^\n]+\n)*        default: ubuntu-latest/,
     );
     assert.match(workflow, /      contents: read\n      id-token: write/);
-    assert.ok(usesHardenRunner(`rust-${check}.yml`));
+    assert.ok(usesSecureRunner(`rust-${check}.yml`));
   });
 }
 
@@ -115,7 +115,7 @@ test("post cleanup succeeds when the STS exchange did not mint a token", () => {
   );
 });
 
-test("every repository workflow job uses the production Harden Runner wrapper", () => {
+test("every repository workflow job uses the production Secure Runner wrapper", () => {
   let runnableJobs = 0;
   let protectedJobs = 0;
 
@@ -129,8 +129,8 @@ test("every repository workflow job uses the production Harden Runner wrapper", 
 
     assert.doesNotMatch(
       workflow,
-      /uses:\s+step-security\/harden-runner@/,
-      `${filename} must use the authenticated Harden Runner wrapper`,
+      /uses:\s+(?:step-security\/harden-runner|tempoxyz\/gh-actions\/actions\/(?:harden-runner|socket-firewall))@/,
+      `${filename} must use the Secure Runner wrapper`,
     );
     assert.doesNotMatch(workflow, /STEP_SECURITY_STS_(?:DEV|PRD)_URL/);
 
@@ -142,7 +142,7 @@ test("every repository workflow job uses the production Harden Runner wrapper", 
       );
       const usesProtectedWorkflow =
         reusableWorkflow &&
-        usesHardenRunner(reusableWorkflow[1]);
+        usesSecureRunner(reusableWorkflow[1]);
       if (!runsOnRunner && !reusableWorkflow) continue;
 
       runnableJobs += 1;
@@ -158,9 +158,9 @@ test("every repository workflow job uses the production Harden Runner wrapper", 
         assert.match(
           steps,
           new RegExp(
-            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b[^\n]*`,
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/secure-runner@891834ec16535af9d8b7f30ce157967243f8ac24[^\n]*`,
           ),
-          `${filename} must use the Harden Runner wrapper as the first step of every runnable job`,
+          `${filename} must use the Secure Runner wrapper as the first step of every runnable job`,
         );
         protectedJobs += 1;
       }
