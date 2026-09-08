@@ -93,7 +93,6 @@ jobs:
     name: Rust lint with all checks disabled
     uses: ./.github/workflows/rust-lint.yml
     permissions:
-      id-token: write
       contents: read
     with:
       run-clippy: false

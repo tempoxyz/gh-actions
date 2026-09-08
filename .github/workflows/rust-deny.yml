@@ -32,7 +32,6 @@ jobs:
     uses: ./.github/workflows/rust-lint.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
     permissions:
       contents: read
-      id-token: write
     with:
       run-clippy: false
       run-fmt: false

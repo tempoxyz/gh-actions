@@ -78,8 +78,7 @@ on:
         required: false
         type: string
         default: --all-features
-permissions:
-  id-token: write
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -94,11 +93,17 @@ jobs:
     env:
       RUSTC_WRAPPER: sccache
     permissions:
-      id-token: write
       contents: read
     steps:
-      - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
+      # PR-controlled tools must not share a job with OIDC or STS credentials.
+      - name: Harden the runner without policy-store credentials
+        uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
+        with:
+          egress-policy: audit
+          use-policy-store: false
+          api-key: ""
+          policy: ""
+          token: ""
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -156,11 +161,17 @@ jobs:
     runs-on: ${{ inputs.fmt-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
-      id-token: write
       contents: read
     steps:
-      - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
+      # PR-controlled tools must not share a job with OIDC or STS credentials.
+      - name: Harden the runner without policy-store credentials
+        uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
+        with:
+          egress-policy: audit
+          use-policy-store: false
+          api-key: ""
+          policy: ""
+          token: ""
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -185,11 +196,17 @@ jobs:
     runs-on: ${{ inputs.typos-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
-      id-token: write
       contents: read
     steps:
-      - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
+      # PR-controlled tools must not share a job with OIDC or STS credentials.
+      - name: Harden the runner without policy-store credentials
+        uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
+        with:
+          egress-policy: audit
+          use-policy-store: false
+          api-key: ""
+          policy: ""
+          token: ""
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -228,11 +245,24 @@ jobs:
     runs-on: ${{ inputs.deny-runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
-      id-token: write
       contents: read
     steps:
-      - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
+      # PR-controlled tools must not share a job with OIDC or STS credentials.
+      - name: Harden the runner without policy-store credentials
+        uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
+        with:
+          egress-policy: audit
+          use-policy-store: false
+          api-key: ""
+          policy: ""
+          token: ""
+
+      - name: Verify OIDC request credentials are unavailable
+        run: |
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::Rust lint must not receive OIDC request credentials"
+            exit 1
+          fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -252,8 +282,7 @@ jobs:
   lint-success:
     name: lint success
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
+    permissions: {}
     if: always()
     needs:
       - clippy
@@ -262,8 +291,22 @@ jobs:
       - deny
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
-      - name: Harden the runner with the StepSecurity policy store
-        uses: tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b
+      # PR-controlled tools must not share a job with OIDC or STS credentials.
+      - name: Harden the runner without policy-store credentials
+        uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
+        with:
+          egress-policy: audit
+          use-policy-store: false
+          api-key: ""
+          policy: ""
+          token: ""
+
+      - name: Verify OIDC request credentials are unavailable
+        run: |
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::Rust lint must not receive OIDC request credentials"
+            exit 1
+          fi
 
       - name: Decide whether the needed jobs succeeded or failed
         uses: tempoxyz/gh-actions/actions/check-needs@ab45d76f6e7420a094281a22aee1973ecc0754f8

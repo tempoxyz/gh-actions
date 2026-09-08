@@ -9,6 +9,30 @@ const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
   /uses:\s+tempoxyz\/gh-actions\/actions\/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b/;
+const rustWorkflows = new Set(["rust-lint.yml", "rust-deny.yml"]);
+const unauthenticatedPattern =
+  /uses:\s+tempoxyz\/gh-actions\/vendor\/step-security\/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3/;
+
+test("Rust lint workflows cannot grant OIDC or accept caller secrets", () => {
+  for (const filename of rustWorkflows) {
+    const workflow = fs.readFileSync(path.join(workflowsDirectory, filename), "utf8");
+    assert.match(workflow, /^permissions: \{\}$/m);
+    assert.doesNotMatch(workflow, /id-token:|secrets[.:]|: write\b/);
+    assert.doesNotMatch(workflow, /actions\/(?:harden-runner|step-security-sts)@/);
+
+    const jobs = workflow.split(/^jobs:\s*\n/m)[1];
+    assert.ok(jobs, `${filename} must declare jobs`);
+    const jobBlocks = jobs.split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/);
+    assert.ok(jobBlocks.length > 0);
+    for (const job of jobBlocks) {
+      assert.match(job, /^    permissions:(?: \{\}|\n      contents: read)$/m,
+        `${filename} must explicitly restrict every job, including nested calls`);
+      if (!/^    runs-on:/m.test(job)) continue;
+      assert.match(job, unauthenticatedPattern);
+      assert.match(job, /egress-policy: audit\n          use-policy-store: false\n          api-key: ""\n          policy: ""\n          token: ""/);
+    }
+  }
+});
 
 test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
   assert.match(
@@ -61,7 +85,7 @@ test("post cleanup succeeds when the STS exchange did not mint a token", () => {
   );
 });
 
-test("every repository workflow job uses the production Harden Runner wrapper", () => {
+test("every repository workflow job uses its required Harden Runner mode", () => {
   let runnableJobs = 0;
   let protectedJobs = 0;
 
@@ -76,7 +100,7 @@ test("every repository workflow job uses the production Harden Runner wrapper", 
     assert.doesNotMatch(
       workflow,
       /uses:\s+step-security\/harden-runner@/,
-      `${filename} must use the authenticated Harden Runner wrapper`,
+      `${filename} must use a pinned first-party Harden Runner path`,
     );
     assert.doesNotMatch(workflow, /STEP_SECURITY_STS_(?:DEV|PRD)_URL/);
 
@@ -86,7 +110,8 @@ test("every repository workflow job uses the production Harden Runner wrapper", 
       const reusableWorkflow = jobBlock.match(
         /uses:\s+\.\/\.github\/workflows\/([^\s]+)/,
       );
-      const usesProtectedWorkflow =
+      const usesRustWorkflow = reusableWorkflow && rustWorkflows.has(reusableWorkflow[1]);
+      const usesProtectedWorkflow = usesRustWorkflow ||
         reusableWorkflow &&
         wrapperPattern.test(
           fs.readFileSync(
@@ -97,11 +122,15 @@ test("every repository workflow job uses the production Harden Runner wrapper", 
       if (!runsOnRunner && !reusableWorkflow) continue;
 
       runnableJobs += 1;
-      assert.match(
-        jobBlock,
-        /^    permissions:\n(?:      [^\n]+\n)*      id-token: write$/m,
-        `${filename} must grant id-token: write for the STS exchange`,
-      );
+      if (rustWorkflows.has(filename) || usesRustWorkflow) {
+        assert.doesNotMatch(jobBlock, /id-token:|: write\b/);
+      } else {
+        assert.match(
+          jobBlock,
+          /^    permissions:\n(?:      [^\n]+\n)*      id-token: write$/m,
+          `${filename} must grant id-token: write for the STS exchange`,
+        );
+      }
       if (usesProtectedWorkflow) {
         protectedJobs += 1;
       } else {
@@ -109,9 +138,11 @@ test("every repository workflow job uses the production Harden Runner wrapper", 
         assert.match(
           steps,
           new RegExp(
-            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/harden-runner@a4827438adadd5a9083f0400950232177b0c7b6b[^\n]*`,
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?${
+              rustWorkflows.has(filename) ? unauthenticatedPattern.source : wrapperPattern.source
+            }[^\n]*`,
           ),
-          `${filename} must use the Harden Runner wrapper as the first step of every runnable job`,
+          `${filename} must harden the runner in the expected mode before other steps`,
         );
         protectedJobs += 1;
       }

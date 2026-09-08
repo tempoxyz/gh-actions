@@ -458,7 +458,6 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main
     permissions:
       contents: read
-      id-token: write
 ```
 
 Optional inputs:
@@ -476,7 +475,11 @@ For only `cargo deny`, use [`rust-deny`](#rust-deny).
 
 The deny action runs in Docker and manages its own Rust toolchain;
 `deny-rust-toolchain` is forwarded to its `rust-version` input. Callers grant `contents: read`
-for checkout and `id-token: write` for Harden Runner OIDC/STS authentication.
+for checkout. Every Rust lint job explicitly disables OIDC permissions and uses
+Harden Runner in audit mode without STS or policy-store authentication. Organization
+policy-store rules are not fetched or enforced by these jobs; audit mode observes
+network traffic without blocking it. The read-only GitHub token remains available
+for checkout and release verification.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
 
 The `lint success` gate accepts explicitly disabled checks and fails on failures,
@@ -495,7 +498,6 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/rust-deny.yml@main
     permissions:
       contents: read
-      id-token: write
     with:
       rust-toolchain: nightly
 ```
@@ -507,8 +509,11 @@ Optional inputs:
 - `runner` (default: `ubuntu-latest`)
 - `timeout-minutes` (default: `30`) — timeout for each job, including the success gate
 
-The example explicitly selects nightly; omitting `with` uses stable. Callers must
-grant both permissions shown above; no persistent StepSecurity API key is required.
+The example explicitly selects nightly; omitting `with` uses stable. Callers only
+need `contents: read`; remove `id-token: write` when updating from an older revision.
+Neither OIDC nor a StepSecurity API key is used by the wrapper or its nested lint
+jobs, even if a caller grants broader permissions. Harden Runner runs in audit mode
+without fetching authenticated policy-store rules, as described above.
 Pin production callers to a commit SHA (see [Versioning](#versioning)). The additional
 workflow nesting can change displayed check names, so verify required status checks
 when switching an existing caller from `rust-lint`.
