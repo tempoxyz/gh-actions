@@ -53,6 +53,11 @@ on:
         required: false
         type: string
         default: "false"
+      working-directory:
+        description: Repository-relative directory containing Cargo.toml and the files to lint.
+        required: false
+        type: string
+        default: .
       rust-toolchain:
         description: Rust toolchain used for clippy and fmt.
         required: false
@@ -99,7 +104,16 @@ jobs:
       - name: Harden the runner without policy-store credentials
         uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
         with:
-          egress-policy: audit
+          egress-policy: block
+          # Checkout, mold/sccache releases, Rust toolchains, and Cargo dependencies.
+          allowed-endpoints: >-
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            release-assets.githubusercontent.com:443
+            static.rust-lang.org:443
+            index.crates.io:443
+            static.crates.io:443
           use-policy-store: false
           api-key: ""
           policy: ""
@@ -147,6 +161,7 @@ jobs:
       - name: Enable sccache
         uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
       - name: Run clippy
+        working-directory: ${{ inputs.working-directory }}
         run: |
           # CLIPPY_FLAGS is a space-separated flag list that must word-split.
           # shellcheck disable=SC2086
@@ -167,7 +182,13 @@ jobs:
       - name: Harden the runner without policy-store credentials
         uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
         with:
-          egress-policy: audit
+          egress-policy: block
+          # Checkout and rustfmt toolchain installation; no crate downloads needed.
+          allowed-endpoints: >-
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            static.rust-lang.org:443
           use-policy-store: false
           api-key: ""
           policy: ""
@@ -183,6 +204,7 @@ jobs:
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt
           rustup default "$RUST_TOOLCHAIN"
       - name: Run fmt
+        working-directory: ${{ inputs.working-directory }}
         run: |
           # FMT_FLAGS is a space-separated flag list that must word-split.
           # shellcheck disable=SC2086
@@ -202,7 +224,13 @@ jobs:
       - name: Harden the runner without policy-store credentials
         uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
         with:
-          egress-policy: audit
+          egress-policy: block
+          # Checkout, typos release download, and GitHub release verification.
+          allowed-endpoints: >-
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            release-assets.githubusercontent.com:443
           use-policy-store: false
           api-key: ""
           policy: ""
@@ -232,6 +260,7 @@ jobs:
           tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" ./typos
           echo "$INSTALL_DIR" >> "$GITHUB_PATH"
       - name: Check for typos
+        working-directory: ${{ inputs.working-directory }}
         run: |
           set -euo pipefail
           typos . --format json \
@@ -251,7 +280,15 @@ jobs:
       - name: Harden the runner without policy-store credentials
         uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
         with:
-          egress-policy: audit
+          egress-policy: block
+          # Checkout, RustSec/git dependencies, Rust toolchains, and crates.io.
+          allowed-endpoints: >-
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            static.rust-lang.org:443
+            index.crates.io:443
+            static.crates.io:443
           use-policy-store: false
           api-key: ""
           policy: ""
@@ -275,6 +312,7 @@ jobs:
           rustup default "$RUST_TOOLCHAIN"
       - uses: tempoxyz/gh-actions/vendor/EmbarkStudios/cargo-deny-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
         with:
+          manifest-path: ${{ inputs.working-directory }}/Cargo.toml
           rust-version: ${{ inputs.deny-rust-toolchain }}
           command: check all
           arguments: ${{ inputs.deny-flags }}
@@ -295,7 +333,9 @@ jobs:
       - name: Harden the runner without policy-store credentials
         uses: tempoxyz/gh-actions/vendor/step-security/harden-runner@3a9189ec4c3d19f2863398822c73edd06b33fba3
         with:
-          egress-policy: audit
+          egress-policy: block
+          # No application downloads. A nonempty list avoids an empty-policy fallback.
+          allowed-endpoints: api.github.com:443
           use-policy-store: false
           api-key: ""
           policy: ""

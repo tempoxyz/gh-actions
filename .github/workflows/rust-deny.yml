@@ -3,6 +3,11 @@ name: rust deny
 on:
   workflow_call:
     inputs:
+      working-directory:
+        description: Repository-relative directory containing Cargo.toml and deny.toml.
+        required: false
+        type: string
+        default: .
       rust-toolchain:
         description: Rust toolchain installed on the runner and used inside the cargo-deny container.
         required: false
@@ -37,6 +42,7 @@ jobs:
       run-fmt: false
       run-typos: false
       run-deny: true
+      working-directory: ${{ inputs.working-directory }}
       deny-rust-toolchain: ${{ inputs.rust-toolchain }}
       deny-flags: ${{ inputs.flags }}
       deny-runner: ${{ inputs.runner }}

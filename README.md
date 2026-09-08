@@ -469,6 +469,7 @@ Optional inputs:
 - `fmt-flags` (default: `--all --check`)
 - `deny-flags` (default: `--all-features`)
 - `checkout-submodules` (default: `false`) — passed to clippy checkout only
+- `working-directory` (default: `.`) — repository-relative directory containing `Cargo.toml` and the files to lint
 - `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
 
 For only `cargo deny`, use [`rust-deny`](#rust-deny).
@@ -476,10 +477,27 @@ For only `cargo deny`, use [`rust-deny`](#rust-deny).
 The deny action runs in Docker and manages its own Rust toolchain;
 `deny-rust-toolchain` is forwarded to its `rust-version` input. Callers grant `contents: read`
 for checkout. Every Rust lint job explicitly disables OIDC permissions and uses
-Harden Runner in audit mode without STS or policy-store authentication. Organization
-policy-store rules are not fetched or enforced by these jobs; audit mode observes
-network traffic without blocking it. The read-only GitHub token remains available
-for checkout and release verification.
+Harden Runner in **block mode** without STS or policy-store authentication. Fixed,
+per-job endpoint allowlists live in the pinned reusable workflow; callers cannot
+override them. Organization policy-store rules are not fetched. The read-only
+GitHub token remains available for checkout and release verification.
+
+The allowlists cover HTTPS checkout and GitHub-hosted dependencies/advisories,
+GitHub release assets, Rust toolchains, and crates.io index/package downloads only
+where needed. Harden Runner also manages its own service and GitHub Actions
+infrastructure exceptions. Custom registries, non-GitHub Git dependencies,
+nonstandard toolchain mirrors, and additional build-script downloads may be blocked:
+review their required endpoints and update `gh-actions` before repinning callers.
+There is no automatic fallback to audit mode for a missing application endpoint.
+
+This retains network allowlisting and default monitoring, not every centrally
+configured control: it does not add sudo/container restrictions (the existing
+clippy setup uses sudo and deny uses Docker). Domain allowlisting cannot prevent
+abuse of an allowed service and is not a sandbox. GitHub prepares Docker actions
+before job steps; the allowlists are intended for execution after Harden Runner
+starts, not as a sandbox for action image preparation. CI exercises all lint jobs
+and the deny wrapper against `tests/fixtures/rust-lint` on GitHub-hosted Linux;
+custom runner policies and real consumer dependencies still need validation.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
 
 The `lint success` gate accepts explicitly disabled checks and fails on failures,
@@ -506,14 +524,16 @@ Optional inputs:
 
 - `rust-toolchain` (default: `stable`) — installed on the runner and used inside the cargo-deny container
 - `flags` (default: `--all-features`) — additional flags passed to `cargo deny check all`
+- `working-directory` (default: `.`) — repository-relative directory containing `Cargo.toml` and `deny.toml`
 - `runner` (default: `ubuntu-latest`)
 - `timeout-minutes` (default: `30`) — timeout for each job, including the success gate
 
 The example explicitly selects nightly; omitting `with` uses stable. Callers only
 need `contents: read`; remove `id-token: write` when updating from an older revision.
 Neither OIDC nor a StepSecurity API key is used by the wrapper or its nested lint
-jobs, even if a caller grants broader permissions. Harden Runner runs in audit mode
-without fetching authenticated policy-store rules, as described above.
+jobs, even if a caller grants broader permissions. Harden Runner enforces the
+fixed deny-job network allowlist without fetching authenticated policy-store rules,
+as described above.
 Pin production callers to a commit SHA (see [Versioning](#versioning)). The additional
 workflow nesting can change displayed check names, so verify required status checks
 when switching an existing caller from `rust-lint`.

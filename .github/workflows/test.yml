@@ -100,6 +100,27 @@ jobs:
       run-typos: false
       run-deny: false
 
+  rust-lint-network:
+    name: Rust lint with credential-free network blocking
+    uses: ./.github/workflows/rust-lint.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/rust-lint
+      clippy-runner: ubuntu-latest
+      fmt-runner: ubuntu-latest
+      typos-runner: ubuntu-latest
+      deny-runner: ubuntu-latest
+      deny-rust-toolchain: nightly
+
+  rust-deny-network:
+    name: Rust deny wrapper with credential-free network blocking
+    uses: ./.github/workflows/rust-deny.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/rust-lint
+
   integration:
     name: integration
     runs-on: ubuntu-latest

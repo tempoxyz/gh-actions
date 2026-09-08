@@ -29,9 +29,50 @@ test("Rust lint workflows cannot grant OIDC or accept caller secrets", () => {
         `${filename} must explicitly restrict every job, including nested calls`);
       if (!/^    runs-on:/m.test(job)) continue;
       assert.match(job, unauthenticatedPattern);
-      assert.match(job, /egress-policy: audit\n          use-policy-store: false\n          api-key: ""\n          policy: ""\n          token: ""/);
+      assert.match(job, /^          egress-policy: block$/m);
+      assert.match(job, /use-policy-store: false\n          api-key: ""\n          policy: ""\n          token: ""/);
+      const allowed = job.match(/^          allowed-endpoints: (?:>-\n((?:            [^\n]+\n)+)|([^\n]+))/m);
+      assert.ok(allowed, "every job needs a nonempty, literal allowlist");
+      const endpoints = (allowed[1] || allowed[2]).trim().split(/\s+/);
+      assert.equal(new Set(endpoints).size, endpoints.length);
+      const reviewedEndpoints = new Set([
+        "github.com:443",
+        "api.github.com:443",
+        "codeload.github.com:443",
+        "release-assets.githubusercontent.com:443",
+        "static.rust-lang.org:443",
+        "index.crates.io:443",
+        "static.crates.io:443",
+      ]);
+      for (const endpoint of endpoints) {
+        assert.ok(reviewedEndpoints.has(endpoint), `unreviewed endpoint: ${endpoint}`);
+      }
+      const jobName = job.match(/^  ([A-Za-z0-9_-]+):/)[1];
+      if (jobName === "clippy" || jobName === "deny") {
+        assert.ok(endpoints.includes("index.crates.io:443"));
+        assert.ok(endpoints.includes("static.crates.io:443"));
+      } else {
+        assert.ok(!endpoints.some((endpoint) => endpoint.endsWith("crates.io:443")));
+      }
+      if (jobName === "lint-success") {
+        assert.deepEqual(endpoints, ["api.github.com:443"]);
+      }
     }
   }
+});
+
+test("network smoke tests exercise both reusable Rust workflows without OIDC", () => {
+  const workflow = fs.readFileSync(path.join(workflowsDirectory, "test.yml"), "utf8");
+  for (const jobName of ["rust-lint-network", "rust-deny-network"]) {
+    const job = workflow.split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/)
+      .find((block) => block.startsWith(`  ${jobName}:`));
+    assert.ok(job, `missing ${jobName}`);
+    assert.match(job, /working-directory: tests\/fixtures\/rust-lint/);
+    assert.match(job, /permissions:\n      contents: read/);
+    assert.doesNotMatch(job, /run-(?:clippy|fmt|typos|deny): false|id-token:/);
+  }
+  const wrapper = fs.readFileSync(path.join(workflowsDirectory, "rust-deny.yml"), "utf8");
+  assert.match(wrapper, /working-directory: \$\{\{ inputs.working-directory \}\}/);
 });
 
 test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
