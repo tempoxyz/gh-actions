@@ -30,8 +30,6 @@ permissions:
 steps:
   - name: Secure runner
     uses: tempoxyz/gh-actions/actions/secure-runner@<commit-sha>
-    with:
-      egress-policy: audit
 
   - uses: actions/checkout@<commit-sha>
 
