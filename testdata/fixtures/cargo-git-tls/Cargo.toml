@@ -1,0 +1,8 @@
+[package]
+name = "cargo-git-tls-repro"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = { git = "https://github.com/dtolnay/anyhow", rev = "c63b279f3f4af2b02ca6267d9eb47d6d10497f69" }

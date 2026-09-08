@@ -1,0 +1,30 @@
+name: Cargo Git TLS reproduction
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/cargo-git-tls-repro.yml
+      - testdata/fixtures/cargo-git-tls/**
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@09dddc697b1c8c1d3c3733b41d6fdd2274f17734
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: stable
+      - name: Fetch Git dependency through Socket
+        working-directory: testdata/fixtures/cargo-git-tls
+        run: cargo metadata --format-version 1 > /dev/null
