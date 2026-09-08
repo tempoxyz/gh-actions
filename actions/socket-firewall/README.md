@@ -8,6 +8,10 @@ GitHub actor.
 The caller must grant `id-token: write`. The generated token is revoked when
 the job finishes and is also covered by the STS lease expiration.
 
+On Windows, the wrapper copies the upstream installer's verified `sfw` binary
+to `sfw.exe` so the package-manager `.cmd` shims can execute it. The binary
+output points to `sfw.exe`; the original file is retained for upstream cleanup.
+
 ## Inputs
 
 | Name | Description | Required | Default |
