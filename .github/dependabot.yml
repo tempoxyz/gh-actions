@@ -18,3 +18,17 @@ updates:
       - "github-actions"
     commit-message:
       prefix: "chore(deps)"
+  # ensure-secure-runner bundles @actions/workflow-parser; after a bump, rebuild dist/ with
+  # `npm ci --ignore-scripts && npm run build` there (CI fails on drift until that is done).
+  - package-ecosystem: "npm"
+    directory: "/actions/ensure-secure-runner"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+    commit-message:
+      prefix: "chore(deps)"

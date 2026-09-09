@@ -1,0 +1,43 @@
+name: "Ensure secure runner"
+description: >-
+  Fail unless every workflow job runs the secure-runner action as its first step
+
+inputs:
+  workflows:
+    description: "Workflow files or directories to check (comma, space or newline separated). Directories are not recursed."
+    required: false
+    default: ".github/workflows"
+  actions:
+    description: "Accepted `uses:` targets for the hardening step, without `@ref` to allow any ref or with one to require it (comma, space or newline separated)"
+    required: false
+    default: "tempoxyz/gh-actions/actions/secure-runner"
+  fail-on-violation:
+    description: "Fail the step on any violation. Set to false to only annotate and report through outputs."
+    required: false
+    default: "true"
+
+outputs:
+  count:
+    description: "Number of violations"
+    value: ${{ steps.check.outputs.count }}
+  jobs:
+    description: "Number of jobs checked (including ignored and reusable-workflow jobs)"
+    value: ${{ steps.check.outputs.jobs }}
+  workflows:
+    description: "Number of workflow files checked"
+    value: ${{ steps.check.outputs.workflows }}
+  violations:
+    description: "JSON array of violations: [{ workflow, job, line, status, detail }]"
+    value: ${{ steps.check.outputs.violations }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check that every job starts with the secure-runner action
+      id: check
+      shell: bash
+      env:
+        WORKFLOWS: ${{ inputs.workflows }}
+        ACTIONS: ${{ inputs.actions }}
+        FAIL_ON_VIOLATION: ${{ inputs.fail-on-violation }}
+      run: node "$GITHUB_ACTION_PATH/main.mjs"
