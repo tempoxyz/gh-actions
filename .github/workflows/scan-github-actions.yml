@@ -72,6 +72,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Ensure every job starts with secure-runner
+        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@34256629b9a5afd022c592ce11ca5c29ae9664b6
+
       - name: Resolve pinact config
         if: ${{ inputs.pinact }}
         id: pinact-config

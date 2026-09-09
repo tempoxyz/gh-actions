@@ -1,7 +1,8 @@
 # Scan GitHub Actions
 
-Security scan **and** lint for GitHub Actions workflows. Runs two complementary tools:
+Security scan **and** lint for GitHub Actions workflows. Runs three complementary checks:
 
+- [ensure-secure-runner](../ensure-secure-runner) — **hardening**: every workflow job must start with the [`secure-runner`](../secure-runner) action (Harden Runner plus Socket Firewall). Reusable-workflow calls are allowed; nothing else is exempt.
 - [zizmor](https://github.com/zizmorcore/zizmor) — **security**: template injection, credential leakage, excessive permissions, unpinned actions, and more.
 - [actionlint](https://github.com/rhysd/actionlint) — **correctness/lint**: workflow syntax, `${{ }}` expression checks, and [shellcheck](https://github.com/koalaman/shellcheck)/[pyflakes](https://github.com/PyCQA/pyflakes) on `run:` scripts.
 
