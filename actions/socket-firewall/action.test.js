@@ -30,3 +30,8 @@ test("forwards both Firewall outputs", () => {
     /value: \$\{\{ steps\.firewall\.outputs\.firewall-path-report \}\}/,
   );
 });
+
+test("keeps shims enabled by default and forwards explicit mode", () => {
+  assert.match(manifest, /shims:\n(?:[^\n]*\n)*?    default: "true"/);
+  assert.match(manifest, /shims: \$\{\{ inputs\.shims \}\}/);
+});
