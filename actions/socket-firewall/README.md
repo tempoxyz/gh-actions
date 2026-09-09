@@ -17,6 +17,7 @@ output points to `sfw.exe`; the original file is retained for upstream cleanup.
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
 | `dev` | Use the development Socket STS endpoint for integration testing | No | `false` |
+| `shims` | Automatically wrap package managers; set to `false` for explicit Firewall commands | No | `true` |
 
 ## Outputs
 
@@ -40,3 +41,8 @@ steps:
   # Supported package-manager commands are now routed through Socket Firewall.
   - run: pnpm install --frozen-lockfile
 ```
+
+For download-only jobs, set `shims: false`, give the action an `id`, and invoke
+its `firewall-path-binary` output explicitly (for example, `"$SFW" cargo fetch
+--locked`). Later commands are not automatically protected in this mode. This
+does not disable the Firewall for commands explicitly run through that binary.

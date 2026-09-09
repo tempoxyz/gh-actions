@@ -7,6 +7,10 @@ inputs:
     description: "Use the development Socket STS endpoint"
     required: false
     default: "false"
+  shims:
+    description: "Create package-manager shims; disable to invoke firewall-path-binary explicitly"
+    required: false
+    default: "true"
 
 outputs:
   firewall-path-binary:
@@ -31,6 +35,7 @@ runs:
       with:
         mode: firewall-enterprise
         socket-token: ${{ steps.socket-token.outputs.token }}
+        shims: ${{ inputs.shims }}
 
     - name: Make Socket Firewall executable by Windows shims
       if: runner.os == 'Windows'
