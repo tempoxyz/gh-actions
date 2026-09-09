@@ -1,3 +1,5 @@
 # Vendored copies of upstream actions must stay byte-identical to the pinned upstream commit
 # (vendor/sync.mjs --check rebuilds them and diffs); never normalize their line endings.
 vendor/** -text
+# Bundled copy of @actions/workflow-parser, rebuilt by actions/ensure-secure-runner/build.mjs.
+actions/ensure-secure-runner/dist/** linguist-generated=true

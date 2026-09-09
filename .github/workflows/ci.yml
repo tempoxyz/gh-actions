@@ -22,6 +22,23 @@ jobs:
       paths: ".github actions"
       pinact: true
 
+  # Dogfood: every job in this repository's workflows must start with secure-runner. This job
+  # is the one exception the check allows, because it does nothing but check out and read
+  # workflow files; adding any other step here would make it fail its own check.
+  ensure-secure-runner:
+    name: Ensure secure runner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ensure every job starts with secure-runner
+        uses: ./actions/ensure-secure-runner
+
   vendor-check:
     name: Vendor check
     runs-on: ubuntu-latest
@@ -44,3 +61,18 @@ jobs:
 
       - name: Run vendor tooling tests
         run: node --test vendor/lib.test.js
+
+      # ensure-secure-runner ships @actions/workflow-parser as a committed esbuild bundle. Rebuild
+      # it from the lockfile (verifying registry signatures and provenance attestations first)
+      # and fail if the committed file differs, so a dependency bump cannot land without its bundle.
+      - name: Verify the bundled workflow parser matches package-lock.json
+        working-directory: actions/ensure-secure-runner
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          # `npm audit signatures` installs nothing; it fetches the registry's signing keys and
+          # per-package signature metadata, which the Socket Firewall proxy does not serve. Run
+          # it against the registry directly by dropping the shim directory from PATH, exactly
+          # as the shim itself does before handing off to sfw.
+          PATH="$(echo "$PATH" | tr ':' '\n' | grep -vxF "${SFW_SHIM_DIR:-}" | paste -sd: -)" npm audit signatures
+          node build.mjs --check

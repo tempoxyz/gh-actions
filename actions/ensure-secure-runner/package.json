@@ -1,0 +1,20 @@
+{
+  "name": "ensure-secure-runner",
+  "private": true,
+  "type": "module",
+  "description": "Fail unless every workflow job starts with the secure-runner action",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check",
+    "test": "node --test check.test.js"
+  },
+  "dependencies": {
+    "@actions/workflow-parser": "0.3.61"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
