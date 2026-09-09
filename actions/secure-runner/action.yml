@@ -7,6 +7,10 @@ inputs:
     description: "Use the development Step Security STS endpoint"
     required: false
     default: "false"
+  shims:
+    description: "Create package-manager shims; disable to invoke firewall-path-binary explicitly"
+    required: false
+    default: "true"
   egress-policy:
     description: "Fallback outbound policy when no stored policy applies (audit or block)"
     required: false
@@ -40,6 +44,14 @@ inputs:
     required: false
     default: ${{ github.token }}
 
+outputs:
+  firewall-path-binary:
+    description: "Path to the installed Socket Firewall binary"
+    value: ${{ steps.firewall.outputs.firewall-path-binary }}
+  firewall-path-report:
+    description: "Path to the Socket Firewall report JSON"
+    value: ${{ steps.firewall.outputs.firewall-path-report }}
+
 runs:
   using: "composite"
   steps:
@@ -57,6 +69,8 @@ runs:
         token: ${{ inputs.token }}
 
     - name: Install Socket Firewall
-      uses: tempoxyz/gh-actions/actions/socket-firewall@8ce9310d8c5eb9c0fa94505de0b634f42f04ecc4
+      id: firewall
+      uses: tempoxyz/gh-actions/actions/socket-firewall@24196001e7e045be42a3961c60bb1e391ce5b2fe
       with:
         dev: ${{ inputs.dev }}
+        shims: ${{ inputs.shims }}
