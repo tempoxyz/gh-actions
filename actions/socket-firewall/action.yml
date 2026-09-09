@@ -19,17 +19,40 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # GitHub never issues an OIDC token to pull_request runs from forks, whatever
+    # permissions the workflow declares. Such runs skip the Socket STS exchange and
+    # install the Free edition below. Any other event without an OIDC token is a
+    # workflow missing `id-token: write`, so it fails here.
+    - name: Detect GitHub OIDC availability
+      id: oidc
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+        elif [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::GitHub issued no OIDC token to this pull_request run (fork pull requests never receive one). Installing Socket Firewall Free instead of Enterprise: known-malware blocking only, without organization policies."
+        else
+          echo "::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing: the job must grant id-token: write (event: ${GITHUB_EVENT_NAME:-unknown})"
+          exit 1
+        fi
+
     - name: Exchange GitHub OIDC token for a Socket token
+      if: steps.oidc.outputs.available == 'true'
       id: socket-token
       uses: tempoxyz/gh-actions/actions/socket-firewall/sts@0f195471b66fe3e39f538383f67bfc0676a3aaa5
       with:
         dev: ${{ inputs.dev }}
 
-    - name: Install Socket Firewall Enterprise
+    # In `firewall` mode the vendored action installs the Enterprise edition when
+    # socket-token is set and the Free edition when it is empty, which is the case
+    # when the exchange above was skipped.
+    - name: Install Socket Firewall
       id: firewall
       uses: tempoxyz/gh-actions/vendor/SocketDev/action@0f195471b66fe3e39f538383f67bfc0676a3aaa5
       with:
-        mode: firewall-enterprise
+        mode: firewall
         socket-token: ${{ steps.socket-token.outputs.token }}
 
     - name: Make Socket Firewall executable by Windows shims
