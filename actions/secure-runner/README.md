@@ -18,6 +18,13 @@ default; set `dev: true` to use their development endpoints.
 The caller must grant `id-token: write` for both STS exchanges. Harden Runner
 policies must allow the network access needed to install and use Socket Firewall.
 
+GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
+permissions the workflow declares. On a `pull_request` run without an OIDC token,
+Harden Runner emits a warning annotation and runs with the inline policy from the
+`egress-policy`, `allowed-endpoints`, and `denied-endpoints` inputs instead of the
+StepSecurity policy store. Any other event without an OIDC token fails, since that
+means the job is missing `id-token: write`.
+
 ## Usage
 
 Pin this action to a full commit SHA in production:

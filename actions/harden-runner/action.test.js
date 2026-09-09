@@ -3,7 +3,11 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const os = require("node:os");
 const { hardenRunnerEnv } = require("./run.cjs");
+const { main: preMain } = require("./pre.cjs");
+const { main: mainMain } = require("./main.cjs");
+const { main: postMain } = require("./post.cjs");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
@@ -85,8 +89,8 @@ test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
   assert.match(manifest, /pre: "pre\.cjs"/);
   const pre = fs.readFileSync(path.join(__dirname, "pre.cjs"), "utf8");
   assert.ok(
-    pre.indexOf("await exchangeToken(stsEndpoint())") <
-      pre.indexOf('runHardenRunner("pre", result.token)'),
+    pre.indexOf("await exchange(stsEndpoint(") <
+      pre.indexOf('run("pre", result.token)'),
     "the STS exchange must finish before Harden Runner initializes",
   );
   const env = hardenRunnerEnv("step_test_short_lived_api_key", {
@@ -111,6 +115,140 @@ test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
     `${manifest}\n${implementation}`,
     /harden-runner-token|STEPSECURITY_API_KEY|GITHUB_ENV/,
   );
+});
+
+function stateFile() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "harden-runner-"));
+  return path.join(directory, "state");
+}
+
+function capturedLogs(callback) {
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(String(line));
+  return Promise.resolve()
+    .then(callback)
+    .finally(() => {
+      console.log = original;
+    })
+    .then((value) => ({ value, lines }));
+}
+
+const oidcEnv = {
+  ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-token",
+  ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/oidc",
+};
+
+test("runs Harden Runner with the inline policy when no OIDC token is available", () => {
+  const env = hardenRunnerEnv(null, {
+    "INPUT_API-KEY": "must-not-leak",
+    "INPUT_EGRESS-POLICY": "block",
+    "INPUT_ALLOWED-ENDPOINTS": "github.com:443",
+  });
+  assert.equal(env["INPUT_API-KEY"], undefined);
+  assert.equal(env["INPUT_USE-POLICY-STORE"], "false");
+  assert.equal(env["INPUT_DISABLE-SUDO"], "false");
+  assert.equal(env["INPUT_EGRESS-POLICY"], "block");
+  assert.equal(env["INPUT_ALLOWED-ENDPOINTS"], "github.com:443");
+  assert.throws(() => hardenRunnerEnv(""), /API key is invalid/);
+});
+
+test("pre falls back to the inline policy only for pull_request runs without OIDC", async () => {
+  const calls = [];
+  const run = (...args) => calls.push(args);
+  const exchange = async () => {
+    throw new Error("the STS must not be contacted without an OIDC token");
+  };
+
+  const pushState = stateFile();
+  await assert.rejects(
+    preMain({
+      env: { GITHUB_EVENT_NAME: "push", GITHUB_STATE: pushState },
+      run,
+      exchange,
+    }),
+    /ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing.*id-token: write.*event: push/,
+  );
+  await assert.rejects(
+    preMain({
+      env: { GITHUB_EVENT_NAME: "pull_request_target", GITHUB_STATE: pushState },
+      run,
+      exchange,
+    }),
+    /id-token: write/,
+  );
+  assert.deepEqual(calls, []);
+  assert.ok(!fs.existsSync(pushState));
+
+  const prState = stateFile();
+  const { lines } = await capturedLogs(() =>
+    preMain({
+      env: { GITHUB_EVENT_NAME: "pull_request", GITHUB_STATE: prState },
+      run,
+      exchange,
+    }),
+  );
+  assert.deepEqual(calls, [["pre", null]]);
+  assert.equal(fs.readFileSync(prState, "utf8"), "inline_policy=true\n");
+  assert.ok(
+    lines.some((line) => /^::warning::.*fork pull requests never receive one/.test(line)),
+    lines.join("\n"),
+  );
+});
+
+test("pre exchanges the STS credential whenever an OIDC token is available", async () => {
+  const calls = [];
+  const endpoints = [];
+  const state = stateFile();
+  await capturedLogs(() =>
+    preMain({
+      env: { ...oidcEnv, GITHUB_EVENT_NAME: "pull_request", GITHUB_STATE: state },
+      run: (...args) => calls.push(args),
+      exchange: async (endpoint) => {
+        endpoints.push(endpoint);
+        return {
+          token: "step_test_short_lived_api_key",
+          leaseId: "11111111-1111-4111-8111-111111111111",
+          rawEndpoint: "https://sts.example.test",
+        };
+      },
+    }),
+  );
+  assert.deepEqual(endpoints, ["https://ss-sts.tehq.net"]);
+  assert.deepEqual(calls, [["pre", "step_test_short_lived_api_key"]]);
+  assert.equal(
+    fs.readFileSync(state, "utf8"),
+    "token=step_test_short_lived_api_key\n" +
+      "lease_id=11111111-1111-4111-8111-111111111111\n" +
+      "sts_url=https://sts.example.test\n",
+  );
+});
+
+test("main and post honour the inline-policy state", async () => {
+  const calls = [];
+  const run = (...args) => calls.push(args);
+
+  mainMain({ env: { STATE_inline_policy: "true" }, run });
+  mainMain({ env: { STATE_token: "step_test_short_lived_api_key" }, run });
+  assert.throws(() => mainMain({ env: {}, run }), /STATE_token is missing/);
+  assert.deepEqual(calls, [
+    ["main", null],
+    ["main", "step_test_short_lived_api_key"],
+  ]);
+
+  calls.length = 0;
+  let revocations = 0;
+  const revoke = async () => {
+    revocations += 1;
+  };
+  await postMain({ env: { STATE_inline_policy: "true" }, run, revoke });
+  await postMain({ env: { STATE_token: "step_test_short_lived_api_key" }, run, revoke });
+  await postMain({ env: {}, run, revoke });
+  assert.deepEqual(calls, [
+    ["post", null],
+    ["post", "step_test_short_lived_api_key"],
+  ]);
+  assert.equal(revocations, 3);
 });
 
 test("post cleanup succeeds when the STS exchange did not mint a token", () => {
