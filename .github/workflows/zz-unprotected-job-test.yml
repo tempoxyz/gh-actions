@@ -1,0 +1,21 @@
+# TEST ONLY. Intentionally omits the secure-runner first step so the
+# scan-github-actions workflow's ensure-secure-runner check must fail this PR.
+# Do not merge.
+name: Unprotected job (negative test)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unprotected:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Do nothing
+        run: echo "this job has no secure-runner step"
