@@ -23,6 +23,17 @@ function usesSecureRunner(filename, visited = new Set()) {
   );
 }
 
+function isEnsureSecureRunnerJob(jobBlock) {
+  const steps = jobBlock.split(/\n    steps:\s*\n/, 2)[1];
+  if (!steps || /^\s+run:/m.test(steps)) return false;
+  const uses = [...steps.matchAll(/^\s+(?:- )?uses:\s+(\S+)/gm)].map((m) => m[1]);
+  return (
+    uses.length > 0 &&
+    uses.includes("./actions/ensure-secure-runner") &&
+    uses.every((u) => u === "./actions/ensure-secure-runner" || u.startsWith("actions/checkout@"))
+  );
+}
+
 for (const check of ["fmt", "clippy"]) {
   test(`${check} wrapper enables only its check and forwards its inputs`, () => {
     const workflow = fs.readFileSync(
@@ -146,6 +157,13 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
       if (!runsOnRunner && !reusableWorkflow) continue;
 
       runnableJobs += 1;
+      // The job that runs ensure-secure-runner is the one job allowed to skip the wrapper: it
+      // only checks out the repository and reads workflow files, and the check itself passes
+      // such a job only while its steps are nothing but checkout and ensure-secure-runner.
+      if (isEnsureSecureRunnerJob(jobBlock)) {
+        protectedJobs += 1;
+        continue;
+      }
       assert.match(
         jobBlock,
         /^    permissions:\n(?:      [^\n]+\n)*      id-token: write$/m,

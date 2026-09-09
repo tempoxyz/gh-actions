@@ -70,5 +70,9 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
-          npm audit signatures
+          # `npm audit signatures` installs nothing; it fetches the registry's signing keys and
+          # per-package signature metadata, which the Socket Firewall proxy does not serve. Run
+          # it against the registry directly by dropping the shim directory from PATH, exactly
+          # as the shim itself does before handing off to sfw.
+          PATH="$(echo "$PATH" | tr ':' '\n' | grep -vxF "${SFW_SHIM_DIR:-}" | paste -sd: -)" npm audit signatures
           node build.mjs --check
