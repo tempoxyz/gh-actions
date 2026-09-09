@@ -146,7 +146,7 @@ jobs:
           reusable=.github/workflows/scan-github-actions.yml
           composite=actions/scan-github-actions/action.yml
           status=0
-          for tool in zizmorcore/zizmor-action tempoxyz/gh-actions/actions/ensure-secure-runner; do
+          for tool in zizmorcore/zizmor-action; do
             r=$(grep -oE "${tool}@[^ ]+" "$reusable" | sort -u || true)
             c=$(grep -oE "${tool}@[^ ]+" "$composite" | sort -u || true)
             if [ -z "$r" ] || [ -z "$c" ]; then

@@ -22,8 +22,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Ensure every job starts with secure-runner
-      uses: tempoxyz/gh-actions/actions/ensure-secure-runner@34256629b9a5afd022c592ce11ca5c29ae9664b6
     # Default zizmor policy when the caller ships no zizmor config. Pins to this repository
     # can never carry a version comment that matches a tag (gh-actions publishes none), so
     # zizmor's ref-version-mismatch audit reports every commented pin as mismatched, a
