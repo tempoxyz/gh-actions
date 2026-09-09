@@ -22,8 +22,10 @@ GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
 permissions the workflow declares. On a `pull_request` run without an OIDC token,
 Harden Runner emits a warning annotation and runs with the inline policy from the
 `egress-policy`, `allowed-endpoints`, and `denied-endpoints` inputs instead of the
-StepSecurity policy store. Any other event without an OIDC token fails, since that
-means the job is missing `id-token: write`.
+StepSecurity policy store, and Socket Firewall installs its Free edition instead of
+Enterprise, since the Enterprise token is minted from the job's OIDC identity. Any
+other event without an OIDC token fails, since that means the job is missing
+`id-token: write`.
 
 ## Usage
 
