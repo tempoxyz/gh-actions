@@ -1,6 +1,7 @@
 name: "Harden Runner"
 description: >-
-  Start Harden Runner with authenticated StepSecurity policy-store access
+  Start Harden Runner with authenticated StepSecurity policy-store access,
+  falling back to the inline policy on fork pull requests
 
 inputs:
   dev:

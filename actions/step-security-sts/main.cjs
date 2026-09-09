@@ -1,8 +1,8 @@
 const fs = require("node:fs");
 const { endpoint, request, retry } = require("./http.cjs");
 
-function required(name) {
-  const value = process.env[name] || "";
+function required(name, env = process.env) {
+  const value = env[name] || "";
   if (!/^\S+$/.test(value)) throw new Error(`${name} is missing`);
   return value;
 }
