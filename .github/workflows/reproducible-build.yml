@@ -43,7 +43,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@2b8d302bd3c5ca64e0cb14ae4b1a9fa0a4069500
+        uses: tempoxyz/gh-actions/actions/secure-runner@1f3fe279c3cf5b1730b33e2647510347a844da86
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
