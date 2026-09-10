@@ -26,6 +26,7 @@ action then:
 
 - Additions, modifications, and deletions are supported; renames become
   delete + add. Anything else (e.g. a type change) fails the action.
+- Only regular files are supported. Symlinks and submodules fail the action.
 - File modes are not preserved: created files are regular, non-executable
   files.
 - The action **fails when there is nothing to commit** — it is built for

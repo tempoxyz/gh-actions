@@ -121,8 +121,40 @@ runs:
         while IFS= read -r -d '' status && IFS= read -r -d '' path; do
           case "$status" in
             A|M)
+              index_entry=""
+              IFS= read -r -d '' index_entry \
+                < <(git ls-files --stage -z -- ":(literal)$path") || true
+              if [[ -z "$index_entry" ]]; then
+                echo "::error::could not read staged entry for '$path'" >&2
+                exit 1
+              fi
+
+              metadata="${index_entry%%$'\t'*}"
+              mode="${metadata%% *}"
+              remainder="${metadata#* }"
+              oid="${remainder%% *}"
+
+              # createCommitOnBranch cannot represent symlinks or submodules.
+              # Read regular files from the index so links are never followed
+              # and the committed content matches the staged snapshot.
+              case "$mode" in
+                100644|100755) ;;
+                *)
+                  echo "::error::unsupported git mode '$mode' for '$path'" >&2
+                  exit 1
+                  ;;
+              esac
+
+              # Check the pipeline separately: jq would mask a failed read
+              # if the command substitution were passed as an argument.
+              if ! contents="$(git cat-file blob "$oid" | base64 | tr -d '\n')"; then
+                echo "::error::could not read staged blob for '$path'" >&2
+                exit 1
+              fi
+
               ADDITIONS="$(
-                jq --arg path "$path" --arg contents "$(base64 -w0 < "$path")" \
+                jq --arg path "$path" \
+                  --arg contents "$contents" \
                   '. + [{path: $path, contents: $contents}]' <<<"$ADDITIONS"
               )"
               ;;
