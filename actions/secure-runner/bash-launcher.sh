@@ -1,9 +1,10 @@
 #!/bin/bash
 # Linked into bin/<package-manager>; resolve the real command at invocation time.
 _tempo_sfw_launch() {
-  local _tempo_sfw_root="${BASH_SOURCE[0]%/*}/.."
-  # Normalize /bin/.. so PATH filtering also matches the startup hook's path.
-  _tempo_sfw_root="$(cd -- "$_tempo_sfw_root" && pwd -P)" || return 1
+  local _tempo_sfw_root="${BASH_SOURCE[0]%/*}"
+  # Keep the startup hook's spelling (including Windows short paths/junctions).
+  # Resolving /bin/.. physically can otherwise make our own shim look distinct.
+  _tempo_sfw_root="${_tempo_sfw_root%/bin}"
   local _tempo_sfw_binary _tempo_sfw_upstream _tempo_sfw_previous
   local -a _tempo_sfw_commands
   local command="${0##*/}" real

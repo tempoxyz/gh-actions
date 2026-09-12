@@ -110,6 +110,15 @@ test("resolves the selected binary at invocation time", (t) => {
   intercepted(f);
 });
 
+test("does not rewrap when the hook directory has another path spelling", (t) => {
+  const f = fixture(t);
+  const alias = path.join(f.root, "hook alias");
+  fs.symlinkSync(f.directory, alias, process.platform === "win32" ? "junction" : "dir");
+  f.packageManager("cargo", "cargo");
+  success(f.bash("cargo --version", { BASH_ENV: `${unix(alias)}/bash-hook.sh` }));
+  intercepted(f);
+});
+
 test("discovers pnpm at the next step without losing Cargo interception", (t) => {
   const f = fixture(t);
   f.packageManager("cargo", "cargo");
@@ -257,7 +266,7 @@ test("keeps the edition-specific command sets aligned with the pinned installer"
 });
 
 test("manifest installs the hook using the nested action's verified binary", () => {
-  const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
+  const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8").replaceAll("\r\n", "\n");
   assert.match(manifest, /id: socket\n/);
   assert.match(manifest, /FIREWALL_PATH_BINARY: \$\{\{ steps.socket.outputs.firewall-path-binary \}\}/);
   assert.match(manifest, /run: node "\$GITHUB_ACTION_PATH\/install-bash-hook.cjs"/);
