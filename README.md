@@ -13,7 +13,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems
 | [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
-| [`secure-runner`](actions/secure-runner) | Start Harden Runner and install Socket Firewall with short-lived credentials
+| [`secure-runner`](actions/secure-runner) | Start Harden Runner, install Socket Firewall, and refresh package-manager interception before Bash steps
 | [`ensure-secure-runner`](actions/ensure-secure-runner) | Fail unless every workflow job starts with the `secure-runner` action
 | [`harden-runner`](actions/harden-runner) | Start Harden Runner with authenticated StepSecurity policy-store access, falling back to the inline policy on fork pull requests
 | [`socket-firewall`](actions/socket-firewall) | Install Socket Firewall with a short-lived, repository-scoped token
@@ -138,6 +138,9 @@ steps:
 
 Use `secure-runner` as the first step in a job. It uses the production STS endpoints by default;
 set `dev: true` to use the development endpoints.
+Its Bash startup hook restores package-manager interception after later toolchain setup.
+Use Bash explicitly on Windows; coverage and compatibility limits are documented in
+[`secure-runner`](actions/secure-runner/README.md#bash-interception-contract).
 
 ```yaml
 jobs:

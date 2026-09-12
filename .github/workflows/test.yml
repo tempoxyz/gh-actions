@@ -20,6 +20,66 @@ permissions:
   id-token: write
 
 jobs:
+  secure-runner-bash:
+    name: Socket Bash interception (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-latest]
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      NODE_OPTIONS: --no-network-family-autoselection
+      SFW_UNKNOWN_HOST_ACTION: ignore
+    steps:
+      # Bootstrap the pinned Socket binary and credentials once. The installer
+      # below exercises this checkout's hook without starting Harden Runner twice.
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test Bash interception behavior
+        run: node --test actions/secure-runner/bash-hook.test.js
+      - name: Install this checkout's Bash hook
+        run: |
+          FIREWALL_PATH_BINARY="$(type -P sfw)" node actions/secure-runner/install-bash-hook.cjs
+      - name: Install Node after Socket
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+      - name: Install Rust after Socket
+        uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@134b6c9105953bcf6d50ef0f3f70e31b7a3ec64f
+        with:
+          toolchain: stable
+      - name: Verify Cargo and install pnpm through the refreshed npm shim
+        run: | # zizmor: ignore[adhoc-packages] Pinned, script-free install deliberately tests late package-manager discovery.
+          test "$TEMPO_SFW_BASH_READY" = true
+          test "$(command -v cargo)" = "${BASH_ENV%/*}/bin/cargo"
+          test "$(command -v npm)" = "${BASH_ENV%/*}/bin/npm"
+          cargo --version | tee "$RUNNER_TEMP/socket-cargo-version"
+          grep -E '^cargo [0-9]' "$RUNNER_TEMP/socket-cargo-version"
+          npm install --prefix "$RUNNER_TEMP/socket-pnpm" --cache "$RUNNER_TEMP/socket-npm-cache" \
+            --ignore-scripts --no-audit --no-fund pnpm@11.9.0
+          echo "$RUNNER_TEMP/socket-pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Verify the newly installed pnpm and mixed-ecosystem interception
+        run: | # zizmor: ignore[adhoc-packages] Pinned, script-free benign fixture exercises a fresh registry download.
+          test "$(command -v pnpm)" = "${BASH_ENV%/*}/bin/pnpm"
+          test "$(command -v cargo)" = "${BASH_ENV%/*}/bin/cargo"
+          pnpm --version | tee "$RUNNER_TEMP/socket-pnpm-version"
+          grep -Fx '11.9.0' "$RUNNER_TEMP/socket-pnpm-version"
+          mkdir -p "$RUNNER_TEMP/socket-app"
+          pnpm --dir "$RUNNER_TEMP/socket-app" --store-dir "$RUNNER_TEMP/socket-pnpm-store" \
+            add --ignore-scripts is-number@7.0.0
+          test -f "$RUNNER_TEMP/socket-app/node_modules/is-number/package.json"
+
   setup-foundry-bootstrap:
     name: setup-foundry with ${{ matrix.cli }} GitHub CLI
     runs-on: ubuntu-latest
