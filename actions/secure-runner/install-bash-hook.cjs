@@ -62,6 +62,7 @@ function install(env = process.env) {
   const config = [
     `_tempo_sfw_binary=${shellQuote(binary)}`,
     `_tempo_sfw_node=${shellQuote(bashPath(process.execPath))}`,
+    `_tempo_sfw_guard=${shellQuote(path.join(directory, "socket-guard.cjs"))}`,
     `_tempo_sfw_bash=${shellQuote(nativePath(bashPath(execFileSync("bash", ["--noprofile", "--norc", "-c", "type -P bash"], { encoding: "utf8" }).trim())))}`,
     `_tempo_sfw_upstream=${shellQuote(upstream)}`,
     `_tempo_sfw_previous=${shellQuote(previous)}`,

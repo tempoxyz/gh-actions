@@ -79,7 +79,8 @@ function intercepted(f, expected = 1) {
 }
 
 test("intercepts Cargo installed after activation and preserves arguments", (t) => {
-  const f = fixture(t);
+  // A native Node entrypoint must not depend on MSYS argument conversion.
+  const f = fixture(t, { MSYS_NO_PATHCONV: "1", MSYS2_ARG_CONV_EXCL: "*" });
   f.packageManager("cargo", "new-cargo");
   const output = success(f.bash(`cargo install 'spaces here' '$(touch should-not-exist)' ''`));
   assert.equal(output, "new-cargo\n<install>\n<spaces here>\n<$(touch should-not-exist)>\n<>\n");
