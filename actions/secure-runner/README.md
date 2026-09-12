@@ -67,8 +67,9 @@ steps:
 
 The hook runs before each non-interactive Bash process that honors `BASH_ENV`,
 including Git for Windows Bash. Node must be available on `PATH` when the action
-installs the hook (as it is on GitHub-hosted runners). The hook and launchers
-themselves do not depend on Node or its version.
+installs the hook (as it is on GitHub-hosted runners). The launcher pins that
+Node executable and Bash for its output guard; both must remain available.
+Later setup actions changing the selected Node version do not change the guard.
 
 - Only managers actually present are activated, so a missing manager does not
   look installed to setup tools. A manager installed during a step is discovered
@@ -105,10 +106,14 @@ This change does **not** set `SFW_UNKNOWN_HOST_ACTION`, custom registry rules,
 `NODE_OPTIONS`, or disable TLS/revocation checks. Keep necessary compatibility
 settings and narrowly scoped endpoint exceptions explicit in the calling job.
 Start sccache outside a wrapped Cargo process when it needs its own proxy
-environment. Socket/command exit codes are preserved; the hook cannot detect an
-upstream Socket bug that reports an internal failure with exit code zero. Keep
-existing command-completion/error guards until that behavior is independently
-fixed and verified.
+environment. Nonzero Socket/command exit codes are preserved. As a temporary
+mitigation for [SocketDev/sfw-free#61](https://github.com/SocketDev/sfw-free/issues/61),
+every refreshed launcher also fails if either output stream contains
+`Socket Firewall encountered an unexpected error`, even when Socket exits zero.
+Output is streamed without merging stdout and stderr; the scan handles split
+writes and does not store whole logs. No offline fetch or report upload is added.
+This detects the known error signature, not silent validation failures or cache
+completeness. A generated Socket report alone is not proof of validation.
 
 This is command routing for cooperating Bash workflows, not a runner-wide
 security boundary:
@@ -131,9 +136,11 @@ security boundary:
 
 Run `node --test actions/secure-runner/bash-hook.test.js` for the local process
 tests. They exercise late installation, version changes, prior startup files,
-nested/concurrent shells, argument preservation, and failure propagation. The
-policy-denial fixture is a **fake Socket executable**, not a live organization
-policy check, and never downloads a malicious package.
+nested/concurrent shells, argument preservation, failure propagation, and the
+internal-error guard across supported managers. They also check split writes,
+separate output streams, stdin, and cancellation on POSIX. Error and policy-denial
+fixtures use a **fake Socket executable**, not a live organization policy check
+or a reproduced upstream outage, and never download a malicious package.
 
 `Test / Socket Bash interception` runs those tests on Linux, macOS, and Windows
 and then exercises the checkout's installer with real Socket, upstream Node/Rust

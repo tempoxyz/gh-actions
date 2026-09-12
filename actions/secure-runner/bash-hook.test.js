@@ -2,9 +2,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { execFileSync, spawnSync } = require("node:child_process");
+const { execFileSync, spawn, spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { install, commands, shellQuote } = require("./install-bash-hook.cjs");
+const { detector } = require("./socket-guard.cjs");
 
 function unix(file) {
   return process.platform === "win32"
@@ -271,4 +272,94 @@ test("manifest installs the hook using the nested action's verified binary", () 
   assert.match(manifest, /FIREWALL_PATH_BINARY: \$\{\{ steps.socket.outputs.firewall-path-binary \}\}/);
   assert.match(manifest, /run: node "\$GITHUB_ACTION_PATH\/install-bash-hook.cjs"/);
   assert.match(manifest, /shell: bash\n\s+run: test "\$\{TEMPO_SFW_BASH_READY:-\}" = "true"/);
+});
+
+const internalError = "Socket Firewall encountered an unexpected error";
+
+test("detects the error signature across every possible chunk boundary", () => {
+  const bytes = Buffer.from(`\0prefix\r\n${internalError}`);
+  for (let split = 0; split <= bytes.length; split++) {
+    const detects = detector();
+    const first = detects(bytes.subarray(0, split));
+    assert.ok(detects(bytes.subarray(split)) || first, `split ${split}`);
+  }
+  const detects = detector();
+  assert.equal(detector()(Buffer.from("Socket report written successfully")), false);
+  assert.ok([...bytes].map((byte) => detects(Buffer.from([byte]))).some(Boolean));
+});
+
+for (const stream of ["stdout", "stderr"]) {
+  test(`fails all supported manager shims on zero-exit Socket errors in ${stream}`, (t) => {
+    const f = fixture(t, { ACTIONS_ID_TOKEN_REQUEST_TOKEN: "fixture", ACTIONS_ID_TOKEN_REQUEST_URL: "fixture" });
+    const managers = commands(true);
+    for (const manager of managers) f.packageManager(manager, "SHOULD_NOT_RUN");
+    script(f.binary, `#!/bin/sh\nprintf '%s' '${internalError}' ${stream === "stderr" ? ">&2" : ""}\nexit 0\n`);
+    for (const manager of managers) {
+      const result = f.bash(`set -e; ${manager} --version; echo SHOULD_NOT_RUN`);
+      assert.equal(result.status, 1, `${manager}: ${result.stderr}`);
+      assert.doesNotMatch(result.stdout, /SHOULD_NOT_RUN/);
+      assert.match(result.stderr, /Socket reported an internal failure/);
+    }
+  });
+}
+
+test("preserves nonzero Socket errors including timeout exits", (t) => {
+  const f = fixture(t);
+  f.packageManager("cargo", "SHOULD_NOT_RUN");
+  for (const code of [23, 42, 124]) {
+    script(f.binary, `#!/bin/sh\nprintf '%s\\n' '${internalError}' >&2\nexit ${code}\n`);
+    assert.equal(f.bash("cargo fetch --locked").status, code);
+  }
+});
+
+test("preserves JSON stdout, separate stderr, stdin and large output", (t) => {
+  const f = fixture(t);
+  script(path.join(f.tools, "cargo"), `#!/bin/sh\ncat\nprintf 'diagnostic\\n' >&2\n`);
+  const input = JSON.stringify({ data: "abc".repeat(100000) });
+  const result = spawnSync(bashExecutable, ["--noprofile", "--norc", "-c", "cargo metadata"], {
+    env: f.env, cwd: f.root, encoding: "utf8", input, timeout: 15000, maxBuffer: 2000000,
+  });
+  assert.equal(success(result), input);
+  assert.equal(result.stderr, "diagnostic\n");
+  assert.deepEqual(JSON.parse(result.stdout), JSON.parse(input));
+});
+
+test("independent guards do not share error state", (t) => {
+  const f = fixture(t);
+  f.packageManager("cargo", "cargo");
+  script(f.binary, `#!/bin/sh\nif [ "$2" = fail ]; then printf '%s' '${internalError}' >&2; exit 0; fi\nexec "$@"\n`);
+  const result = f.bash('cargo fail >failed.out 2>failed.err & failed=$!; cargo ok >ok.out 2>ok.err & ok=$!; wait "$failed"; failed_status=$?; wait "$ok"; ok_status=$?; printf "%s %s\\n" "$failed_status" "$ok_status"');
+  assert.equal(success(result), "1 0\n");
+  assert.equal(fs.readFileSync(path.join(f.root, "ok.err"), "utf8"), "");
+});
+
+test("a missing guard fails instead of running the manager unguarded", (t) => {
+  const f = fixture(t);
+  f.packageManager("cargo", "SHOULD_NOT_RUN");
+  fs.unlinkSync(path.join(f.directory, "socket-guard.cjs"));
+  const result = f.bash("cargo --version");
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.stdout, /SHOULD_NOT_RUN/);
+});
+
+test("guard initialization and spawn failures are nonzero", () => {
+  for (const args of [[], ["/nonexistent-tempo-bash", "/nonexistent-sfw", "cargo"]]) {
+    const result = spawnSync(process.execPath, [path.join(__dirname, "socket-guard.cjs"), ...args], { encoding: "utf8", timeout: 15000 });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Socket guard could not/);
+  }
+});
+
+test("POSIX cancellation reaches Socket and its process group", { skip: process.platform === "win32", timeout: 10000 }, async (t) => {
+  const f = fixture(t);
+  script(f.binary, `#!/bin/sh\ntrap 'exit 0' TERM\nsleep 60 &\nprintf 'ready\\n'\nwait\n`);
+  const guard = spawn(process.execPath, [path.join(__dirname, "socket-guard.cjs"), "bash", f.binary, "cargo"], {
+    env: { ...process.env, BASH_ENV: "" }, stdio: ["ignore", "pipe", "pipe"],
+  });
+  t.after(() => { if (guard.exitCode === null) guard.kill("SIGKILL"); });
+  const closed = new Promise((resolve, reject) => { guard.once("error", reject); guard.once("close", resolve); });
+  // The child is ready only after the supervisor has installed its handlers.
+  await new Promise((resolve) => guard.stdout.once("data", resolve));
+  guard.kill("SIGTERM");
+  assert.equal(await closed, 143);
 });

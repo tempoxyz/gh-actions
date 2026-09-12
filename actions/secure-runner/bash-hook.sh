@@ -8,7 +8,7 @@ _tempo_sfw_start() {
   local _TEMPO_SFW_STARTING=1
   export _TEMPO_SFW_STARTING
   local _tempo_sfw_root="${BASH_SOURCE[0]%/*}"
-  local _tempo_sfw_binary _tempo_sfw_upstream _tempo_sfw_previous
+  local _tempo_sfw_binary _tempo_sfw_upstream _tempo_sfw_previous _tempo_sfw_node _tempo_sfw_bash
   local -a _tempo_sfw_commands
   local command shim
   # Generated configuration and caller-owned startup file are runtime inputs.

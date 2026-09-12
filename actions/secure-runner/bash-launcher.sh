@@ -5,7 +5,7 @@ _tempo_sfw_launch() {
   # Keep the startup hook's spelling (including Windows short paths/junctions).
   # Resolving /bin/.. physically can otherwise make our own shim look distinct.
   _tempo_sfw_root="${_tempo_sfw_root%/bin}"
-  local _tempo_sfw_binary _tempo_sfw_upstream _tempo_sfw_previous
+  local _tempo_sfw_binary _tempo_sfw_upstream _tempo_sfw_previous _tempo_sfw_node _tempo_sfw_bash
   local -a _tempo_sfw_commands
   local command="${0##*/}" real
   # shellcheck source=/dev/null
@@ -24,7 +24,7 @@ _tempo_sfw_launch() {
   if [[ "$command" == cargo ]]; then
     export CARGO_NET_GIT_FETCH_WITH_CLI="${CARGO_NET_GIT_FETCH_WITH_CLI-true}"
   fi
-  exec "$_tempo_sfw_binary" "$real" "$@"
+  exec "$_tempo_sfw_node" "$_tempo_sfw_root/socket-guard.cjs" "$_tempo_sfw_bash" "$_tempo_sfw_binary" "$real" "$@"
 }
 
 _tempo_sfw_launch "$@"

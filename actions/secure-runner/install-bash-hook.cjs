@@ -54,13 +54,15 @@ function install(env = process.env) {
   directory ??= fs.mkdtempSync(path.join(temporary, "tempo-sfw-"));
   directory = fs.realpathSync(directory);
   fs.mkdirSync(path.join(directory, "bin"), { recursive: true });
-  for (const file of ["bash-hook.sh", "bash-common.sh", "bash-launcher.sh"]) {
+  for (const file of ["bash-hook.sh", "bash-common.sh", "bash-launcher.sh", "socket-guard.cjs"]) {
     fs.copyFileSync(path.join(__dirname, file), path.join(directory, file));
     fs.chmodSync(path.join(directory, file), 0o755);
   }
   const enterprise = Boolean(env.ACTIONS_ID_TOKEN_REQUEST_TOKEN && env.ACTIONS_ID_TOKEN_REQUEST_URL);
   const config = [
     `_tempo_sfw_binary=${shellQuote(binary)}`,
+    `_tempo_sfw_node=${shellQuote(bashPath(process.execPath))}`,
+    `_tempo_sfw_bash=${shellQuote(nativePath(bashPath(execFileSync("bash", ["--noprofile", "--norc", "-c", "type -P bash"], { encoding: "utf8" }).trim())))}`,
     `_tempo_sfw_upstream=${shellQuote(upstream)}`,
     `_tempo_sfw_previous=${shellQuote(previous)}`,
     `_tempo_sfw_commands=(${commands(enterprise).map(shellQuote).join(" ")})`,
