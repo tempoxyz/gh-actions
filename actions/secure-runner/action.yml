@@ -1,6 +1,6 @@
 name: "Secure Runner"
 description: >-
-  Start Harden Runner with StepSecurity policy-store access, then install Socket Firewall
+  Start Harden Runner, install Socket Firewall, and refresh package-manager shims before Bash steps
 
 inputs:
   dev:
@@ -57,6 +57,17 @@ runs:
         token: ${{ inputs.token }}
 
     - name: Install Socket Firewall
+      id: socket
       uses: tempoxyz/gh-actions/actions/socket-firewall@ce1ecb54c67d188971dd0a3df1577256e3d39dc5
       with:
         dev: ${{ inputs.dev }}
+
+    - name: Enable automatic Socket interception in Bash
+      shell: bash
+      env:
+        FIREWALL_PATH_BINARY: ${{ steps.socket.outputs.firewall-path-binary }}
+      run: node "$GITHUB_ACTION_PATH/install-bash-hook.cjs"
+
+    - name: Verify automatic Socket interception in a fresh Bash step
+      shell: bash
+      run: test "${TEMPO_SFW_BASH_READY:-}" = "true"
