@@ -5,6 +5,10 @@ install Socket Firewall Enterprise with a short-lived Socket token. Use this
 action as the first step in a job. The nested remote actions retain their pre-job
 initialization and post-job cleanup, including token revocation.
 
+Socket Firewall is pinned to **v1.15.1** for Enterprise and Free. The nested
+Socket action and installer resolve from the same commit as `secure-runner`,
+using repository-scoped `$/` references (runner 2.336.0 or newer).
+
 Before subsequent **Bash** steps, a `BASH_ENV` hook discovers available package
 managers, activates their Socket wrappers, and puts the wrappers first on `PATH`.
 Standard setup actions can install tools or change versions after `secure-runner`;
@@ -145,5 +149,6 @@ or a reproduced upstream outage, and never download a malicious package.
 `Test / Socket Bash interception` runs those tests on Linux, macOS, and Windows
 and then exercises the checkout's installer with real Socket, upstream Node/Rust
 setup, npm-installed pnpm, and a fresh benign dependency download. The existing
-released action bootstraps credentials before checkout; the test installs this
-checkout's hook separately to avoid starting Harden Runner twice.
+released action bootstraps protection before checkout; the test then installs this
+checkout's Socket Firewall, asserts its version, and installs the hook without
+starting Harden Runner twice.

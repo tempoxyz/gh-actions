@@ -53,6 +53,10 @@ export function loadManifest(path = MANIFEST_PATH) {
     if (a.strip_dev_dependencies !== undefined && typeof a.strip_dev_dependencies !== "boolean") {
       throw new VendorError(`${a.name}: strip_dev_dependencies must be a boolean`);
     }
+    if (a.patches !== undefined && (!Array.isArray(a.patches) || a.patches.some((p) =>
+      typeof p !== "string" || !/^vendor-patches\/[\w./-]+\.patch$/.test(p) || p.split("/").includes("..")))) {
+      throw new VendorError(`${a.name}: patches must be paths under vendor-patches/`);
+    }
     a.exclude ??= []; a.keep ??= []; a.pin_nested ??= {};
   }
   return m;
@@ -197,6 +201,24 @@ export function applyPackageTransforms(dest, entry) {
   delete packageJson.devDependencies;
   writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
   return ["package.json:devDependencies"];
+}
+
+// Apply reviewed patches to the extracted files, never to a working checkout.
+// A stale patch must fail the sync instead of silently dropping a local fix.
+export function applyPatches(dest, entry, root = ROOT) {
+  const patches = entry.patches ?? [];
+  const opts = {
+    cwd: dest,
+    // The extraction may be inside this repo (sync) or outside it (--check).
+    // Make git apply use the extraction root in both cases.
+    env: { ...process.env, GIT_CEILING_DIRECTORIES: dirname(resolve(dest)) },
+  };
+  for (const patch of patches) {
+    const file = resolve(root, patch);
+    sh("git", ["apply", "--no-index", "--check", file], opts);
+    sh("git", ["apply", "--no-index", file], opts);
+  }
+  return patches;
 }
 
 // ---------- nested `uses:` rewriting ----------

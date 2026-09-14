@@ -5,3 +5,5 @@ vendor/** -text
 actions/ensure-secure-runner/dist/** linguist-generated=true
 # These files are sourced/executed by Git Bash on Windows as well as Unix Bash.
 actions/secure-runner/*.sh text eol=lf
+# Unified-diff context prefixes precede the upstream bundle's tab indentation.
+vendor-patches/*.patch whitespace=-space-before-tab

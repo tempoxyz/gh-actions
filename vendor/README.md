@@ -7,6 +7,10 @@ table of what is vendored lives in the [root README](../README.md#3rd-party-acti
 
 Never edit a vendored tree by hand. Change the manifest and re-run the sync; CI rebuilds every
 tree from the manifest and fails on any difference.
+When an upstream fix is not yet available, an entry can list ordered `patches` under
+`vendor-patches/`. Commit the reviewed patch and regenerate with sync. Patches are
+applied to the extracted files, recorded in `.vendored.json`, and checked for stale
+context on every sync. Remove the patch when updating to an upstream version that includes it.
 
 ## Commands
 
@@ -32,7 +36,7 @@ Requirements: Node 20+, git, tar, `yq` (GitHub-hosted runners ship all four; loc
 3. **Apply excludes.** Repo-wide `default_exclude` (docs, images, upstream CI, VCS and editor
    metadata, source maps) plus the entry's own `exclude`, minus `keep`. `action.yml`, `package.json`
    and `LICENSE*` are always kept, as are `.github/*.json` files (problem matchers and release manifests that actions load at run time).
-4. **Rewrite nested `uses:`.** Third-party references inside composite actions become
+4. **Apply patches and rewrite nested `uses:`.** Apply any manifest-listed patches, then third-party references inside composite actions become
    `$/vendor/<owner>/<repo>`, which resolves to this repository at the commit the caller pinned
    (runner 2.336.0 or newer). References to `actions/*` and `github/*` stay and, if upstream pinned
    them by tag, are pinned to the commit recorded in `pin_nested` so the org's SHA-pinning policy holds.

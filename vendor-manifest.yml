@@ -162,6 +162,8 @@ actions:
     ref: main
     ref_type: branch
     sha: be1f253a41351d59095f8d7f1425985097dd1054
+    patches:
+      - vendor-patches/socket-firewall-1.15.1.patch
     exclude:
       - src/
       - test/
