@@ -1,31 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ROOT, applyPatches, applyPackageTransforms, globToRegExp, matchesAny, rewriteUsesText, compareVersions, normalizeCommitDate, updateReadmeText, README_BEGIN, README_END } from "./lib.mjs";
-
-test("vendor patches apply inside and outside the checkout and reject stale context", () => {
-  for (const base of [ROOT, tmpdir()]) {
-    const root = mkdtempSync(join(base, "vendor-patch-test-"));
-    try {
-      const dest = join(root, "extracted");
-      mkdirSync(dest);
-      mkdirSync(join(root, "vendor-patches"));
-      const file = join(dest, "pin.txt");
-      writeFileSync(file, "version=old\n");
-      writeFileSync(join(root, "vendor-patches/pin.patch"),
-        "--- a/pin.txt\n+++ b/pin.txt\n@@ -1 +1 @@\n-version=old\n+version=new\n");
-      const entry = { patches: ["vendor-patches/pin.patch"] };
-      assert.deepEqual(applyPatches(dest, entry, root), entry.patches);
-      assert.equal(readFileSync(file, "utf8"), "version=new\n");
-      assert.throws(() => applyPatches(dest, entry, root), /patch does not apply/);
-      assert.equal(readFileSync(file, "utf8"), "version=new\n");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  }
-});
+import { applyPackageTransforms, globToRegExp, matchesAny, rewriteUsesText, compareVersions, normalizeCommitDate, updateReadmeText, README_BEGIN, README_END } from "./lib.mjs";
 
 test("commit timestamps are stable across Git UTC formats and preserve non-UTC offsets", () => {
   assert.equal(normalizeCommitDate("2024-02-15T00:16:04+00:00\n"), "2024-02-15T00:16:04Z");

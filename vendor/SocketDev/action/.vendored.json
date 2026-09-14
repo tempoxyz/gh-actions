@@ -8,8 +8,5 @@
   "description": "GitHub Action to run Socket in CLI or Firewall mode",
   "consume_as": "tempoxyz/gh-actions/vendor/SocketDev/action@<gh-actions-sha>",
   "files_removed": 2567,
-  "nested_rewrites": [],
-  "patches": [
-    "vendor-patches/socket-firewall-1.15.1.patch"
-  ]
+  "nested_rewrites": []
 }

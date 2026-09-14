@@ -5,13 +5,6 @@ from the calling job's GitHub OIDC identity. The STS associates the token with
 the caller's repository and records its workflow, run, attempt, and initiating
 GitHub actor.
 
-Both Enterprise and Free install **v1.15.1**, verified against pinned SHA256 hashes
-for each supported platform. This release fixes handling of interrupted upstream
-connections. The vendor manifest applies a reviewed version/checksum patch until
-the upstream action updates its v1.15.0 installer pin.
-The nested installer uses the same gh-actions commit as this action (`$/` syntax,
-requiring GitHub Actions runner 2.336.0 or newer).
-
 The caller must grant `id-token: write`. The generated token is revoked when
 the job finishes and is also covered by the STS lease expiration.
 

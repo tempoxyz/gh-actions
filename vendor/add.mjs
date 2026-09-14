@@ -118,7 +118,6 @@ export function refreshAction(name, opts) {
   const manual = ((cur.notes ?? "").match(/(?:Nested dependency of [^.]+\.|Also a nested dependency[^.]*\.|Manual:.*)/g) ?? []).join(" ");
   const { entry } = planEntry(name, cur.sha, { label: cur.ref, paths, notes: manual });
   entry.ref_type = cur.ref_type; entry.pin_nested = cur.pin_nested ?? {};
-  if (cur.patches) entry.patches = cur.patches;
   // A "Manual:" note means a human tightened exclude/keep after reading the scripts; keep that
   // decision and only regenerate the analysis text around it.
   if (/Manual:/.test(cur.notes ?? "")) { entry.exclude = cur.exclude ?? []; entry.keep = cur.keep ?? []; entry.notes = cur.notes; }

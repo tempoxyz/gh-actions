@@ -50,8 +50,7 @@ runs:
     # when the exchange above was skipped.
     - name: Install Socket Firewall
       id: firewall
-      # The caller's immutable gh-actions revision also pins the vendored binary installer.
-      uses: $/vendor/SocketDev/action
+      uses: tempoxyz/gh-actions/vendor/SocketDev/action@0f195471b66fe3e39f538383f67bfc0676a3aaa5
       with:
         mode: firewall
         socket-token: ${{ steps.socket-token.outputs.token }}

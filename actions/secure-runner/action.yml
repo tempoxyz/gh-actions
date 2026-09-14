@@ -58,8 +58,7 @@ runs:
 
     - name: Install Socket Firewall
       id: socket
-      # Resolve from the same commit as this action, including its binary pin.
-      uses: $/actions/socket-firewall
+      uses: tempoxyz/gh-actions/actions/socket-firewall@ce1ecb54c67d188971dd0a3df1577256e3d39dc5
       with:
         dev: ${{ inputs.dev }}
 

@@ -270,7 +270,6 @@ test("keeps the edition-specific command sets aligned with the pinned installer"
 test("manifest installs the hook using the nested action's verified binary", () => {
   const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8").replaceAll("\r\n", "\n");
   assert.match(manifest, /id: socket\n/);
-  assert.match(manifest, /uses: \$\/actions\/socket-firewall\n/);
   assert.match(manifest, /FIREWALL_PATH_BINARY: \$\{\{ steps.socket.outputs.firewall-path-binary \}\}/);
   assert.match(manifest, /run: node "\$GITHUB_ACTION_PATH\/install-bash-hook.cjs"/);
   assert.match(manifest, /shell: bash\n\s+run: test "\$\{TEMPO_SFW_BASH_READY:-\}" = "true"/);

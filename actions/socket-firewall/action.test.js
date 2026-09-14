@@ -12,7 +12,7 @@ test("composes the pinned Socket STS and vendored Firewall actions", () => {
   );
   assert.match(
     manifest,
-    /uses: \$\/vendor\/SocketDev\/action/,
+    /tempoxyz\/gh-actions\/vendor\/SocketDev\/action@0f195471b66fe3e39f538383f67bfc0676a3aaa5/,
   );
   assert.doesNotMatch(manifest, /^\s+uses:\s+SocketDev\/action@/m);
   assert.match(manifest, /mode: firewall\n/);
