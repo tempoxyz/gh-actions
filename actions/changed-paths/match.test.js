@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { globToRegExp, compileFilter, applyFilters } from "./match.mjs";
+import { globToRegExp, compileFilter, applyFilters, evaluateFilters } from "./match.mjs";
 
 test("globs: **, *, ?, braces, directory suffix", () => {
   assert.ok(globToRegExp("crates/**").test("crates/a/b/c.rs"));
@@ -27,5 +27,15 @@ test("applyFilters reports matches per filter", () => {
   const r = applyFilters({ specs: ["tips/verify/**", ".github/workflows/specs.yml"], smoke: ["Cargo.lock"] },
     ["tips/verify/a.md", "README.md", ".github/workflows/specs.yml"]);
   assert.deepEqual(r.specs.matched, ["tips/verify/a.md", ".github/workflows/specs.yml"]);
+  assert.deepEqual(r.smoke.matched, []);
+});
+
+test("evaluateFilters fails open when the changed-file list is incomplete", () => {
+  const files = Array.from({ length: 300 }, (_, i) => `docs/${i}.md`);
+  const r = evaluateFilters({ specs: ["crates/**"], smoke: ["Cargo.lock"] }, files, true);
+
+  assert.equal(r.specs.hit, true);
+  assert.equal(r.smoke.hit, true);
+  assert.deepEqual(r.specs.matched, []);
   assert.deepEqual(r.smoke.matched, []);
 });

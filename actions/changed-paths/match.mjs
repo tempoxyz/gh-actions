@@ -42,3 +42,13 @@ export function applyFilters(filters, files) {
   }
   return out;
 }
+
+// The compare API caps its changed-file list. When that list may be incomplete, every filter
+// must be treated as changed so conditional CI fails open instead of silently skipping work.
+export function evaluateFilters(filters, files, failOpen = false) {
+  const results = applyFilters(filters, files);
+  for (const result of Object.values(results)) {
+    result.hit = failOpen || result.matched.length > 0;
+  }
+  return results;
+}
