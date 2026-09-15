@@ -9,6 +9,8 @@ const { runHardenRunner } = require("./run.cjs");
 // GitHub state key recorded when Harden Runner runs without the policy store.
 // The main and post entrypoints read it back as STATE_inline_policy.
 const INLINE_POLICY_STATE = "inline_policy";
+const ENFORCEMENT_DISABLED_STATE = "enforcement_disabled";
+const UNSUPPORTED_PLATFORM_STATE = "unsupported_platform";
 
 function stsEndpoint(dev = process.env.INPUT_DEV || "false") {
   if (dev === "true") return "https://ss-sts.tehq.dev";
@@ -29,6 +31,17 @@ function inlinePolicyAllowed(env = process.env) {
   return env.GITHUB_EVENT_NAME === "pull_request";
 }
 
+function unsupportedPlatform(env = process.env) {
+  return env.RUNNER_OS === "Windows" && env.RUNNER_ARCH === "ARM64";
+}
+
+function enforcementDisabled(env = process.env) {
+  const value = env["INPUT_DISABLE-ENFORCEMENT"] || "false";
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error("disable-enforcement must be true or false");
+}
+
 function warning(message) {
   const escaped = message
     .replaceAll("%", "%25")
@@ -42,6 +55,23 @@ async function main({
   run = runHardenRunner,
   exchange = exchangeToken,
 } = {}) {
+  if (enforcementDisabled(env)) {
+    warning(
+      "Runner security enforcement was explicitly disabled for this job; " +
+        "Harden Runner will not start.",
+    );
+    append(required("GITHUB_STATE", env), ENFORCEMENT_DISABLED_STATE, "true");
+    return;
+  }
+
+  if (unsupportedPlatform(env)) {
+    warning(
+      "Harden Runner does not support Windows ARM64; skipping Harden Runner.",
+    );
+    append(required("GITHUB_STATE", env), UNSUPPORTED_PLATFORM_STATE, "true");
+    return;
+  }
+
   if (!oidcAvailable(env)) {
     if (!inlinePolicyAllowed(env)) {
       throw new Error(
@@ -77,4 +107,13 @@ if (require.main === module) {
   });
 }
 
-module.exports = { INLINE_POLICY_STATE, inlinePolicyAllowed, main, oidcAvailable };
+module.exports = {
+  ENFORCEMENT_DISABLED_STATE,
+  INLINE_POLICY_STATE,
+  UNSUPPORTED_PLATFORM_STATE,
+  enforcementDisabled,
+  inlinePolicyAllowed,
+  main,
+  oidcAvailable,
+  unsupportedPlatform,
+};

@@ -6,6 +6,8 @@ async function main({
   run = runHardenRunner,
   revoke = revokeLease,
 } = {}) {
+  if (env.STATE_enforcement_disabled === "true") return;
+  if (env.STATE_unsupported_platform === "true") return;
   const errors = [];
   const token = env.STATE_token || "";
   const inlinePolicy = env.STATE_inline_policy === "true";

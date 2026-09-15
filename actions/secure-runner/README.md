@@ -12,11 +12,19 @@ and forwards them unchanged: `dev`, `egress-policy`, `allowed-endpoints`,
 `denied-endpoints`, `disable-telemetry`, `disable-sudo-and-containers`,
 `disable-file-monitoring`, `deploy-on-self-hosted-vm`, and `token`.
 
+`disable-enforcement: true` skips both Harden Runner and Socket Firewall with a
+warning annotation. It is intended for Aegis's own installation tests, where a
+preinstalled Aegis service would conflict with the version under test and a large
+test matrix would otherwise request a separate StepSecurity credential per job.
+
 `dev` also selects the Socket STS endpoint. Both services use production by
 default; set `dev: true` to use their development endpoints.
 
 The caller must grant `id-token: write` for both STS exchanges. Harden Runner
 policies must allow the network access needed to install and use Socket Firewall.
+
+Harden Runner does not support Windows ARM64. On that runner, this action emits a
+warning annotation, skips Harden Runner, and continues to install Socket Firewall.
 
 GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
 permissions the workflow declares. On a `pull_request` run without an OIDC token,
@@ -39,6 +47,9 @@ permissions:
 steps:
   - name: Secure runner
     uses: tempoxyz/gh-actions/actions/secure-runner@<commit-sha>
+    # For Aegis's own installation tests only:
+    # with:
+    #   disable-enforcement: true
 
   - uses: actions/checkout@<commit-sha>
 
