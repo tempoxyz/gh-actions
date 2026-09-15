@@ -2,9 +2,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { RELEASE_TAG, VENDORED_RELEASE, assetName, expectedDigest, sha256 } = require("./download.cjs");
+const { assetName, expectedDigest } = require("./download.cjs");
 const { PACKAGES, npmCLI } = require("./npm-install.cjs");
-const { MANAGERS, childEnvironment, installationSettings, startProvider } = require("./token-provider.cjs");
+const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.cjs");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
@@ -39,17 +39,6 @@ test("selects the exact release artifact for every supported OS and architecture
   assert.throws(() => assetName("Linux", "RISCV64"), /Unsupported runner architecture/);
 });
 
-test("carries every release package with its published checksum", () => {
-  const sums = fs.readFileSync(path.join(VENDORED_RELEASE, "SHA256SUMS"), "utf8");
-  assert.equal(RELEASE_TAG, "20260915T015503Z-bbee7e9ec71d");
-  for (const runnerOS of ["Linux", "macOS", "Windows"]) {
-    for (const runnerArch of ["X64", "ARM64"]) {
-      const asset = assetName(runnerOS, runnerArch);
-      assert.equal(sha256(path.join(VENDORED_RELEASE, asset)), expectedDigest(sums, asset));
-    }
-  }
-});
-
 test("requires one safe checksum entry for the selected artifact", () => {
   const digest = "a".repeat(64);
   assert.equal(expectedDigest(`${digest}  aegis.zip\n`, "aegis.zip"), digest);
@@ -63,14 +52,6 @@ test("configures all non-Maven managers without passing the token to the provide
     "pip", "uv", "poetry", "gem", "bundler",
   ]);
   assert.doesNotMatch(JSON.stringify(childEnvironment()), /SOCKET|TOKEN/i);
-  assert.deepEqual(installationSettings(false, "http://127.0.0.1:1234/secret"), {
-    managers: MANAGERS,
-    test_token_url: "http://127.0.0.1:1234/secret",
-  });
-  assert.deepEqual(installationSettings(true), {
-    managers: MANAGERS,
-    disable_enforcement: true,
-  });
 });
 
 test("serves the Socket token only from its random loopback route", async () => {
@@ -95,18 +76,26 @@ test("the integration helper bypasses PATH shims and uses the requested packages
   assert.match(npmCLI(), /npm-cli\.js$/);
 });
 
-test("installs vendored Aegis with an explicit warning when a fork has no OIDC", () => {
+test("fork pull requests emit a warning and skip all enforcement setup", () => {
   const steps = manifest.split(/\n    - name: /).slice(1);
   const detect = steps.find((step) => step.startsWith("Detect fork and GitHub OIDC availability"));
-  const download = steps.find((step) => step.startsWith("Download and verify Aegis"));
-  const config = steps.find((step) => step.startsWith("Prepare Aegis configuration"));
   assert.match(detect, /ACTIONS_ID_TOKEN_REQUEST_TOKEN:-/);
   assert.match(detect, /HEAD_REPOSITORY.*!=.*CURRENT_REPOSITORY/);
-  assert.match(detect, /::warning title=Aegis package-policy enforcement disabled::/);
-  assert.match(detect, /allow and audit package downloads without Socket policy checks/);
+  assert.match(detect, /::warning title=Package-policy enforcement disabled::/);
+  assert.match(detect, /No package firewall will be installed; downloads will not be inspected or blocked/);
   assert.match(detect, /::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing[^\r\n]*\r?\n\s+exit 1/);
-  assert.match(download, /AEGIS_USE_VENDORED_RELEASE: \$\{\{ steps\.oidc\.outputs\.fork \}\}/);
-  assert.match(config, /INPUT_DISABLE_ENFORCEMENT: \$\{\{ steps\.oidc\.outputs\.fork \}\}/);
+  for (const name of [
+    "Exchange GitHub OIDC token for a Socket token",
+    "Exchange GitHub OIDC token for Aegis release access",
+    "Download and verify Aegis",
+    "Prepare Aegis configuration",
+    "Install Aegis package on Linux",
+    "Install Aegis package on macOS",
+    "Install Aegis package on Windows",
+  ]) {
+    assert.match(steps.find((step) => step.startsWith(name)), /^\s+if: steps\.oidc\.outputs\.available == 'true'/m, name);
+  }
+  assert.doesNotMatch(manifest, /AEGIS_USE_VENDORED_RELEASE|disable_enforcement/);
   assert.doesNotMatch(manifest, /Socket Firewall Free/);
   assert.doesNotMatch(manifest, /vendor\/SocketDev\/action/);
 });

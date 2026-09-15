@@ -21,12 +21,6 @@ function childEnvironment() {
   );
 }
 
-function installationSettings(disableEnforcement, tokenURL) {
-  if (disableEnforcement) return { managers: MANAGERS, disable_enforcement: true };
-  if (!tokenURL) throw new Error("Aegis token provider URL is missing");
-  return { managers: MANAGERS, test_token_url: tokenURL };
-}
-
 async function startProvider(token) {
   if (!/^\S{20,4096}$/.test(token)) throw new Error("Socket token is invalid");
   const child = spawn(process.execPath, [path.join(__dirname, "token-server.cjs")], {
@@ -59,16 +53,10 @@ async function startProvider(token) {
 }
 
 async function main() {
+  const { url } = await startProvider(process.env.INPUT_SOCKET_TOKEN || "");
   const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), "aegis-config-"));
   const config = path.join(directory, "install.json");
-  let settings;
-  if (process.env.INPUT_DISABLE_ENFORCEMENT === "true") {
-    settings = installationSettings(true);
-  } else {
-    const { url } = await startProvider(process.env.INPUT_SOCKET_TOKEN || "");
-    settings = installationSettings(false, url);
-  }
-  fs.writeFileSync(config, JSON.stringify(settings), { mode: 0o600, flag: "wx" });
+  fs.writeFileSync(config, JSON.stringify({ managers: MANAGERS, test_token_url: url }), { mode: 0o600, flag: "wx" });
   appendOutput("path", config);
 }
 
@@ -79,4 +67,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { MANAGERS, childEnvironment, installationSettings, startProvider };
+module.exports = { MANAGERS, childEnvironment, startProvider };

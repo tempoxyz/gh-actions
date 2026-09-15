@@ -15,12 +15,11 @@ The caller must grant `id-token: write`. The generated token is revoked when
 the job finishes and is also covered by the STS lease expiration.
 
 GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
-permissions the workflow declares. The action therefore carries the six native
-packages from the pinned, provenance-verified Aegis release for that case and
-checks the selected package against the release's `SHA256SUMS`. It emits a warning
-annotation and installs Aegis with `disable_enforcement: true`: downloads are
-allowed and audited without Socket policy checks. Any other event without an OIDC
-token fails, since that means the job is missing `id-token: write`.
+permissions the workflow declares. On such a run, the action emits a warning
+annotation that package-policy enforcement is disabled and performs no other
+work: it does not exchange tokens, download Aegis, install a firewall, or inspect
+downloads. Both outputs are empty. Any other event without an OIDC token fails,
+since that means the job is missing `id-token: write`.
 
 Aegis does not permit API keys in installation JSON. On enforcing runs, the action keeps the
 masked STS token in a detached process and gives Aegis an unguessable,
