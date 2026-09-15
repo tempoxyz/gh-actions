@@ -9,6 +9,7 @@ const { runHardenRunner } = require("./run.cjs");
 // GitHub state key recorded when Harden Runner runs without the policy store.
 // The main and post entrypoints read it back as STATE_inline_policy.
 const INLINE_POLICY_STATE = "inline_policy";
+const UNSUPPORTED_PLATFORM_STATE = "unsupported_platform";
 
 function stsEndpoint(dev = process.env.INPUT_DEV || "false") {
   if (dev === "true") return "https://ss-sts.tehq.dev";
@@ -29,6 +30,10 @@ function inlinePolicyAllowed(env = process.env) {
   return env.GITHUB_EVENT_NAME === "pull_request";
 }
 
+function unsupportedPlatform(env = process.env) {
+  return env.RUNNER_OS === "Windows" && env.RUNNER_ARCH === "ARM64";
+}
+
 function warning(message) {
   const escaped = message
     .replaceAll("%", "%25")
@@ -42,6 +47,14 @@ async function main({
   run = runHardenRunner,
   exchange = exchangeToken,
 } = {}) {
+  if (unsupportedPlatform(env)) {
+    warning(
+      "Harden Runner does not support Windows ARM64; skipping Harden Runner.",
+    );
+    append(required("GITHUB_STATE", env), UNSUPPORTED_PLATFORM_STATE, "true");
+    return;
+  }
+
   if (!oidcAvailable(env)) {
     if (!inlinePolicyAllowed(env)) {
       throw new Error(
@@ -77,4 +90,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = { INLINE_POLICY_STATE, inlinePolicyAllowed, main, oidcAvailable };
+module.exports = {
+  INLINE_POLICY_STATE,
+  UNSUPPORTED_PLATFORM_STATE,
+  inlinePolicyAllowed,
+  main,
+  oidcAvailable,
+  unsupportedPlatform,
+};
