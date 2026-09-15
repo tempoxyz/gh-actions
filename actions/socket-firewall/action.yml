@@ -44,14 +44,14 @@ runs:
     - name: Exchange GitHub OIDC token for a Socket token
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@7ec767edd7c36f9189f00765b50b50aa1efeeb23
+      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@2b4621c91988f43ccdeaad0a1e23cffbd341743b
       with:
         dev: ${{ inputs.dev }}
 
     - name: Exchange GitHub OIDC token for Aegis release access
       if: steps.oidc.outputs.available == 'true'
       id: release-token
-      uses: tempoxyz/gh-actions/actions/github-sts@7ec767edd7c36f9189f00765b50b50aa1efeeb23
+      uses: tempoxyz/gh-actions/actions/github-sts@2b4621c91988f43ccdeaad0a1e23cffbd341743b
       with:
         scope: tempoxyz/aegis
         policy: download-releases

@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@aaedf7a275e398ad81b2913d9a6cbfce791ecbfb
+        uses: tempoxyz/gh-actions/actions/secure-runner@de8817e2eae66bc85468011ba8c7a9c2792570d1
 
       - name: Auto assign PR to author (with permission checks)
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
