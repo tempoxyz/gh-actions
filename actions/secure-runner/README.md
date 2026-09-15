@@ -12,9 +12,10 @@ and forwards them unchanged: `dev`, `egress-policy`, `allowed-endpoints`,
 `denied-endpoints`, `disable-telemetry`, `disable-sudo-and-containers`,
 `disable-file-monitoring`, `deploy-on-self-hosted-vm`, and `token`.
 
-`disable-socket-firewall: true` skips Socket Firewall with a warning annotation.
-It is intended for Aegis's own installation tests, where a preinstalled Aegis
-service would conflict with the version under test.
+`disable-enforcement: true` skips both Harden Runner and Socket Firewall with a
+warning annotation. It is intended for Aegis's own installation tests, where a
+preinstalled Aegis service would conflict with the version under test and a large
+test matrix would otherwise request a separate StepSecurity credential per job.
 
 `dev` also selects the Socket STS endpoint. Both services use production by
 default; set `dev: true` to use their development endpoints.
@@ -48,7 +49,7 @@ steps:
     uses: tempoxyz/gh-actions/actions/secure-runner@<commit-sha>
     # For Aegis's own installation tests only:
     # with:
-    #   disable-socket-firewall: true
+    #   disable-enforcement: true
 
   - uses: actions/checkout@<commit-sha>
 

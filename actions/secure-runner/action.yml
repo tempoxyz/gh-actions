@@ -35,8 +35,8 @@ inputs:
     description: "Deploy Harden Runner directly on an ephemeral self-hosted Linux VM"
     required: false
     default: "false"
-  disable-socket-firewall:
-    description: "Skip Socket Firewall installation for jobs that install and test Aegis itself"
+  disable-enforcement:
+    description: "Skip Harden Runner and Socket Firewall with a warning annotation"
     required: false
     default: "false"
   token:
@@ -48,7 +48,7 @@ runs:
   using: "composite"
   steps:
     - name: Harden the runner with the StepSecurity policy store
-      uses: tempoxyz/gh-actions/actions/harden-runner@905ee5bcb4fd76cdc54ca30c97b362b0f2a26390
+      uses: tempoxyz/gh-actions/actions/harden-runner@283c732e2c32c4e786fdb83ff48aca40bf59755a
       with:
         dev: ${{ inputs.dev }}
         egress-policy: ${{ inputs.egress-policy }}
@@ -58,17 +58,11 @@ runs:
         disable-sudo-and-containers: ${{ inputs.disable-sudo-and-containers }}
         disable-file-monitoring: ${{ inputs.disable-file-monitoring }}
         deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
+        disable-enforcement: ${{ inputs.disable-enforcement }}
         token: ${{ inputs.token }}
 
-    - name: Warn when Socket Firewall is disabled
-      if: inputs.disable-socket-firewall == 'true'
-      shell: bash
-      run: >-
-        echo "::warning title=Package-policy enforcement disabled::Socket
-        Firewall installation was explicitly disabled for this job."
-
     - name: Install Socket Firewall
-      if: inputs.disable-socket-firewall != 'true'
+      if: inputs.disable-enforcement != 'true'
       uses: tempoxyz/gh-actions/actions/socket-firewall@114030b5ee7673be7b0f1065b44608a4c004c6c3
       with:
         dev: ${{ inputs.dev }}
