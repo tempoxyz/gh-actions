@@ -7,7 +7,7 @@ GitHub actor.
 
 The action uses GitHub STS policy `download-releases` in `tempoxyz/aegis` to
 download the native artifact for the runner operating system and architecture
-from release `20260915T010858Z-9c8efabdc447`. Before installation, it verifies
+from release `20260915T015503Z-bbee7e9ec71d`. Before installation, it verifies
 the artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
 including the signer workflow and source commit.
 
@@ -15,12 +15,14 @@ The caller must grant `id-token: write`. The generated token is revoked when
 the job finishes and is also covered by the STS lease expiration.
 
 GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
-permissions the workflow declares. On such a run, the action emits a warning
-and preserves the previous Socket Firewall Free fallback. Any other event
-without an OIDC token fails, since that means the job is missing
-`id-token: write`.
+permissions the workflow declares. The action therefore carries the six native
+packages from the pinned, provenance-verified Aegis release for that case and
+checks the selected package against the release's `SHA256SUMS`. It emits a warning
+annotation and installs Aegis with `disable_enforcement: true`: downloads are
+allowed and audited without Socket policy checks. Any other event without an OIDC
+token fails, since that means the job is missing `id-token: write`.
 
-Aegis does not permit API keys in installation JSON. The action keeps the
+Aegis does not permit API keys in installation JSON. On enforcing runs, the action keeps the
 masked STS token in a detached process and gives Aegis an unguessable,
 loopback-only `test_token_url` in a mode-0600 configuration file. The installed
 service can fetch the token after its native service manager starts without
@@ -36,8 +38,8 @@ writing the credential to disk.
 
 | Name | Description |
 |------|-------------|
-| `firewall-path-binary` | Path to the installed Aegis binary (or fork fallback binary) |
-| `firewall-path-report` | Path to the Aegis audit log (or fork fallback report JSON) |
+| `firewall-path-binary` | Path to the installed Aegis binary |
+| `firewall-path-report` | Path to the Aegis audit log |
 
 ## Usage
 

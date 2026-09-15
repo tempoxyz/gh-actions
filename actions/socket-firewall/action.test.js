@@ -2,9 +2,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { assetName, expectedDigest } = require("./download.cjs");
+const { RELEASE_TAG, VENDORED_RELEASE, assetName, expectedDigest, sha256 } = require("./download.cjs");
 const { PACKAGES, npmCLI } = require("./npm-install.cjs");
-const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.cjs");
+const { MANAGERS, childEnvironment, installationSettings, startProvider } = require("./token-provider.cjs");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
@@ -19,8 +19,8 @@ test("uses both STS exchanges and the aegis download policy", () => {
 
 test("pins the requested release and verifies its checksums and provenance", () => {
   const downloader = fs.readFileSync(path.join(__dirname, "download.cjs"), "utf8");
-  assert.match(downloader, /20260915T010858Z-9c8efabdc447/);
-  assert.match(downloader, /9c8efabdc4473eff4c3695e443179d9d84bc5ba0/);
+  assert.match(downloader, /20260915T015503Z-bbee7e9ec71d/);
+  assert.match(downloader, /bbee7e9ec71dc63cc9721694f50cb397ce8e59ad/);
   assert.match(downloader, /SHA256SUMS/);
   assert.match(downloader, /provenance\.sigstore\.json/);
   assert.match(downloader, /attestation.*verify/s);
@@ -29,14 +29,25 @@ test("pins the requested release and verifies its checksums and provenance", () 
 });
 
 test("selects the exact release artifact for every supported OS and architecture", () => {
-  assert.equal(assetName("Linux", "X64"), "aegis-9c8efabdc447-linux-amd64.deb");
-  assert.equal(assetName("Linux", "ARM64"), "aegis-9c8efabdc447-linux-arm64.deb");
-  assert.equal(assetName("macOS", "X64"), "aegis-9c8efabdc447-macos-amd64.tar.gz");
-  assert.equal(assetName("macOS", "ARM64"), "aegis-9c8efabdc447-macos-arm64.tar.gz");
-  assert.equal(assetName("Windows", "X64"), "aegis-9c8efabdc447-windows-amd64.zip");
-  assert.equal(assetName("Windows", "ARM64"), "aegis-9c8efabdc447-windows-arm64.zip");
+  assert.equal(assetName("Linux", "X64"), "aegis-bbee7e9ec71d-linux-amd64.deb");
+  assert.equal(assetName("Linux", "ARM64"), "aegis-bbee7e9ec71d-linux-arm64.deb");
+  assert.equal(assetName("macOS", "X64"), "aegis-bbee7e9ec71d-macos-amd64.tar.gz");
+  assert.equal(assetName("macOS", "ARM64"), "aegis-bbee7e9ec71d-macos-arm64.tar.gz");
+  assert.equal(assetName("Windows", "X64"), "aegis-bbee7e9ec71d-windows-amd64.zip");
+  assert.equal(assetName("Windows", "ARM64"), "aegis-bbee7e9ec71d-windows-arm64.zip");
   assert.throws(() => assetName("Plan9", "X64"), /Unsupported runner OS/);
   assert.throws(() => assetName("Linux", "RISCV64"), /Unsupported runner architecture/);
+});
+
+test("carries every release package with its published checksum", () => {
+  const sums = fs.readFileSync(path.join(VENDORED_RELEASE, "SHA256SUMS"), "utf8");
+  assert.equal(RELEASE_TAG, "20260915T015503Z-bbee7e9ec71d");
+  for (const runnerOS of ["Linux", "macOS", "Windows"]) {
+    for (const runnerArch of ["X64", "ARM64"]) {
+      const asset = assetName(runnerOS, runnerArch);
+      assert.equal(sha256(path.join(VENDORED_RELEASE, asset)), expectedDigest(sums, asset));
+    }
+  }
 });
 
 test("requires one safe checksum entry for the selected artifact", () => {
@@ -52,6 +63,14 @@ test("configures all non-Maven managers without passing the token to the provide
     "pip", "uv", "poetry", "gem", "bundler",
   ]);
   assert.doesNotMatch(JSON.stringify(childEnvironment()), /SOCKET|TOKEN/i);
+  assert.deepEqual(installationSettings(false, "http://127.0.0.1:1234/secret"), {
+    managers: MANAGERS,
+    test_token_url: "http://127.0.0.1:1234/secret",
+  });
+  assert.deepEqual(installationSettings(true), {
+    managers: MANAGERS,
+    disable_enforcement: true,
+  });
 });
 
 test("serves the Socket token only from its random loopback route", async () => {
@@ -76,18 +95,20 @@ test("the integration helper bypasses PATH shims and uses the requested packages
   assert.match(npmCLI(), /npm-cli\.js$/);
 });
 
-test("falls back to Socket Firewall Free only for pull requests without OIDC", () => {
+test("installs vendored Aegis with an explicit warning when a fork has no OIDC", () => {
   const steps = manifest.split(/\n    - name: /).slice(1);
-  const detect = steps.find((step) => step.startsWith("Detect GitHub OIDC availability"));
-  const fallback = steps.find((step) => step.startsWith("Install Socket Firewall Free"));
+  const detect = steps.find((step) => step.startsWith("Detect fork and GitHub OIDC availability"));
+  const download = steps.find((step) => step.startsWith("Download and verify Aegis"));
+  const config = steps.find((step) => step.startsWith("Prepare Aegis configuration"));
   assert.match(detect, /ACTIONS_ID_TOKEN_REQUEST_TOKEN:-/);
-  assert.match(detect, /= "pull_request" \]/);
-  assert.match(detect, /::warning::.*Socket Firewall Free/);
+  assert.match(detect, /HEAD_REPOSITORY.*!=.*CURRENT_REPOSITORY/);
+  assert.match(detect, /::warning title=Aegis package-policy enforcement disabled::/);
+  assert.match(detect, /allow and audit package downloads without Socket policy checks/);
   assert.match(detect, /::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing[^\r\n]*\r?\n\s+exit 1/);
-  assert.match(fallback, /^\s+if: steps\.oidc\.outputs\.available == 'false'\r?$/m);
-  assert.match(fallback, /vendor\/SocketDev\/action@5338a3746a2ac2ddd88cbede733c79f907aca3a0/);
-  assert.match(fallback, /mode: firewall\r?\n/);
-  assert.doesNotMatch(fallback, /socket-token:/);
+  assert.match(download, /AEGIS_USE_VENDORED_RELEASE: \$\{\{ steps\.oidc\.outputs\.fork \}\}/);
+  assert.match(config, /INPUT_DISABLE_ENFORCEMENT: \$\{\{ steps\.oidc\.outputs\.fork \}\}/);
+  assert.doesNotMatch(manifest, /Socket Firewall Free/);
+  assert.doesNotMatch(manifest, /vendor\/SocketDev\/action/);
 });
 
 test("forwards the Aegis binary and audit log through the compatibility outputs", () => {

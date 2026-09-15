@@ -5,9 +5,10 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-const RELEASE_TAG = "20260915T010858Z-9c8efabdc447";
-const RELEASE_COMMIT = "9c8efabdc4473eff4c3695e443179d9d84bc5ba0";
-const RELEASE_VERSION = "9c8efabdc447";
+const RELEASE_TAG = "20260915T015503Z-bbee7e9ec71d";
+const RELEASE_COMMIT = "bbee7e9ec71dc63cc9721694f50cb397ce8e59ad";
+const RELEASE_VERSION = "bbee7e9ec71d";
+const VENDORED_RELEASE = path.join(__dirname, "aegis-release", RELEASE_TAG);
 
 function assetName(runnerOS, runnerArch) {
   const operatingSystem = {
@@ -40,8 +41,17 @@ function sha256(file) {
 }
 
 function main() {
-  if (!process.env.GH_TOKEN) throw new Error("Aegis release token is missing");
   const asset = assetName(process.env.RUNNER_OPERATING_SYSTEM, process.env.RUNNER_ARCHITECTURE);
+  if (process.env.AEGIS_USE_VENDORED_RELEASE === "true") {
+    const artifact = path.join(VENDORED_RELEASE, asset);
+    const sums = fs.readFileSync(path.join(VENDORED_RELEASE, "SHA256SUMS"), "utf8");
+    assert.equal(sha256(artifact), expectedDigest(sums, asset), `${asset} does not match vendored SHA256SUMS`);
+    console.log(`Using checksum-verified vendored Aegis release ${RELEASE_TAG} for fork pull request`);
+    appendOutput("package", artifact);
+    appendOutput("directory", VENDORED_RELEASE);
+    return;
+  }
+  if (!process.env.GH_TOKEN) throw new Error("Aegis release token is missing");
   const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), "aegis-release-"));
   execFileSync("gh", [
     "release", "download", RELEASE_TAG,
@@ -79,4 +89,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { assetName, expectedDigest };
+module.exports = { RELEASE_TAG, VENDORED_RELEASE, assetName, expectedDigest, sha256 };

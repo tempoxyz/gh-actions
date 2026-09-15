@@ -10,29 +10,34 @@ inputs:
 
 outputs:
   firewall-path-binary:
-    description: "Path to the installed Aegis or fallback Socket Firewall binary"
-    value: ${{ steps.install-linux.outputs.path || steps.install-macos.outputs.path || steps.install-windows.outputs.path || steps.windows-binary.outputs.path || steps.firewall.outputs.firewall-path-binary }}
+    description: "Path to the installed Aegis binary"
+    value: ${{ steps.install-linux.outputs.path || steps.install-macos.outputs.path || steps.install-windows.outputs.path }}
   firewall-path-report:
-    description: "Path to the Aegis audit log or fallback Socket Firewall report JSON"
-    value: ${{ steps.install-linux.outputs.report || steps.install-macos.outputs.report || steps.install-windows.outputs.report || steps.firewall.outputs.firewall-path-report }}
+    description: "Path to the Aegis audit log"
+    value: ${{ steps.install-linux.outputs.report || steps.install-macos.outputs.report || steps.install-windows.outputs.report }}
 
 runs:
   using: "composite"
   steps:
     # GitHub never issues an OIDC token to pull_request runs from forks, whatever
-    # permissions the workflow declares. Preserve the existing Free fallback for
-    # those runs because the private Aegis release and both STS exchanges require
-    # OIDC. Any other event without OIDC is a workflow configuration error.
-    - name: Detect GitHub OIDC availability
+    # permissions the workflow declares. Those runs use the vendored, verified
+    # Aegis release with package-policy enforcement explicitly disabled. Any other
+    # event without OIDC is a workflow configuration error.
+    - name: Detect fork and GitHub OIDC availability
       id: oidc
       shell: bash
+      env:
+        HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        CURRENT_REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
         if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
           echo "available=true" >> "$GITHUB_OUTPUT"
-        elif [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+          echo "fork=false" >> "$GITHUB_OUTPUT"
+        elif [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] && [ -n "$HEAD_REPOSITORY" ] && [ "$HEAD_REPOSITORY" != "$CURRENT_REPOSITORY" ]; then
           echo "available=false" >> "$GITHUB_OUTPUT"
-          echo "::warning::GitHub issued no OIDC token to this pull_request run (fork pull requests never receive one). Installing Socket Firewall Free instead of Aegis: known-malware blocking only, without organization policies."
+          echo "fork=true" >> "$GITHUB_OUTPUT"
+          echo "::warning title=Aegis package-policy enforcement disabled::This job is running for a fork pull request, which receives no GitHub OIDC token. Aegis will allow and audit package downloads without Socket policy checks."
         else
           echo "::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing: the job must grant id-token: write (event: ${GITHUB_EVENT_NAME:-unknown})"
           exit 1
@@ -55,11 +60,11 @@ runs:
         ttl: 15m
 
     - name: Download and verify Aegis
-      if: steps.oidc.outputs.available == 'true'
       id: download
       shell: bash
       env:
         GH_TOKEN: ${{ steps.release-token.outputs.token }}
+        AEGIS_USE_VENDORED_RELEASE: ${{ steps.oidc.outputs.fork }}
         RUNNER_ARCHITECTURE: ${{ runner.arch }}
         RUNNER_OPERATING_SYSTEM: ${{ runner.os }}
       run: node "$GITHUB_ACTION_PATH/download.cjs"
@@ -68,15 +73,15 @@ runs:
     # provider keeps the token in memory and exposes it only at an unguessable
     # loopback URL, which is the release's supported installed-CI token source.
     - name: Prepare Aegis configuration
-      if: steps.oidc.outputs.available == 'true'
       id: config
       shell: bash
       env:
+        INPUT_DISABLE_ENFORCEMENT: ${{ steps.oidc.outputs.fork }}
         INPUT_SOCKET_TOKEN: ${{ steps.socket-token.outputs.token }}
       run: node "$GITHUB_ACTION_PATH/token-provider.cjs"
 
     - name: Install Aegis package on Linux
-      if: steps.oidc.outputs.available == 'true' && runner.os == 'Linux'
+      if: runner.os == 'Linux'
       id: install-linux
       shell: bash
       env:
@@ -90,7 +95,7 @@ runs:
         echo "report=/var/log/aegis/service.jsonl" >> "$GITHUB_OUTPUT"
 
     - name: Install Aegis package on macOS
-      if: steps.oidc.outputs.available == 'true' && runner.os == 'macOS'
+      if: runner.os == 'macOS'
       id: install-macos
       shell: bash
       env:
@@ -107,7 +112,7 @@ runs:
         echo "report=/Library/Application Support/Aegis/service.jsonl" >> "$GITHUB_OUTPUT"
 
     - name: Install Aegis package on Windows
-      if: steps.oidc.outputs.available == 'true' && runner.os == 'Windows'
+      if: runner.os == 'Windows'
       id: install-windows
       shell: pwsh
       env:
@@ -123,20 +128,3 @@ runs:
         if ($LASTEXITCODE -ne 0) { throw "aegis install failed" }
         "path=$binary" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "report=$(Join-Path $env:ProgramData 'Aegis\service.jsonl')" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-    # Fork pull requests cannot authenticate to the private Aegis release. Keep
-    # the prior no-credential fallback so they retain known-malware protection.
-    - name: Install Socket Firewall Free
-      if: steps.oidc.outputs.available == 'false'
-      id: firewall
-      uses: tempoxyz/gh-actions/vendor/SocketDev/action@5338a3746a2ac2ddd88cbede733c79f907aca3a0
-      with:
-        mode: firewall
-
-    - name: Make Socket Firewall Free executable by Windows shims
-      if: steps.oidc.outputs.available == 'false' && runner.os == 'Windows'
-      id: windows-binary
-      shell: pwsh
-      env:
-        FIREWALL_PATH_BINARY: ${{ steps.firewall.outputs.firewall-path-binary }}
-      run: node "$env:GITHUB_ACTION_PATH/windows-binary.cjs"
