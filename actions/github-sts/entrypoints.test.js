@@ -48,7 +48,25 @@ test("main entrypoint executes as CommonJS", () => {
   assert.doesNotMatch(output, /ERR_AMBIGUOUS_MODULE_SYNTAX/);
 });
 
-test("main rejects repositories outside tempoxyz before resolving STS inputs", () => {
+test("main accepts foundry-rs before resolving STS inputs", () => {
+  const result = spawnSync(process.execPath, [path.join(actionDirectory, "main.js")], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY_OWNER: "foundry-rs",
+      INPUT_DEV: "invalid",
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
+      ACTIONS_ID_TOKEN_REQUEST_URL: "",
+    },
+  });
+  const output = `${result.stdout}${result.stderr}`;
+
+  assert.equal(result.status, 1);
+  assert.match(output, /dev must be either true or false/);
+  assert.doesNotMatch(output, /only supports repositories owned/);
+});
+
+test("main rejects unsupported repository owners before resolving STS inputs", () => {
   const result = spawnSync(process.execPath, [path.join(actionDirectory, "main.js")], {
     encoding: "utf8",
     env: {
@@ -62,7 +80,7 @@ test("main rejects repositories outside tempoxyz before resolving STS inputs", (
   const output = `${result.stdout}${result.stderr}`;
 
   assert.equal(result.status, 1);
-  assert.match(output, /only supports repositories owned by tempoxyz/);
+  assert.match(output, /only supports repositories owned by tempoxyz or foundry-rs/);
   assert.doesNotMatch(output, /dev must|id-token/);
 });
 
