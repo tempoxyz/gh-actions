@@ -44,8 +44,7 @@ runs:
   using: "composite"
   steps:
     - name: Harden the runner with the StepSecurity policy store
-      if: runner.os != 'Windows' || runner.arch != 'ARM64'
-      uses: tempoxyz/gh-actions/actions/harden-runner@807d8276edd769462794b452ac10aa345f58b8e1
+      uses: tempoxyz/gh-actions/actions/harden-runner@905ee5bcb4fd76cdc54ca30c97b362b0f2a26390
       with:
         dev: ${{ inputs.dev }}
         egress-policy: ${{ inputs.egress-policy }}
@@ -56,13 +55,6 @@ runs:
         disable-file-monitoring: ${{ inputs.disable-file-monitoring }}
         deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
         token: ${{ inputs.token }}
-
-    - name: Warn when Harden Runner is unavailable
-      if: runner.os == 'Windows' && runner.arch == 'ARM64'
-      shell: pwsh
-      run: >-
-        Write-Output "::warning title=Harden Runner unavailable::Harden Runner
-        does not support Windows ARM64; continuing with Socket Firewall only."
 
     - name: Install Socket Firewall
       uses: tempoxyz/gh-actions/actions/socket-firewall@114030b5ee7673be7b0f1065b44608a4c004c6c3
