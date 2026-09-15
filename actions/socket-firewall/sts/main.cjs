@@ -1,5 +1,5 @@
 const fs = require("node:fs");
-const { host, request, retry } = require("./http.cjs");
+const { host, request, retry, retryRateLimited } = require("./http.cjs");
 
 function required(name) {
   const value = process.env[name] || "";
@@ -50,17 +50,19 @@ async function main() {
     throw new Error("GitHub OIDC response is invalid");
   }
 
-  const exchange = await retry(
-    () =>
-      request(`https://${endpoint}/sts/exchange`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${oidc}`,
-          "content-length": "0",
-          "user-agent": "tempoxyz-socket-sts-action",
-        },
-      }),
-    { retryHttpResponses: false },
+  const exchange = await retryRateLimited(() =>
+    retry(
+      () =>
+        request(`https://${endpoint}/sts/exchange`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${oidc}`,
+            "content-length": "0",
+            "user-agent": "tempoxyz-socket-sts-action",
+          },
+        }),
+      { retryHttpResponses: false },
+    ),
   );
   let result = {};
   try {

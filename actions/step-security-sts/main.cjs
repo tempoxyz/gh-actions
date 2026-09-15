@@ -1,5 +1,5 @@
 const fs = require("node:fs");
-const { endpoint, request, retry } = require("./http.cjs");
+const { endpoint, request, retry, retryRateLimited } = require("./http.cjs");
 
 function required(name, env = process.env) {
   const value = env[name] || "";
@@ -53,15 +53,19 @@ async function exchangeToken(rawEndpoint = required("INPUT_STS-URL")) {
 
   // The STS makes exact OIDC assertion replays idempotent, so retrying a
   // transient response recovers the same lease instead of issuing another one.
-  const exchange = await retry(() =>
-    request(`${sts.origin}/sts/exchange`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${oidc}`,
-        "content-length": "0",
-        "user-agent": "tempoxyz-step-security-sts-action",
-      },
-    }),
+  const exchange = await retryRateLimited(() =>
+    retry(
+      () =>
+        request(`${sts.origin}/sts/exchange`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${oidc}`,
+            "content-length": "0",
+            "user-agent": "tempoxyz-step-security-sts-action",
+          },
+        }),
+      { retryHttpResponses: false },
+    ),
   );
   let result = {};
   try {
