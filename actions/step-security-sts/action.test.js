@@ -3,7 +3,7 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { endpoint, retry } = require("./http.cjs");
+const { endpoint, rateLimitDelay, retry, retryRateLimited } = require("./http.cjs");
 const { publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 
@@ -50,6 +50,42 @@ test("retries transient exchange responses", async () => {
 
   assert.equal(attempts, 2);
   assert.equal(response.status, 200);
+});
+
+test("honors an STS Retry-After response before retrying", async () => {
+  let attempts = 0;
+  const delays = [];
+  const response = await retryRateLimited(
+    async () => {
+      attempts += 1;
+      return attempts === 1
+        ? { status: 429, headers: { "retry-after": "3" }, body: "" }
+        : { status: 200, headers: {}, body: "recovered" };
+    },
+    { now: () => 0, sleep: async (delay) => delays.push(delay) },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(attempts, 2);
+  assert.deepEqual(delays, [3_000]);
+  assert.equal(
+    rateLimitDelay({ status: 429, headers: {}, body: '{"retry_after":5}' }, 0),
+    5_000,
+  );
+});
+
+test("fails instead of waiting more than two minutes for an STS rate limit", async () => {
+  await assert.rejects(
+    retryRateLimited(
+      async () => ({
+        status: 429,
+        headers: { "retry-after": "121" },
+        body: "",
+      }),
+      { now: () => 0, sleep: async () => {} },
+    ),
+    /exceeds the 2 minute limit/,
+  );
 });
 
 test("main fails closed without the secret STS URL", () => {
