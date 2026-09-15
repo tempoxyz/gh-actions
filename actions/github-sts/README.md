@@ -51,7 +51,7 @@ policy's optional `max_ttl`. The effective lifetime is the shortest of the
 requested TTL, the policy maximum, and GitHub's one-hour installation-token
 limit. The `expires-at` output reports that effective deadline.
 
-The action only runs for repositories owned by `tempoxyz` or `foundry-rs`.
+The action only runs for repositories owned by `tempoxyz`, `foundry-rs`, `alloy-rs`, `bluealloy`, or `wevm`.
 This name check rejects unsupported callers before requesting a GitHub OIDC
 token or contacting the STS. The STS remains authoritative and validates the
 token's immutable numeric repository owner ID.

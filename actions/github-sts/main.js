@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const https = require("node:https");
 const { isTransientStatus, retry } = require("./retry.js");
 
-const SUPPORTED_REPOSITORY_OWNERS = new Set(["tempoxyz", "foundry-rs"]);
+const SUPPORTED_REPOSITORY_OWNERS = new Set(["tempoxyz", "foundry-rs", "alloy-rs", "bluealloy", "wevm"]);
 
 function input(name) {
   const key = name.toUpperCase();
@@ -48,7 +48,7 @@ function exchangeRequestOptions(oidc) {
 async function main() {
   const repositoryOwner = process.env.GITHUB_REPOSITORY_OWNER || "";
   if (!SUPPORTED_REPOSITORY_OWNERS.has(repositoryOwner.toLowerCase())) {
-    throw new Error("github-sts only supports repositories owned by tempoxyz or foundry-rs");
+    throw new Error("github-sts only supports repositories owned by tempoxyz, foundry-rs, alloy-rs, bluealloy, or wevm");
   }
 
   const dev = input("dev");
