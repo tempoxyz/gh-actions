@@ -19,8 +19,8 @@ test("uses both STS exchanges and the aegis download policy", () => {
 
 test("pins the requested release and verifies its checksums and provenance", () => {
   const downloader = fs.readFileSync(path.join(__dirname, "download.cjs"), "utf8");
-  assert.match(downloader, /20260915T015503Z-bbee7e9ec71d/);
-  assert.match(downloader, /bbee7e9ec71dc63cc9721694f50cb397ce8e59ad/);
+  assert.match(downloader, /20260915T134954Z-3f50c418aa41/);
+  assert.match(downloader, /3f50c418aa4169b0128318ee3880487593d7849f/);
   assert.match(downloader, /SHA256SUMS/);
   assert.match(downloader, /provenance\.sigstore\.json/);
   assert.match(downloader, /attestation.*verify/s);
@@ -29,12 +29,12 @@ test("pins the requested release and verifies its checksums and provenance", () 
 });
 
 test("selects the exact release artifact for every supported OS and architecture", () => {
-  assert.equal(assetName("Linux", "X64"), "aegis-bbee7e9ec71d-linux-amd64.deb");
-  assert.equal(assetName("Linux", "ARM64"), "aegis-bbee7e9ec71d-linux-arm64.deb");
-  assert.equal(assetName("macOS", "X64"), "aegis-bbee7e9ec71d-macos-amd64.tar.gz");
-  assert.equal(assetName("macOS", "ARM64"), "aegis-bbee7e9ec71d-macos-arm64.tar.gz");
-  assert.equal(assetName("Windows", "X64"), "aegis-bbee7e9ec71d-windows-amd64.zip");
-  assert.equal(assetName("Windows", "ARM64"), "aegis-bbee7e9ec71d-windows-arm64.zip");
+  assert.equal(assetName("Linux", "X64"), "aegis-3f50c418aa41-linux-amd64.deb");
+  assert.equal(assetName("Linux", "ARM64"), "aegis-3f50c418aa41-linux-arm64.deb");
+  assert.equal(assetName("macOS", "X64"), "aegis-3f50c418aa41-macos-amd64.tar.gz");
+  assert.equal(assetName("macOS", "ARM64"), "aegis-3f50c418aa41-macos-arm64.tar.gz");
+  assert.equal(assetName("Windows", "X64"), "aegis-3f50c418aa41-windows-amd64.zip");
+  assert.equal(assetName("Windows", "ARM64"), "aegis-3f50c418aa41-windows-arm64.zip");
   assert.throws(() => assetName("Plan9", "X64"), /Unsupported runner OS/);
   assert.throws(() => assetName("Linux", "RISCV64"), /Unsupported runner architecture/);
 });
