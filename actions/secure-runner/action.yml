@@ -48,7 +48,7 @@ runs:
   using: "composite"
   steps:
     - name: Harden the runner with the StepSecurity policy store
-      uses: tempoxyz/gh-actions/actions/harden-runner@283c732e2c32c4e786fdb83ff48aca40bf59755a
+      uses: tempoxyz/gh-actions/actions/harden-runner@026ab9cb33437d3fca3176b7164952f7dae5dd7f
       with:
         dev: ${{ inputs.dev }}
         egress-policy: ${{ inputs.egress-policy }}
