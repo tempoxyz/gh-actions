@@ -7,9 +7,13 @@ GitHub actor.
 
 The action uses GitHub STS policy `download-releases` in `tempoxyz/aegis` to
 download the native artifact for the runner operating system and architecture
-from release `20260915T134954Z-3f50c418aa41`. Before installation, it verifies
+from release `20260915T173101Z-2497d0eeb3fc`. Before installation, it verifies
 the artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
 including the signer workflow and source commit.
+
+This release retries incomplete Socket `pendingScan` responses within the existing
+90-second lookup deadline. Exhausted retries still fail closed by default; they
+do not turn an incomplete scan into an allow verdict.
 
 The caller must grant `id-token: write`. The generated token is revoked when
 the job finishes and is also covered by the STS lease expiration.
