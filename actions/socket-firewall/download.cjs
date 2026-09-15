@@ -5,9 +5,9 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-const RELEASE_TAG = "20260915T015503Z-bbee7e9ec71d";
-const RELEASE_COMMIT = "bbee7e9ec71dc63cc9721694f50cb397ce8e59ad";
-const RELEASE_VERSION = "bbee7e9ec71d";
+const RELEASE_TAG = "20260915T134954Z-3f50c418aa41";
+const RELEASE_COMMIT = "3f50c418aa4169b0128318ee3880487593d7849f";
+const RELEASE_VERSION = "3f50c418aa41";
 
 function assetName(runnerOS, runnerArch) {
   const operatingSystem = {

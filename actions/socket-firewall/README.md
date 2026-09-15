@@ -7,7 +7,7 @@ GitHub actor.
 
 The action uses GitHub STS policy `download-releases` in `tempoxyz/aegis` to
 download the native artifact for the runner operating system and architecture
-from release `20260915T015503Z-bbee7e9ec71d`. Before installation, it verifies
+from release `20260915T134954Z-3f50c418aa41`. Before installation, it verifies
 the artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
 including the signer workflow and source commit.
 
