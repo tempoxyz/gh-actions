@@ -18,3 +18,18 @@ test("uses the Windows ARM64-aware Harden Runner before Socket Firewall", () => 
     /uses: tempoxyz\/gh-actions\/actions\/harden-runner@905ee5bcb4fd76cdc54ca30c97b362b0f2a26390/,
   );
 });
+
+test("can skip Socket Firewall explicitly with a warning", () => {
+  assert.match(
+    manifest,
+    /disable-socket-firewall:\n\s+description:[^\n]+\n\s+required: false\n\s+default: "false"/,
+  );
+  assert.match(
+    manifest,
+    /- name: Warn when Socket Firewall is disabled\n\s+if: inputs\.disable-socket-firewall == 'true'/,
+  );
+  assert.match(
+    manifest,
+    /- name: Install Socket Firewall\n\s+if: inputs\.disable-socket-firewall != 'true'\n/,
+  );
+});

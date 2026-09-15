@@ -35,6 +35,10 @@ inputs:
     description: "Deploy Harden Runner directly on an ephemeral self-hosted Linux VM"
     required: false
     default: "false"
+  disable-socket-firewall:
+    description: "Skip Socket Firewall installation for jobs that install and test Aegis itself"
+    required: false
+    default: "false"
   token:
     description: "GitHub token used by Harden Runner to avoid API rate limiting"
     required: false
@@ -56,7 +60,15 @@ runs:
         deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
         token: ${{ inputs.token }}
 
+    - name: Warn when Socket Firewall is disabled
+      if: inputs.disable-socket-firewall == 'true'
+      shell: bash
+      run: >-
+        echo "::warning title=Package-policy enforcement disabled::Socket
+        Firewall installation was explicitly disabled for this job."
+
     - name: Install Socket Firewall
+      if: inputs.disable-socket-firewall != 'true'
       uses: tempoxyz/gh-actions/actions/socket-firewall@114030b5ee7673be7b0f1065b44608a4c004c6c3
       with:
         dev: ${{ inputs.dev }}
