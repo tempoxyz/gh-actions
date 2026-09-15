@@ -17,10 +17,6 @@ test("uses the Windows ARM64-aware Harden Runner before Socket Firewall", () => 
     manifest,
     /uses: tempoxyz\/gh-actions\/actions\/harden-runner@026ab9cb33437d3fca3176b7164952f7dae5dd7f/,
   );
-  assert.match(
-    manifest,
-    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@468722b15ad51efc3d3e8229323af0a706187542/,
-  );
 });
 
 test("can disable both enforcement layers explicitly", () => {

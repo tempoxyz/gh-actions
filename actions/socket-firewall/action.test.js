@@ -10,7 +10,7 @@ const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("uses both STS exchanges and the aegis download policy", () => {
   assert.match(manifest, /actions\/socket-firewall\/sts@5338a3746a2ac2ddd88cbede733c79f907aca3a0/);
-  assert.match(manifest, /actions\/github-sts@aa9a8ce9ca6fd338234b1c2c1a4e00161b4fe755/);
+  assert.match(manifest, /actions\/github-sts@5338a3746a2ac2ddd88cbede733c79f907aca3a0/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);
   assert.match(manifest, /INPUT_SOCKET_TOKEN: \$\{\{ steps\.socket-token\.outputs\.token \}\}/);
