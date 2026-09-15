@@ -1,6 +1,6 @@
 name: "Socket Firewall"
 description: >-
-  Install Socket Firewall Enterprise with a short-lived API token
+  Install Aegis with a short-lived Socket API token
 
 inputs:
   dev:
@@ -10,19 +10,19 @@ inputs:
 
 outputs:
   firewall-path-binary:
-    description: "Path to the installed Socket Firewall binary"
-    value: ${{ steps.windows-binary.outputs.path || steps.firewall.outputs.firewall-path-binary }}
+    description: "Path to the installed Aegis or fallback Socket Firewall binary"
+    value: ${{ steps.install-linux.outputs.path || steps.install-macos.outputs.path || steps.install-windows.outputs.path || steps.windows-binary.outputs.path || steps.firewall.outputs.firewall-path-binary }}
   firewall-path-report:
-    description: "Path to the Socket Firewall report JSON"
-    value: ${{ steps.firewall.outputs.firewall-path-report }}
+    description: "Path to the Aegis audit log or fallback Socket Firewall report JSON"
+    value: ${{ steps.install-linux.outputs.report || steps.install-macos.outputs.report || steps.install-windows.outputs.report || steps.firewall.outputs.firewall-path-report }}
 
 runs:
   using: "composite"
   steps:
     # GitHub never issues an OIDC token to pull_request runs from forks, whatever
-    # permissions the workflow declares. Such runs skip the Socket STS exchange and
-    # install the Free edition below. Any other event without an OIDC token is a
-    # workflow missing `id-token: write`, so it fails here.
+    # permissions the workflow declares. Preserve the existing Free fallback for
+    # those runs because the private Aegis release and both STS exchanges require
+    # OIDC. Any other event without OIDC is a workflow configuration error.
     - name: Detect GitHub OIDC availability
       id: oidc
       shell: bash
@@ -32,7 +32,7 @@ runs:
           echo "available=true" >> "$GITHUB_OUTPUT"
         elif [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
           echo "available=false" >> "$GITHUB_OUTPUT"
-          echo "::warning::GitHub issued no OIDC token to this pull_request run (fork pull requests never receive one). Installing Socket Firewall Free instead of Enterprise: known-malware blocking only, without organization policies."
+          echo "::warning::GitHub issued no OIDC token to this pull_request run (fork pull requests never receive one). Installing Socket Firewall Free instead of Aegis: known-malware blocking only, without organization policies."
         else
           echo "::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing: the job must grant id-token: write (event: ${GITHUB_EVENT_NAME:-unknown})"
           exit 1
@@ -41,22 +41,100 @@ runs:
     - name: Exchange GitHub OIDC token for a Socket token
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@0f195471b66fe3e39f538383f67bfc0676a3aaa5
+      uses: tempoxyz/gh-actions/actions/socket-firewall/sts@5338a3746a2ac2ddd88cbede733c79f907aca3a0
       with:
         dev: ${{ inputs.dev }}
 
-    # In `firewall` mode the vendored action installs the Enterprise edition when
-    # socket-token is set and the Free edition when it is empty, which is the case
-    # when the exchange above was skipped.
-    - name: Install Socket Firewall
+    - name: Exchange GitHub OIDC token for Aegis release access
+      if: steps.oidc.outputs.available == 'true'
+      id: release-token
+      uses: tempoxyz/gh-actions/actions/github-sts@5338a3746a2ac2ddd88cbede733c79f907aca3a0
+      with:
+        scope: tempoxyz/aegis
+        policy: download-releases
+        ttl: 15m
+
+    - name: Download and verify Aegis
+      if: steps.oidc.outputs.available == 'true'
+      id: download
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.release-token.outputs.token }}
+        RUNNER_ARCHITECTURE: ${{ runner.arch }}
+        RUNNER_OPERATING_SYSTEM: ${{ runner.os }}
+      run: node "$GITHUB_ACTION_PATH/download.cjs"
+
+    # Aegis deliberately rejects credentials in its JSON configuration. This
+    # provider keeps the token in memory and exposes it only at an unguessable
+    # loopback URL, which is the release's supported installed-CI token source.
+    - name: Prepare Aegis configuration
+      if: steps.oidc.outputs.available == 'true'
+      id: config
+      shell: bash
+      env:
+        INPUT_SOCKET_TOKEN: ${{ steps.socket-token.outputs.token }}
+      run: node "$GITHUB_ACTION_PATH/token-provider.cjs"
+
+    - name: Install Aegis package on Linux
+      if: steps.oidc.outputs.available == 'true' && runner.os == 'Linux'
+      id: install-linux
+      shell: bash
+      env:
+        AEGIS_PACKAGE: ${{ steps.download.outputs.package }}
+        AEGIS_CONFIG: ${{ steps.config.outputs.path }}
+      run: |
+        set -euo pipefail
+        sudo apt-get install -y "$AEGIS_PACKAGE"
+        /usr/bin/aegis install --config "$AEGIS_CONFIG"
+        echo "path=/usr/bin/aegis" >> "$GITHUB_OUTPUT"
+        echo "report=/var/log/aegis/service.jsonl" >> "$GITHUB_OUTPUT"
+
+    - name: Install Aegis package on macOS
+      if: steps.oidc.outputs.available == 'true' && runner.os == 'macOS'
+      id: install-macos
+      shell: bash
+      env:
+        AEGIS_PACKAGE: ${{ steps.download.outputs.package }}
+        AEGIS_CONFIG: ${{ steps.config.outputs.path }}
+      run: |
+        set -euo pipefail
+        extract="$RUNNER_TEMP/aegis-extracted"
+        mkdir -p "$extract"
+        tar -xzf "$AEGIS_PACKAGE" -C "$extract"
+        sudo install -m 0755 "$extract/aegis" /usr/local/bin/aegis
+        /usr/local/bin/aegis install --config "$AEGIS_CONFIG"
+        echo "path=/usr/local/bin/aegis" >> "$GITHUB_OUTPUT"
+        echo "report=/Library/Application Support/Aegis/service.jsonl" >> "$GITHUB_OUTPUT"
+
+    - name: Install Aegis package on Windows
+      if: steps.oidc.outputs.available == 'true' && runner.os == 'Windows'
+      id: install-windows
+      shell: pwsh
+      env:
+        AEGIS_PACKAGE: ${{ steps.download.outputs.package }}
+        AEGIS_CONFIG: ${{ steps.config.outputs.path }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $directory = Join-Path $env:ProgramFiles 'Aegis'
+        New-Item -ItemType Directory -Force $directory | Out-Null
+        Expand-Archive -LiteralPath $env:AEGIS_PACKAGE -DestinationPath $directory -Force
+        $binary = Join-Path $directory 'aegis.exe'
+        & $binary install --config $env:AEGIS_CONFIG
+        if ($LASTEXITCODE -ne 0) { throw "aegis install failed" }
+        "path=$binary" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "report=$(Join-Path $env:ProgramData 'Aegis\service.jsonl')" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    # Fork pull requests cannot authenticate to the private Aegis release. Keep
+    # the prior no-credential fallback so they retain known-malware protection.
+    - name: Install Socket Firewall Free
+      if: steps.oidc.outputs.available == 'false'
       id: firewall
-      uses: tempoxyz/gh-actions/vendor/SocketDev/action@0f195471b66fe3e39f538383f67bfc0676a3aaa5
+      uses: tempoxyz/gh-actions/vendor/SocketDev/action@5338a3746a2ac2ddd88cbede733c79f907aca3a0
       with:
         mode: firewall
-        socket-token: ${{ steps.socket-token.outputs.token }}
 
-    - name: Make Socket Firewall executable by Windows shims
-      if: runner.os == 'Windows'
+    - name: Make Socket Firewall Free executable by Windows shims
+      if: steps.oidc.outputs.available == 'false' && runner.os == 'Windows'
       id: windows-binary
       shell: pwsh
       env:

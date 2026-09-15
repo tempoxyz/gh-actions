@@ -20,6 +20,67 @@ permissions:
   id-token: write
 
 jobs:
+  socket-firewall-aegis:
+    name: socket-firewall installs Aegis (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test Socket Firewall action helpers
+        run: node --test actions/socket-firewall/action.test.js actions/socket-firewall/sts/action.test.js actions/socket-firewall/windows-binary.test.js
+
+      - name: Install Aegis from this checkout
+        id: socket-firewall
+        uses: ./actions/socket-firewall
+
+      - name: Verify the action installed Aegis
+        shell: bash
+        env:
+          AEGIS_BINARY: ${{ steps.socket-firewall.outputs.firewall-path-binary }}
+        run: |
+          set -euo pipefail
+          node -e 'const fs = require("fs"); const path = require("path"); const binary = process.env.AEGIS_BINARY; if (!fs.statSync(binary).isFile() || path.basename(binary).toLowerCase() !== (process.platform === "win32" ? "aegis.exe" : "aegis")) process.exit(1)'
+
+      - name: Allow isnumber@1.0.0
+        run: node actions/socket-firewall/npm-install.cjs allow
+
+      - name: Block lodahs@0.0.1-security
+        id: blocked-package
+        continue-on-error: true
+        run: node actions/socket-firewall/npm-install.cjs block
+
+      - name: Verify the block and Aegis audit decisions
+        if: always()
+        shell: bash
+        env:
+          AEGIS_REPORT: ${{ steps.socket-firewall.outputs.firewall-path-report }}
+          BLOCK_OUTCOME: ${{ steps.blocked-package.outcome }}
+        run: |
+          set -euo pipefail
+          test "$BLOCK_OUTCOME" = failure
+          copy="$RUNNER_TEMP/aegis-service.jsonl"
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo cp "$AEGIS_REPORT" "$copy"
+            sudo chown "$(id -u):$(id -g)" "$copy"
+          else
+            AEGIS_REPORT="$AEGIS_REPORT" AEGIS_LOG_COPY="$copy" node -e 'require("fs").copyFileSync(process.env.AEGIS_REPORT, process.env.AEGIS_LOG_COPY)'
+          fi
+          node actions/socket-firewall/verify-log.cjs "$copy"
+
   setup-foundry-bootstrap:
     name: setup-foundry with ${{ matrix.cli }} GitHub CLI
     runs-on: ubuntu-latest
@@ -564,27 +625,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Test Windows Socket Firewall executable compatibility
-        shell: pwsh
-        run: node --test actions/socket-firewall/windows-binary.test.js
-      - name: Install Socket Firewall from this checkout
-        id: socket-firewall-windows
-        uses: ./actions/socket-firewall
-      - name: Verify Windows Socket Firewall executable and Cargo shim
-        shell: pwsh
-        env:
-          FIREWALL_BINARY: ${{ steps.socket-firewall-windows.outputs.firewall-path-binary }}
-        run: |
-          if (-not $env:FIREWALL_BINARY.EndsWith('.exe')) {
-            throw "Socket Firewall output must point to a Windows executable"
-          }
-          & $env:FIREWALL_BINARY --version
-          if ($LASTEXITCODE -ne 0) { throw "Socket Firewall executable failed" }
-          if ((Get-Command cargo).Source -ne (Join-Path $env:SFW_SHIM_DIR 'cargo.cmd')) {
-            throw "Cargo must resolve to the Socket Firewall shim"
-          }
-          cargo --version
-          if ($LASTEXITCODE -ne 0) { throw "Socket Firewall Cargo shim failed" }
       - name: Install Rust
         uses: ./vendor/dtolnay/rust-toolchain
       - name: Create Windows cargo-cooldown fixture and user policy
