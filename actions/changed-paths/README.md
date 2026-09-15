@@ -36,3 +36,7 @@ filters that matched. Outputs are step outputs, so give the step an `id`.
 
 Globs support `**`, `*`, `?` and `{a,b}`; a path matches a filter when it matches a positive
 pattern and no negated one. Matching logic lives in `match.mjs` and is unit-tested.
+
+GitHub's compare API returns at most 300 changed files. When a comparison reaches that limit,
+the list may be incomplete, so the action treats every filter as changed and emits a warning.
+This intentionally fails open so large changesets cannot silently skip conditional CI.

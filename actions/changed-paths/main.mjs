@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync, existsSync } from "node:fs";
-import { applyFilters } from "./match.mjs";
+import { evaluateFilters } from "./match.mjs";
 
 const env = process.env;
 const die = (m) => { console.error(`::error::changed-paths: ${m}`); process.exit(1); };
@@ -26,23 +26,26 @@ if (!base) {
 if (!base) die("could not determine the base commit; pass `base` explicitly");
 if (!head) die("could not determine the head commit; pass `head` explicitly");
 
-// Changed files via the compare API (no fetch-depth requirements). Paginated: up to 300 files per page.
+// Changed files via the compare API (no fetch-depth requirements). GitHub returns changed files
+// only on the first page and caps the list at 300 for the entire comparison.
+const maxCompareFiles = 300;
 const files = [];
-let page = 1;
-for (;;) {
-  const body = JSON.parse(sh("gh", ["api", `repos/${env.GITHUB_REPOSITORY}/compare/${base}...${head}?per_page=100&page=${page}`]));
-  for (const f of body.files ?? []) { files.push(f.filename); if (f.previous_filename) files.push(f.previous_filename); }
-  if (!body.files || body.files.length < 100 || page >= 30) break;
-  page++;
-}
+const body = JSON.parse(sh("gh", ["api", `repos/${env.GITHUB_REPOSITORY}/compare/${base}...${head}?per_page=1&page=1`]));
+const compareFiles = body.files ?? [];
+for (const f of compareFiles) { files.push(f.filename); if (f.previous_filename) files.push(f.previous_filename); }
 const unique = [...new Set(files)];
 console.log(`comparing ${base.slice(0, 12)}...${head.slice(0, 12)}: ${unique.length} changed path(s)`);
 
-const results = applyFilters(filters, unique);
+const failOpen = compareFiles.length >= maxCompareFiles;
+if (failOpen) {
+  console.warn(`::warning::changed-paths: GitHub's compare API returned its ${maxCompareFiles}-file maximum; treating every filter as changed because the file list may be incomplete`);
+}
+
+const results = evaluateFilters(filters, unique, failOpen);
 const changes = [];
 const out = [];
 for (const [name, r] of Object.entries(results)) {
-  const hit = r.matched.length > 0;
+  const hit = r.hit;
   if (hit) changes.push(name);
   out.push(`${name}=${hit}`, `${name}_count=${r.matched.length}`);
   if ((env.LIST_FILES || "none") === "json") out.push(`${name}_files=${JSON.stringify(r.matched)}`);
