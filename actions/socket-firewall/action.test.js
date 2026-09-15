@@ -11,8 +11,8 @@ const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 test("uses both STS exchanges and the aegis download policy", () => {
   assert.match(manifest, /actions\/socket-firewall\/sts@5338a3746a2ac2ddd88cbede733c79f907aca3a0/);
   assert.match(manifest, /actions\/github-sts@5338a3746a2ac2ddd88cbede733c79f907aca3a0/);
-  assert.match(manifest, /scope: tempoxyz\/aegis\n/);
-  assert.match(manifest, /policy: download-releases\n/);
+  assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
+  assert.match(manifest, /policy: download-releases\r?\n/);
   assert.match(manifest, /INPUT_SOCKET_TOKEN: \$\{\{ steps\.socket-token\.outputs\.token \}\}/);
   assert.match(manifest, /aegis install --config/);
 });
@@ -83,10 +83,10 @@ test("falls back to Socket Firewall Free only for pull requests without OIDC", (
   assert.match(detect, /ACTIONS_ID_TOKEN_REQUEST_TOKEN:-/);
   assert.match(detect, /= "pull_request" \]/);
   assert.match(detect, /::warning::.*Socket Firewall Free/);
-  assert.match(detect, /::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing[^\n]*\n\s+exit 1/);
-  assert.match(fallback, /^\s+if: steps\.oidc\.outputs\.available == 'false'\n/m);
+  assert.match(detect, /::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing[^\r\n]*\r?\n\s+exit 1/);
+  assert.match(fallback, /^\s+if: steps\.oidc\.outputs\.available == 'false'\r?$/m);
   assert.match(fallback, /vendor\/SocketDev\/action@5338a3746a2ac2ddd88cbede733c79f907aca3a0/);
-  assert.match(fallback, /mode: firewall\n/);
+  assert.match(fallback, /mode: firewall\r?\n/);
   assert.doesNotMatch(fallback, /socket-token:/);
 });
 
