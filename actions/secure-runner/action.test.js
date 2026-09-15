@@ -22,7 +22,7 @@ test("uses the Windows ARM64-aware Harden Runner before Socket Firewall", () => 
 test("pins Socket Firewall to the merged Aegis package identity fix", () => {
   assert.match(
     manifest,
-    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@43a9fb41c59a7af10345dc4715d4957def19d22e/,
+    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@66da4b691a1bbc55732a57f2e85dd18b24cdd58b/,
   );
 });
 
