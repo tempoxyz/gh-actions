@@ -265,6 +265,46 @@ test("skips Harden Runner cleanly on Windows ARM64", async () => {
   assert.equal(revocations, 0);
 });
 
+test("explicit disable-enforcement mode skips every Harden Runner entrypoint", async () => {
+  const calls = [];
+  const state = stateFile();
+  const { lines } = await capturedLogs(() =>
+    preMain({
+      env: {
+        ...oidcEnv,
+        GITHUB_STATE: state,
+        "INPUT_DISABLE-ENFORCEMENT": "true",
+      },
+      run: (...args) => calls.push(args),
+      exchange: async () => {
+        throw new Error("the STS must not be contacted when enforcement is disabled");
+      },
+    }),
+  );
+
+  assert.deepEqual(calls, []);
+  assert.equal(fs.readFileSync(state, "utf8"), "enforcement_disabled=true\n");
+  assert.ok(
+    lines.some((line) => /^::warning::Runner security enforcement was explicitly disabled/.test(line)),
+    lines.join("\n"),
+  );
+
+  mainMain({
+    env: { STATE_enforcement_disabled: "true" },
+    run: (...args) => calls.push(args),
+  });
+  let revocations = 0;
+  await postMain({
+    env: { STATE_enforcement_disabled: "true" },
+    run: (...args) => calls.push(args),
+    revoke: async () => {
+      revocations += 1;
+    },
+  });
+  assert.deepEqual(calls, []);
+  assert.equal(revocations, 0);
+});
+
 test("main and post honour the inline-policy state", async () => {
   const calls = [];
   const run = (...args) => calls.push(args);

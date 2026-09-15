@@ -2,6 +2,7 @@ const { required } = require("../step-security-sts/main.cjs");
 const { runHardenRunner } = require("./run.cjs");
 
 function main({ env = process.env, run = runHardenRunner } = {}) {
+  if (env.STATE_enforcement_disabled === "true") return;
   if (env.STATE_unsupported_platform === "true") return;
   if (env.STATE_inline_policy === "true") {
     run("main", null);
