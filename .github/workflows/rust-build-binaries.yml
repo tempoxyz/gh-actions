@@ -136,7 +136,7 @@ jobs:
         env:
           BINARY: ${{ matrix.binary }}
           PROFILE: ${{ inputs.profile }}
-        run: cargo build --bin "$BINARY" --profile "$PROFILE"
+        run: cargo build --locked --bin "$BINARY" --profile "$PROFILE"
       - name: Resolve artifact path
         id: artifact
         env:

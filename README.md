@@ -553,7 +553,7 @@ and STS authentication; no persistent StepSecurity API key is needed.
 
 ### `rust-build-binaries`
 
-Builds one or more Rust binaries with `cargo build --bin <binary> --profile <profile>` and uploads each binary as an artifact.
+Builds one or more Rust binaries with `cargo build --locked --bin <binary> --profile <profile>` and uploads each binary as an artifact. Callers must commit an up-to-date `Cargo.lock`; the build fails if it is missing or dependency resolution would change it.
 
 ```yaml
 name: Build binaries
