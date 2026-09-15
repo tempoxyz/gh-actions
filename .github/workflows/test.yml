@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   socket-firewall-aegis:
-    name: socket-firewall installs Aegis (${{ matrix.os }})
+    name: secure-runner installs Aegis (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -33,7 +33,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/actions/secure-runner@52383755137c3f8a33714c0e006ab4953da3e87c
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,17 +43,23 @@ jobs:
       - name: Test Socket Firewall action helpers
         run: node --test actions/socket-firewall/action.test.js actions/socket-firewall/sts/action.test.js
 
-      - name: Install Aegis from this checkout
-        id: socket-firewall
-        uses: ./actions/socket-firewall
-
-      - name: Verify the action installed Aegis
+      - name: Verify secure-runner installed Aegis
+        id: aegis
         shell: bash
-        env:
-          AEGIS_BINARY: ${{ steps.socket-firewall.outputs.firewall-path-binary }}
         run: |
           set -euo pipefail
-          node -e 'const fs = require("fs"); const path = require("path"); const binary = process.env.AEGIS_BINARY; if (!fs.statSync(binary).isFile() || path.basename(binary).toLowerCase() !== (process.platform === "win32" ? "aegis.exe" : "aegis")) process.exit(1)'
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const paths = {
+            linux: ["/usr/bin/aegis", "/var/log/aegis/service.jsonl"],
+            darwin: ["/usr/local/bin/aegis", "/Library/Application Support/Aegis/service.jsonl"],
+            win32: [path.join(process.env.ProgramFiles || "C:\\Program Files", "Aegis", "aegis.exe"), path.join(process.env.ProgramData || "C:\\ProgramData", "Aegis", "service.jsonl")],
+          };
+          const [binary, report] = paths[process.platform];
+          if (!fs.statSync(binary).isFile()) process.exit(1);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `report=${report}\n`);
+          NODE
 
       - name: Allow isnumber@1.0.0
         run: node actions/socket-firewall/npm-install.cjs allow
@@ -67,7 +73,7 @@ jobs:
         if: always()
         shell: bash
         env:
-          AEGIS_REPORT: ${{ steps.socket-firewall.outputs.firewall-path-report }}
+          AEGIS_REPORT: ${{ steps.aegis.outputs.report }}
           BLOCK_OUTCOME: ${{ steps.blocked-package.outcome }}
         run: |
           set -euo pipefail
@@ -93,7 +99,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/actions/secure-runner@52383755137c3f8a33714c0e006ab4953da3e87c
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -139,7 +145,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/actions/secure-runner@52383755137c3f8a33714c0e006ab4953da3e87c
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -189,7 +195,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/actions/secure-runner@52383755137c3f8a33714c0e006ab4953da3e87c
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -619,7 +625,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/actions/secure-runner@52383755137c3f8a33714c0e006ab4953da3e87c
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
