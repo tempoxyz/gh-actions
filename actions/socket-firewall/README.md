@@ -7,13 +7,16 @@ GitHub actor.
 
 The action uses GitHub STS policy `download-releases` in `tempoxyz/aegis` to
 download the native artifact for the runner operating system and architecture
-from release `20260915T173101Z-2497d0eeb3fc`. Before installation, it verifies
+from release `20260916T103300Z-3a125feb7af3`. Before installation, it verifies
 the artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
 including the signer workflow and source commit.
 
-This release retries incomplete Socket `pendingScan` responses within the existing
-90-second lookup deadline. Exhausted retries still fail closed by default; they
-do not turn an incomplete scan into an allow verdict.
+This release polls incomplete Socket `pendingScan` responses until the existing
+90-second lookup deadline (or an earlier caller deadline), rather than stopping
+after three attempts. Pending backoff is 2, 4, 8, then 10 seconds, plus up to 25%
+jitter. Transient API failures retain a separate two-retry budget. Unresolved
+scans still fail closed by default. Per-attempt diagnostics are written to the
+Aegis service log; callers must collect that log to expose them in CI artifacts.
 
 The caller must grant `id-token: write`. The generated token is revoked when
 the job finishes and is also covered by the STS lease expiration.
