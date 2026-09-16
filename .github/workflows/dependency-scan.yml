@@ -129,7 +129,7 @@ jobs:
 
       - name: Upload scan reports
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        uses: tempoxyz/gh-actions/vendor/actions/upload-artifact@9969ea7c9c0b3d9f1f15b6f939a20311afd3173a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ${{ inputs.artifact-name }}
           path: ${{ steps.prepare.outputs.results }}/

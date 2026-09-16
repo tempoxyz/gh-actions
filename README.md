@@ -58,7 +58,6 @@ what is excluded from each copy and why are in the manifest `notes`.
 | [`JasonEtco/create-an-issue`](https://github.com/JasonEtco/create-an-issue) | v2.9.2 (`1b14a70`) | Creates a new issue using a template with front matter. |
 | [`SocketDev/action`](https://github.com/SocketDev/action/blob/be1f253a41351d59095f8d7f1425985097dd1054/README.md) | main (`be1f253`) | GitHub Action to run Socket in CLI or Firewall mode |
 | [`Swatinem/rust-cache`](https://github.com/Swatinem/rust-cache/blob/6323deb102c322ba6fcbdcafc7e3dddab59af2b6/README.md) | v2.9.2 (`6323deb`) | A GitHub Action that implements smart caching for rust/cargo projects with sensible defaults. |
-| [`actions/upload-artifact`](https://github.com/actions/upload-artifact/blob/043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/README.md) | v7.0.1 (`043fb46`) | Upload a build artifact that can be used by subsequent workflow steps |
 | [`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request/blob/48f256284bd46cdaab1048c3721360e808335d50/README.md) | v6.1.1 (`48f2562`) | Ensure your PR title matches the Conventional Commits spec (https://www.conventionalcommits.org/). |
 | [`anchore/sbom-action`](https://github.com/anchore/sbom-action/blob/e22c389904149dbc22b58101806040fa8d37a610/README.md) | v0.24.0 (`e22c389`) | Creates an SBOM (Software Bill Of Materials) from your code and container images |
 | [`aquasecurity/setup-trivy`](https://github.com/aquasecurity/setup-trivy/blob/81e514348e19b6112ce2a7e3ecbafe19c1e1f567/README.md) | v0.3.1 (`81e5143`) | Install Trivy binary from release page |
@@ -405,7 +404,7 @@ Optional inputs:
 **Dependency Scan** scans base and proposed revisions with our
 [`osv-scanner-action`](actions/osv-scanner-action), then uses OSV's reporter to find
 new vulnerabilities. Works on private repositories without GitHub Code Security or
-Advanced Security. Uses Tempo-owned actions and GitHub’s `actions/checkout`.
+Advanced Security. Uses Tempo-owned actions and GitHub’s `actions/checkout` and `actions/upload-artifact`.
 The OSV container image is pulled from Google's GHCR registry and pinned by digest.
 
 ```yaml

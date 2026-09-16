@@ -16,6 +16,10 @@ rules:
   - ignore: true
     conditions:
       - expr: ActionName == "actions/checkout" && ActionVersion == "3d3c42e5aac5ba805825da76410c181273ba90b1"
+  # Artifact upload follows the same explicit-SHA, no-version-comment policy.
+  - ignore: true
+    conditions:
+      - expr: ActionName == "actions/upload-artifact" && ActionVersion == "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
   # First-party actions are consumed by this repository's own reusable workflows and
   # wrappers immediately after review. They stay pinned by full SHA, but this repository
   # publishes no tags to comment with and new revisions cannot satisfy the soak period.
