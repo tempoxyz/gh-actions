@@ -6,6 +6,7 @@ Reusable GitHub Actions for the Tempo organization.
 
 | Action | Description |
 |--------|-------------|
+| [`osv-scanner-action`](actions/osv-scanner-action) | Scan dependencies and compare vulnerabilities with OSV |
 | [`actionlint`](actions/actionlint) | Lint GitHub Actions workflows with the digest-pinned actionlint image
 | [`docker-login`](actions/docker-login) | Log in to GHCR and optionally Docker Hub
 | [`docker-build-push`](actions/docker-build-push) | Build and push Docker images
@@ -180,7 +181,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
-| [`dependency-review`](#dependency-review) | Report vulnerabilities and license issues in dependency changes | any |
+| [`dependency-vulnerability-scan`](#dependency-vulnerability-scan) | Detect newly introduced dependency vulnerabilities with OSV | Linux + Docker |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-deny`](#rust-deny) | Deny-only wrapper around rust-lint | rust repos |
@@ -400,62 +401,75 @@ Optional inputs:
 - `verify-pin-min-age` (default: `true`) — verify current pins against configured minimum-age rules
 - `pin-min-age` (default: `7`) — default minimum age in days for pinned action commits; caller-local Pinact configuration can override it
 
-### `dependency-review`
+### `dependency-vulnerability-scan`
 
-The dedicated `dependency-review-ci.yml` caller runs on pull requests in this repository without overriding any inputs. The reusable workflow only declares `workflow_call`.
-
-Runs [actions/dependency-review-action](https://github.com/actions/dependency-review-action) to report vulnerabilities and license issues introduced by dependency changes. Reports appear in the job logs and summary. This compares two revisions; it does not scan all existing dependencies. The caller needs dependency graph enabled and access to GitHub's dependency review API (public repositories, or private repositories with the required GitHub security license).
+**Dependency Vulnerability Scan** scans base and proposed revisions with our
+[`osv-scanner-action`](actions/osv-scanner-action), then uses OSV's reporter to find
+new vulnerabilities. Works on private repositories without GitHub Code Security or
+Advanced Security. All action references in this workflow are under `tempoxyz`.
+The OSV container image is pulled from Google's GHCR registry and pinned by digest.
 
 ```yaml
-name: Dependency Review
+name: Dependency Vulnerability Scan
 
 on:
   pull_request:
+  merge_group:
+
+permissions: {}
 
 jobs:
-  dependency-review:
-    uses: tempoxyz/gh-actions/.github/workflows/dependency-review.yml@main
+  scan:
+    uses: tempoxyz/gh-actions/.github/workflows/dependency-vulnerability-scan.yml@main
     permissions:
       contents: read
       id-token: write
-      pull-requests: write
-    with:
-      comment-summary-in-pr: always
 ```
 
-The workflow starts with `secure-runner`, checks out the caller's repository without persisting credentials, and runs the SHA-pinned action. Callers must grant `contents: read`, `id-token: write` (for `secure-runner`), and `pull-requests: write` (for optional PR comments, including comments enabled through a config file). GitHub restricts write permissions for fork and Dependabot pull requests, so PR comments may be unavailable for those runs.
+Pin production callers to a full commit SHA. The dedicated
+`dependency-vulnerability-scan-ci.yml` caller runs this workflow on this repository's
+pull requests and merge groups. It starts with `secure-runner`; the OIDC permission
+is for runner protection, and no GitHub/OIDC credentials are passed into OSV.
 
-All upstream action options are supported. These three inputs are booleans and default to `true`: `warn-only`, `retry-on-snapshot-warnings`, and `show-patched-versions`. Pass `false` to override any of them. These defaults take precedence over values in `config-file`; `warn-only: false` enables enforcement of findings.
+By default, scans compare the event's base SHA with its merge SHA, including the
+proposed merge result. Other events require both `base-ref` and `head-ref`;
+`pull_request_target` and `workflow_run` are rejected. Both checkouts disable
+credential persistence. The source is mounted read-only and results live in an
+isolated runner temporary directory that survives switching revisions.
 
-All other non-token inputs are optional strings. Omitted inputs remain empty so the action can apply its configuration file and upstream defaults. Quote boolean and numeric values for these string inputs (for example, `license-check: "false"` or `retry-on-snapshot-warnings-timeout: "180"`).
+New vulnerabilities fail the job by default. Existing findings are baselined using
+OSV's reporter semantics. `fail-on-vuln: false` makes findings informational;
+scanner failures and missing or malformed results still fail. A revision with no
+supported dependency files is allowed and produces an empty inventory, so a PR
+can introduce its first lockfile or remove its last one. OSV-supported lockfiles,
+SBOMs, and manifests are scanned; unresolved or unsupported dependencies are not
+an assurance of safety. Call analysis is disabled.
 
-| Inputs | Values |
-|--------|--------|
-| `fail-on-severity` | `low`, `moderate`, `high`, or `critical` |
-| `fail-on-scopes` | Comma-separated `runtime`, `development`, `unknown` |
-| `base-ref`, `head-ref` | Revisions to compare; inferred for pull requests, supply both for other events |
-| `config-file` | Local path or `owner/repo/path@ref` |
-| `allow-licenses`, `deny-licenses` | Comma-separated SPDX licenses; mutually exclusive (`deny-licenses` is deprecated upstream) |
-| `allow-dependencies-licenses` | Comma-separated package URLs exempt from license checks |
-| `allow-ghsas` | Comma-separated advisory IDs to ignore |
-| `license-check`, `vulnerability-check` | `"true"` or `"false"` |
-| `comment-summary-in-pr` | `always`, `on-failure`, or `never` |
-| `deny-packages`, `deny-groups` | Comma-separated package URLs or namespace URLs |
-| `retry-on-snapshot-warnings-timeout` | Snapshot retry timeout in seconds |
-| `show-openssf-scorecard` | `"true"` or `"false"` |
-| `warn-on-openssf-scorecard-level` | Scorecard warning threshold |
+Results appear as annotations and in the job summary. Base/head JSON, diff JSON,
+Markdown, and SARIF are retained together as an Actions artifact for five days,
+including when the vulnerability gate fails. Nothing is uploaded to Code Scanning,
+and no `security-events: write` or `pull-requests: write` permission is required.
 
-Pass token options via the reusable workflow's `secrets` mapping:
+| Input | Default | Description |
+|-------|---------|-------------|
+| `scan-args` | `--recursive` then `./` | One source scan argument per line; format/output/call-analysis flags are managed internally |
+| `fail-on-vuln` | `true` | Fail on newly introduced vulnerabilities |
+| `base-ref`, `head-ref` | Event base/merge SHAs | Explicit revision overrides |
+| `checkout-submodules` | `false` | Recursively check out submodules |
+| `runs-on` | `ubuntu-latest` | Linux runner with Docker and Node.js |
+| `timeout-minutes` | `20` | Job timeout |
+| `artifact-name` | `dependency-vulnerability-scan` | Set a unique name for each matrix invocation |
 
-```yaml
-    secrets:
-      repo-token: ${{ secrets.DEPENDENCY_REVIEW_TOKEN }}
-      external-repo-token: ${{ secrets.CONFIG_REPO_TOKEN }}
-```
+The `vulnerabilities-found` workflow output is `true` or `false` after a completed
+comparison. Configure OSV exclusions with `osv-scanner.toml` or `scan-args`; each
+revision's scanner configuration applies to its scan.
 
-Both secrets are optional. `repo-token` defaults to `github.token`; `external-repo-token` is needed when reading a config file from another private repository. See the [upstream configuration reference](https://github.com/actions/dependency-review-action#configuration) for detailed option semantics.
-
-The action's `comment-content`, `dependency-changes`, `vulnerable-changes`, `invalid-license-changes`, and `denied-changes` outputs are exposed as workflow outputs for downstream jobs (for example, `needs.dependency-review.outputs.vulnerable-changes`).
+Migration from `dependency-review.yml`: change the workflow path and required
+status check names, remove old inputs/secrets, and remove `pull-requests: write`.
+The old workflow defaulted to warning only; use `fail-on-vuln: false` to retain
+that behavior. License policy, package deny lists, Scorecard, PR comments, and the
+old action's JSON outputs are not carried over. Previously SHA-pinned callers
+continue using the old implementation until their pins are updated.
 
 ### `reproducible-build`
 
