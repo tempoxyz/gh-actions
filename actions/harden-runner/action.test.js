@@ -12,7 +12,7 @@ const { main: postMain } = require("./post.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@32e21ece7b549aa54538cb84e921250f704f7d21/;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@de8817e2eae66bc85468011ba8c7a9c2792570d1/;
 
 function usesSecureRunner(filename, visited = new Set()) {
   if (visited.has(filename)) return false;
@@ -395,7 +395,7 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
         assert.match(
           steps,
           new RegExp(
-            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/secure-runner@32e21ece7b549aa54538cb84e921250f704f7d21[^\n]*`,
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/secure-runner@de8817e2eae66bc85468011ba8c7a9c2792570d1[^\n]*`,
           ),
           `${filename} must use the Secure Runner wrapper as the first step of every runnable job`,
         );

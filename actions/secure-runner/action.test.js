@@ -22,7 +22,7 @@ test("uses the Windows ARM64-aware Harden Runner before Socket Firewall", () => 
 test("pins Socket Firewall with partner organization STS support", () => {
   assert.match(
     manifest,
-    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@6f041dcf004ce5b4b8198e52fae34c71355f8e47/,
+    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@e28e5f1731fd6137e785b29168e29f2492261185/,
   );
 });
 
