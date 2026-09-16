@@ -8,7 +8,7 @@ pinned to the v2.6.0 multi-architecture image digest. No Google-owned action is 
 The container is downloaded from `ghcr.io/google/osv-scanner-action`; it is not hosted
 in the Tempo registry. Docker image pulls and OSV API access must be allowed by runner policy.
 
-Prefer the [Dependency Vulnerability Scan workflow](../../.github/workflows/dependency-vulnerability-scan.yml).
+Prefer the [Dependency Scan workflow](../../.github/workflows/dependency-scan.yml).
 This action requires a Linux runner with Docker and Node.js. The source workspace is
 mounted read-only, results are mounted separately, and GitHub/OIDC credentials are
 not passed to the container. Call analysis is disabled, so the scan does not run

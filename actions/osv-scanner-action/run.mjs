@@ -73,7 +73,7 @@ export function run(env = process.env, execute = spawnSync) {
   const found = result.status === 1;
   if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `vulnerabilities-found=${found}\n`);
   if (mode === 'report' && env.GITHUB_STEP_SUMMARY) {
-    appendFileSync(env.GITHUB_STEP_SUMMARY, `## Dependency Vulnerability Scan\n\n${readFileSync(join(results, 'summary.md'), 'utf8')}\n`);
+    appendFileSync(env.GITHUB_STEP_SUMMARY, `## Dependency Scan\n\n${readFileSync(join(results, 'summary.md'), 'utf8')}\n`);
   }
   if (mode === 'report' && found && failOnVuln === 'true') throw new Error('New dependency vulnerabilities found');
   return found;
