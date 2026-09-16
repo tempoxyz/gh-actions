@@ -181,7 +181,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
-| [`dependency-vulnerability-scan`](#dependency-vulnerability-scan) | Detect newly introduced dependency vulnerabilities with OSV | Linux + Docker |
+| [`dependency-scan`](#dependency-scan) | Detect newly introduced dependency vulnerabilities with OSV | Linux + Docker |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-deny`](#rust-deny) | Deny-only wrapper around rust-lint | rust repos |
@@ -401,16 +401,16 @@ Optional inputs:
 - `verify-pin-min-age` (default: `true`) — verify current pins against configured minimum-age rules
 - `pin-min-age` (default: `7`) — default minimum age in days for pinned action commits; caller-local Pinact configuration can override it
 
-### `dependency-vulnerability-scan`
+### `dependency-scan`
 
-**Dependency Vulnerability Scan** scans base and proposed revisions with our
+**Dependency Scan** scans base and proposed revisions with our
 [`osv-scanner-action`](actions/osv-scanner-action), then uses OSV's reporter to find
 new vulnerabilities. Works on private repositories without GitHub Code Security or
 Advanced Security. All action references in this workflow are under `tempoxyz`.
 The OSV container image is pulled from Google's GHCR registry and pinned by digest.
 
 ```yaml
-name: Dependency Vulnerability Scan
+name: Dependency Scan
 
 on:
   pull_request:
@@ -420,14 +420,14 @@ permissions: {}
 
 jobs:
   scan:
-    uses: tempoxyz/gh-actions/.github/workflows/dependency-vulnerability-scan.yml@main
+    uses: tempoxyz/gh-actions/.github/workflows/dependency-scan.yml@main
     permissions:
       contents: read
       id-token: write
 ```
 
 Pin production callers to a full commit SHA. The dedicated
-`dependency-vulnerability-scan-ci.yml` caller runs this workflow on this repository's
+`dependency-scan-ci.yml` caller runs this workflow on this repository's
 pull requests and merge groups. It starts with `secure-runner`; the OIDC permission
 is for runner protection, and no GitHub/OIDC credentials are passed into OSV.
 
@@ -458,7 +458,7 @@ and no `security-events: write` or `pull-requests: write` permission is required
 | `checkout-submodules` | `false` | Recursively check out submodules |
 | `runs-on` | `ubuntu-latest` | Linux runner with Docker and Node.js |
 | `timeout-minutes` | `20` | Job timeout |
-| `artifact-name` | `dependency-vulnerability-scan` | Set a unique name for each matrix invocation |
+| `artifact-name` | `dependency-scan` | Set a unique name for each matrix invocation |
 
 The `vulnerabilities-found` workflow output is `true` or `false` after a completed
 comparison. Configure OSV exclusions with `osv-scanner.toml` or `scan-args`; each

@@ -1,4 +1,4 @@
-name: Dependency Vulnerability Scan
+name: Dependency Scan
 
 # Based on google/osv-scanner-action's reusable PR workflow. All action references
 # are owned by Tempo; reports stay in Actions and do not require Code Security.
@@ -38,7 +38,7 @@ on:
       artifact-name:
         description: Report artifact name; use a unique name for each matrix invocation
         type: string
-        default: dependency-vulnerability-scan
+        default: dependency-scan
     outputs:
       vulnerabilities-found:
         description: Whether the comparison found newly introduced vulnerabilities
@@ -48,7 +48,7 @@ permissions: {}
 
 jobs:
   scan:
-    name: Dependency Vulnerability Scan
+    name: Dependency Scan
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -99,7 +99,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan existing dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@f44a1860ca7c5aa4020ce829f0ee9a2d8f42bfb0
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@6d4f0467a98c61d103e2d43add689c485d760485
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -113,7 +113,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan proposed dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@f44a1860ca7c5aa4020ce829f0ee9a2d8f42bfb0
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@6d4f0467a98c61d103e2d43add689c485d760485
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -121,7 +121,7 @@ jobs:
 
       - name: Report newly introduced vulnerabilities
         id: report
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@f44a1860ca7c5aa4020ce829f0ee9a2d8f42bfb0
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@6d4f0467a98c61d103e2d43add689c485d760485
         with:
           mode: report
           results-directory: ${{ steps.prepare.outputs.results }}
