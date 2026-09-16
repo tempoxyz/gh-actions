@@ -1,0 +1,23 @@
+name: Scan GitHub Actions
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions: {}
+
+jobs:
+  scan:
+    name: Scan GitHub Actions
+    uses: ./.github/workflows/scan-github-actions.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    with:
+      # vendor/ holds copies of upstream actions; they are reviewed via vendor-manifest.yml,
+      # not linted to this repo's standards.
+      paths: ".github actions"
+      pinact: true

@@ -358,6 +358,8 @@ The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`,
 
 ### `scan-github-actions`
 
+The dedicated `scan-github-actions-ci.yml` caller runs on pull requests and pushes to `main` in this repository, scanning `.github actions` with actionlint and pinact enabled. This includes the secure-runner policy check; CI does not invoke a separate scan or policy-check job. The reusable workflow only declares `workflow_call`.
+
 Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
 
 Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold, so repository configuration remains review-sensitive. Existing callers remain unchanged because the pinact check is opt-in.
@@ -397,6 +399,8 @@ Optional inputs:
 - `pin-min-age` (default: `7`) — default minimum age in days for pinned action commits; caller-local Pinact configuration can override it
 
 ### `dependency-review`
+
+The dedicated `dependency-review-ci.yml` caller runs on pull requests in this repository without overriding any inputs. The reusable workflow only declares `workflow_call`.
 
 Runs [actions/dependency-review-action](https://github.com/actions/dependency-review-action) to report vulnerabilities and license issues introduced by dependency changes. Reports appear in the job logs and summary. This compares two revisions; it does not scan all existing dependencies. The caller needs dependency graph enabled and access to GitHub's dependency review API (public repositories, or private repositories with the required GitHub security license).
 

@@ -9,36 +9,6 @@ permissions:
   id-token: write
 
 jobs:
-  scan-github-actions:
-    name: Scan GitHub Actions
-    uses: ./.github/workflows/scan-github-actions.yml
-    permissions:
-      id-token: write
-      actions: read
-      contents: read
-    with:
-      # vendor/ holds copies of upstream actions; they are reviewed via vendor-manifest.yml,
-      # not linted to this repo's standards.
-      paths: ".github actions"
-      pinact: true
-
-  # Dogfood: every job in this repository's workflows must start with secure-runner. This job
-  # is the one exception the check allows, because it does nothing but check out and read
-  # workflow files; adding any other step here would make it fail its own check.
-  ensure-secure-runner:
-    name: Ensure secure runner
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Ensure every job starts with secure-runner
-        uses: ./actions/ensure-secure-runner
-
   vendor-check:
     name: Vendor check
     runs-on: ubuntu-latest
