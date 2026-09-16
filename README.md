@@ -178,6 +178,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
+| [`dependency-review`](#dependency-review) | Report vulnerabilities and license issues in dependency changes | any |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-deny`](#rust-deny) | Deny-only wrapper around rust-lint | rust repos |
@@ -357,6 +358,8 @@ The reusable workflow checks out `tempoxyz/gh-actions` at `github.workflow_sha`,
 
 ### `scan-github-actions`
 
+The dedicated `scan-github-actions-ci.yml` caller runs on pull requests and pushes to `main` in this repository, scanning `.github actions` with actionlint and pinact enabled. This includes the secure-runner policy check; CI does not invoke a separate scan or policy-check job. The reusable workflow only declares `workflow_call`.
+
 Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
 
 Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold, so repository configuration remains review-sensitive. Existing callers remain unchanged because the pinact check is opt-in.
@@ -394,6 +397,63 @@ Optional inputs:
 - `verify-pin-comments` (default: `false`) — verify that semver version comments resolve to the pinned SHA
 - `verify-pin-min-age` (default: `true`) — verify current pins against configured minimum-age rules
 - `pin-min-age` (default: `7`) — default minimum age in days for pinned action commits; caller-local Pinact configuration can override it
+
+### `dependency-review`
+
+The dedicated `dependency-review-ci.yml` caller runs on pull requests in this repository without overriding any inputs. The reusable workflow only declares `workflow_call`.
+
+Runs [actions/dependency-review-action](https://github.com/actions/dependency-review-action) to report vulnerabilities and license issues introduced by dependency changes. Reports appear in the job logs and summary. This compares two revisions; it does not scan all existing dependencies. The caller needs dependency graph enabled and access to GitHub's dependency review API (public repositories, or private repositories with the required GitHub security license).
+
+```yaml
+name: Dependency Review
+
+on:
+  pull_request:
+
+jobs:
+  dependency-review:
+    uses: tempoxyz/gh-actions/.github/workflows/dependency-review.yml@main
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    with:
+      comment-summary-in-pr: always
+```
+
+The workflow starts with `secure-runner`, checks out the caller's repository without persisting credentials, and runs the SHA-pinned action. Callers must grant `contents: read`, `id-token: write` (for `secure-runner`), and `pull-requests: write` (for optional PR comments, including comments enabled through a config file). GitHub restricts write permissions for fork and Dependabot pull requests, so PR comments may be unavailable for those runs.
+
+All upstream action options are supported. These three inputs are booleans and default to `true`: `warn-only`, `retry-on-snapshot-warnings`, and `show-patched-versions`. Pass `false` to override any of them. These defaults take precedence over values in `config-file`; `warn-only: false` enables enforcement of findings.
+
+All other non-token inputs are optional strings. Omitted inputs remain empty so the action can apply its configuration file and upstream defaults. Quote boolean and numeric values for these string inputs (for example, `license-check: "false"` or `retry-on-snapshot-warnings-timeout: "180"`).
+
+| Inputs | Values |
+|--------|--------|
+| `fail-on-severity` | `low`, `moderate`, `high`, or `critical` |
+| `fail-on-scopes` | Comma-separated `runtime`, `development`, `unknown` |
+| `base-ref`, `head-ref` | Revisions to compare; inferred for pull requests, supply both for other events |
+| `config-file` | Local path or `owner/repo/path@ref` |
+| `allow-licenses`, `deny-licenses` | Comma-separated SPDX licenses; mutually exclusive (`deny-licenses` is deprecated upstream) |
+| `allow-dependencies-licenses` | Comma-separated package URLs exempt from license checks |
+| `allow-ghsas` | Comma-separated advisory IDs to ignore |
+| `license-check`, `vulnerability-check` | `"true"` or `"false"` |
+| `comment-summary-in-pr` | `always`, `on-failure`, or `never` |
+| `deny-packages`, `deny-groups` | Comma-separated package URLs or namespace URLs |
+| `retry-on-snapshot-warnings-timeout` | Snapshot retry timeout in seconds |
+| `show-openssf-scorecard` | `"true"` or `"false"` |
+| `warn-on-openssf-scorecard-level` | Scorecard warning threshold |
+
+Pass token options via the reusable workflow's `secrets` mapping:
+
+```yaml
+    secrets:
+      repo-token: ${{ secrets.DEPENDENCY_REVIEW_TOKEN }}
+      external-repo-token: ${{ secrets.CONFIG_REPO_TOKEN }}
+```
+
+Both secrets are optional. `repo-token` defaults to `github.token`; `external-repo-token` is needed when reading a config file from another private repository. See the [upstream configuration reference](https://github.com/actions/dependency-review-action#configuration) for detailed option semantics.
+
+The action's `comment-content`, `dependency-changes`, `vulnerable-changes`, `invalid-license-changes`, and `denied-changes` outputs are exposed as workflow outputs for downstream jobs (for example, `needs.dependency-review.outputs.vulnerable-changes`).
 
 ### `reproducible-build`
 
