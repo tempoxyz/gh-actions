@@ -56,7 +56,9 @@ export function run(env = process.env, execute = spawnSync) {
       '--output-files=markdown:/results/summary.md', '--output-files=table:#stdout',
       '--output-files=gh-annotations:#stderr', '--fail-on-vuln=true'];
   }
-  const dockerArgs = ['run', '--rm', '--cap-drop=ALL', '--security-opt=no-new-privileges',
+  // The image runs as root; DAC_OVERRIDE permits writes to the runner-owned
+  // mode-0700 results directory. The source bind mount remains read-only.
+  const dockerArgs = ['run', '--rm', '--cap-drop=ALL', '--cap-add=DAC_OVERRIDE', '--security-opt=no-new-privileges',
     '--mount', `type=bind,source=${workspace},target=/github/workspace,readonly`,
     '--mount', `type=bind,source=${results},target=/results`,
     '--workdir', '/github/workspace', '--env', 'GOTOOLCHAIN=auto',
