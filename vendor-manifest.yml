@@ -198,6 +198,54 @@ actions:
       Node action; runs dist/restore.js, dist/save.js. excluded: src/, tests/, tsconfig*.json,
       rollup.config.*, package-lock.json, CHANGELOG*
 
+  - name: actions/checkout
+    ref: v7.0.1
+    ref_type: tag
+    sha: 3d3c42e5aac5ba805825da76410c181273ba90b1
+    exclude:
+      - src/
+      - __test__/
+      - images/
+      - tsconfig*.json
+      - jest.config.*
+      - eslint.config.*
+      - .prettierrc*
+      - .prettierignore
+      - package-lock.json
+      - CHANGELOG*
+      - '**/*.test.*'
+      - .licensed.yml
+      - .licenses/
+      - adrs/
+    notes: >-
+      Node action; runs dist/index.js. excluded: src/, __test__/, images/, tsconfig*.json,
+      jest.config.*, eslint.config.*, .prettierrc*, .prettierignore, package-lock.json, CHANGELOG*,
+      **/*.test.*, .licensed.yml, .licenses/, adrs/
+
+  - name: actions/upload-artifact
+    ref: v7.0.1
+    ref_type: tag
+    sha: 043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    exclude:
+      - src/
+      - __tests__/
+      - docs/
+      - tsconfig*.json
+      - jest.config.*
+      - eslint.config.*
+      - .prettierrc*
+      - .prettierignore
+      - package-lock.json
+      - '**/*.test.*'
+      - .licensed.yml
+      - .licenses/
+      - merge/
+      - dist/merge/
+    notes: >-
+      Node action; runs dist/upload/index.js. excluded: src/, __tests__/, docs/, tsconfig*.json,
+      jest.config.*, eslint.config.*, .prettierrc*, .prettierignore, package-lock.json, **/*.test.*,
+      .licensed.yml, .licenses/, merge/, dist/merge/
+
   - name: amannn/action-semantic-pull-request
     ref: v6.1.1
     ref_type: tag
@@ -934,8 +982,8 @@ actions:
     notes: >-
       Node action; runs dist/index.js. excluded: src/, __test__/, docs/, tsconfig*.json,
       jest.config.*, .eslintrc*, .eslintignore, .prettierrc*, .prettierignore, package-lock.json,
-      **/*.test.* Manual: Keep the upstream package-lock.json so dependency scanners resolve
-      the pinned release's dependency versions instead of current versions from manifest ranges.
+      **/*.test.* Manual: Keep the upstream package-lock.json so dependency scanners resolve the
+      pinned release's dependency versions instead of current versions from manifest ranges.
 
   - name: planetscale/setup-pscale-action
     ref: v1
