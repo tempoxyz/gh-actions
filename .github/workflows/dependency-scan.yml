@@ -1,0 +1,133 @@
+name: Dependency Scan
+
+# Based on google/osv-scanner-action's reusable PR workflow. Reports stay in
+# Actions and do not require Code Security.
+on:
+  workflow_call:
+    inputs:
+      scan-args:
+        description: Source scan arguments, one per line; format/output/call-analysis flags are managed internally
+        type: string
+        default: |-
+          --recursive
+          ./
+      fail-on-vuln:
+        description: Fail on newly introduced vulnerabilities; scanner errors always fail
+        type: boolean
+        default: true
+      base-ref:
+        description: Base revision; defaults to the pull request or merge group base SHA
+        type: string
+        default: ''
+      head-ref:
+        description: Head revision; defaults to the event's merge SHA for pull requests and merge groups
+        type: string
+        default: ''
+      checkout-submodules:
+        description: Check out submodules recursively
+        type: boolean
+        default: false
+      runs-on:
+        description: Linux, macOS, or Windows runner with Node.js
+        type: string
+        default: ubuntu-latest
+      timeout-minutes:
+        description: Scan job timeout
+        type: number
+        default: 20
+      artifact-name:
+        description: Report artifact name; use a unique name for each matrix invocation
+        type: string
+        default: dependency-scan
+    outputs:
+      vulnerabilities-found:
+        description: Whether the comparison found newly introduced vulnerabilities
+        value: ${{ jobs.scan.outputs.vulnerabilities-found }}
+
+permissions: {}
+
+jobs:
+  scan:
+    name: Dependency Scan
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      vulnerabilities-found: ${{ steps.report.outputs.vulnerabilities-found }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@de8817e2eae66bc85468011ba8c7a9c2792570d1
+
+      - name: Resolve revisions and prepare isolated results directory
+        id: prepare
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_INPUT: ${{ inputs.base-ref }}
+          HEAD_INPUT: ${{ inputs.head-ref }}
+          EVENT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          EVENT_HEAD: ${{ github.sha }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, mkdtempSync } from 'node:fs';
+          import { join } from 'node:path';
+          const { EVENT_NAME, BASE_INPUT, HEAD_INPUT, EVENT_BASE, EVENT_HEAD } = process.env;
+          if (['pull_request_target', 'workflow_run'].includes(EVENT_NAME)) {
+            throw new Error('Use pull_request or merge_group to scan proposed code with an unprivileged event.');
+          }
+          const automatic = ['pull_request', 'merge_group'].includes(EVENT_NAME);
+          const base = BASE_INPUT || (automatic ? EVENT_BASE : '');
+          const head = HEAD_INPUT || (automatic ? EVENT_HEAD : '');
+          if (!base || !head || /[\r\n]/.test(base + head)) {
+            throw new Error('Provide base-ref and head-ref (required outside pull_request and merge_group).');
+          }
+          const results = mkdtempSync(join(process.env.RUNNER_TEMP, 'osv-results-'));
+          appendFileSync(process.env.GITHUB_OUTPUT, `base=${base}\nhead=${head}\nresults=${results}\n`);
+          NODE
+
+      - name: Checkout base revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.prepare.outputs.base }}
+          persist-credentials: false
+          submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
+
+      - name: Scan existing dependencies
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
+        with:
+          scan-args: ${{ inputs.scan-args }}
+          results-directory: ${{ steps.prepare.outputs.results }}
+          results-file: old-results.json
+
+      - name: Checkout proposed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.prepare.outputs.head }}
+          persist-credentials: false
+          submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
+
+      - name: Scan proposed dependencies
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
+        with:
+          scan-args: ${{ inputs.scan-args }}
+          results-directory: ${{ steps.prepare.outputs.results }}
+          results-file: new-results.json
+
+      - name: Report newly introduced vulnerabilities
+        id: report
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
+        with:
+          mode: report
+          results-directory: ${{ steps.prepare.outputs.results }}
+          fail-on-vuln: ${{ inputs.fail-on-vuln }}
+
+      - name: Upload scan reports
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ steps.prepare.outputs.results }}/
+          retention-days: 5
+          if-no-files-found: warn

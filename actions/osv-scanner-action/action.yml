@@ -1,0 +1,39 @@
+name: OSV Scanner
+description: Scan dependencies with verified native OSV binaries on Linux, macOS, and Windows
+
+inputs:
+  mode:
+    description: scan or report
+    default: scan
+  scan-args:
+    description: Source scan arguments, one argument per line; output and format are managed by the action
+    default: |-
+      --recursive
+      ./
+  results-directory:
+    description: Absolute directory under runner.temp for scan results, outside the source checkout
+    required: true
+  results-file:
+    description: JSON filename for scan mode
+    default: results.json
+  fail-on-vuln:
+    description: Fail report mode when new vulnerabilities are found; scanner errors always fail
+    default: 'true'
+outputs:
+  vulnerabilities-found:
+    description: Whether the scanner or comparison found vulnerabilities
+    value: ${{ steps.osv.outputs.vulnerabilities-found }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run OSV
+      id: osv
+      shell: bash
+      env:
+        OSV_MODE: ${{ inputs.mode }}
+        OSV_SCAN_ARGS: ${{ inputs.scan-args }}
+        OSV_RESULTS_DIRECTORY: ${{ inputs.results-directory }}
+        OSV_RESULTS_FILE: ${{ inputs.results-file }}
+        OSV_FAIL_ON_VULN: ${{ inputs.fail-on-vuln }}
+      run: node "$GITHUB_ACTION_PATH/run.mjs"
