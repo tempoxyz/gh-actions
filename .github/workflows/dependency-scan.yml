@@ -28,7 +28,7 @@ on:
         type: boolean
         default: false
       runs-on:
-        description: Linux runner with Docker and Node.js
+        description: Linux, macOS, or Windows runner with Node.js
         type: string
         default: ubuntu-latest
       timeout-minutes:
@@ -68,28 +68,24 @@ jobs:
           HEAD_INPUT: ${{ inputs.head-ref }}
           EVENT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           EVENT_HEAD: ${{ github.sha }}
+        shell: bash
         run: |
-          set -euo pipefail
-          case "$EVENT_NAME" in
-            pull_request|merge_group)
-              base="${BASE_INPUT:-$EVENT_BASE}"
-              head="${HEAD_INPUT:-$EVENT_HEAD}"
-              ;;
-            pull_request_target|workflow_run)
-              echo '::error::Use pull_request or merge_group to scan proposed code with an unprivileged event.'
-              exit 1
-              ;;
-            *) base="$BASE_INPUT"; head="$HEAD_INPUT" ;;
-          esac
-          if [[ -z "$base" || -z "$head" || "$base" == *$'\n'* || "$head" == *$'\n'* || "$base" == *$'\r'* || "$head" == *$'\r'* ]]; then
-            echo '::error::Provide valid base-ref and head-ref (both are required outside pull_request and merge_group).'
-            exit 1
-          fi
-          {
-            echo "base=$base"
-            echo "head=$head"
-            echo "results=$(mktemp -d "$RUNNER_TEMP/osv-results.XXXXXX")"
-          } >> "$GITHUB_OUTPUT"
+          node --input-type=module <<'NODE'
+          import { appendFileSync, mkdtempSync } from 'node:fs';
+          import { join } from 'node:path';
+          const { EVENT_NAME, BASE_INPUT, HEAD_INPUT, EVENT_BASE, EVENT_HEAD } = process.env;
+          if (['pull_request_target', 'workflow_run'].includes(EVENT_NAME)) {
+            throw new Error('Use pull_request or merge_group to scan proposed code with an unprivileged event.');
+          }
+          const automatic = ['pull_request', 'merge_group'].includes(EVENT_NAME);
+          const base = BASE_INPUT || (automatic ? EVENT_BASE : '');
+          const head = HEAD_INPUT || (automatic ? EVENT_HEAD : '');
+          if (!base || !head || /[\r\n]/.test(base + head)) {
+            throw new Error('Provide base-ref and head-ref (required outside pull_request and merge_group).');
+          }
+          const results = mkdtempSync(join(process.env.RUNNER_TEMP, 'osv-results-'));
+          appendFileSync(process.env.GITHUB_OUTPUT, `base=${base}\nhead=${head}\nresults=${results}\n`);
+          NODE
 
       - name: Checkout base revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -99,7 +95,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan existing dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@6d4f0467a98c61d103e2d43add689c485d760485
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -113,7 +109,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan proposed dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@6d4f0467a98c61d103e2d43add689c485d760485
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -121,7 +117,7 @@ jobs:
 
       - name: Report newly introduced vulnerabilities
         id: report
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@6d4f0467a98c61d103e2d43add689c485d760485
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
         with:
           mode: report
           results-directory: ${{ steps.prepare.outputs.results }}

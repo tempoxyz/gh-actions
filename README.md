@@ -179,7 +179,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
-| [`dependency-scan`](#dependency-scan) | Detect newly introduced dependency vulnerabilities with OSV | Linux + Docker |
+| [`dependency-scan`](#dependency-scan) | Detect newly introduced dependency vulnerabilities with OSV | Linux, macOS, Windows |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-deny`](#rust-deny) | Deny-only wrapper around rust-lint | rust repos |
@@ -402,10 +402,12 @@ Optional inputs:
 ### `dependency-scan`
 
 **Dependency Scan** scans base and proposed revisions with our
-[`osv-scanner-action`](actions/osv-scanner-action), then uses OSV's reporter to find
+[`osv-scanner-action`](actions/osv-scanner-action), then compares results to find
 new vulnerabilities. Works on private repositories without GitHub Code Security or
 Advanced Security. Uses Tempo-owned actions and GitHub’s `actions/checkout` and `actions/upload-artifact`.
-The OSV container image is pulled from Google's GHCR registry and pinned by digest.
+Native OSV binaries are installed from GitHub releases and verified against pinned
+checksums and SLSA provenance. Docker and Go are not required; the action uses Node.js
+20+ for installation and reporting on Linux, macOS, and Windows.
 
 ```yaml
 name: Dependency Scan
@@ -426,17 +428,18 @@ jobs:
 
 Pin production callers to a full commit SHA. The dedicated
 `dependency-scan-ci.yml` caller runs this workflow on this repository's
-pull requests and merge groups. It starts with `secure-runner`; the OIDC permission
-is for runner protection, and no GitHub/OIDC credentials are passed into OSV.
+pull requests and merge groups on Linux, macOS, and Windows. It starts with `secure-runner`; the OIDC permission
+is for runner protection, and no GitHub/OIDC credentials are forwarded to the native child processes.
 
 By default, scans compare the event's base SHA with its merge SHA, including the
 proposed merge result. Other events require both `base-ref` and `head-ref`;
 `pull_request_target` and `workflow_run` are rejected. Both checkouts disable
-credential persistence. The source is mounted read-only and results live in an
-isolated runner temporary directory that survives switching revisions.
+credential persistence. Results live in an isolated runner temporary directory that survives switching
+revisions. Native scans use the runner’s filesystem permissions; there is no
+container or read-only mount.
 
 New vulnerabilities fail the job by default. Existing findings are baselined using
-OSV's reporter semantics. `fail-on-vuln: false` makes findings informational;
+OSV's occurrence-count and source/package/advisory comparison semantics. `fail-on-vuln: false` makes findings informational;
 scanner failures and missing or malformed results still fail. A revision with no
 supported dependency files is allowed and produces an empty inventory, so a PR
 can introduce its first lockfile or remove its last one. OSV-supported lockfiles,
@@ -454,7 +457,7 @@ and no `security-events: write` or `pull-requests: write` permission is required
 | `fail-on-vuln` | `true` | Fail on newly introduced vulnerabilities |
 | `base-ref`, `head-ref` | Event base/merge SHAs | Explicit revision overrides |
 | `checkout-submodules` | `false` | Recursively check out submodules |
-| `runs-on` | `ubuntu-latest` | Linux runner with Docker and Node.js |
+| `runs-on` | `ubuntu-latest` | Linux, macOS, or Windows runner with Node.js 20+ |
 | `timeout-minutes` | `20` | Job timeout |
 | `artifact-name` | `dependency-scan` | Set a unique name for each matrix invocation |
 

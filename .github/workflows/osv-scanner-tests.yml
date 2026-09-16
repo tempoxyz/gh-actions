@@ -1,0 +1,34 @@
+name: Native OSV Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  native:
+    name: Native OSV (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@de8817e2eae66bc85468011ba8c7a9c2792570d1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Unit tests
+        shell: bash
+        run: node --test actions/osv-scanner-action/*.test.js
+      - name: Verify native installation, scanning, and reporting
+        shell: bash
+        run: node actions/osv-scanner-action/integration.mjs
