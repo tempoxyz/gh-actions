@@ -95,7 +95,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan existing dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@38d4e136e5b1884ce222d060d8d3378a6a8f1a39
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -109,7 +109,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan proposed dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@38d4e136e5b1884ce222d060d8d3378a6a8f1a39
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -117,7 +117,7 @@ jobs:
 
       - name: Report newly introduced vulnerabilities
         id: report
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@2c680ef13240d05cb747620dc18256de2ac78412
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@38d4e136e5b1884ce222d060d8d3378a6a8f1a39
         with:
           mode: report
           results-directory: ${{ steps.prepare.outputs.results }}
