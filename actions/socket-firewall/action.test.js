@@ -9,8 +9,8 @@ const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("uses both STS exchanges and the aegis download policy", () => {
-  assert.match(manifest, /actions\/socket-firewall\/sts@25cce154e7fb10f99361a166468a6c56b9c31aa3/);
-  assert.match(manifest, /actions\/github-sts@25cce154e7fb10f99361a166468a6c56b9c31aa3/);
+  assert.match(manifest, /actions\/socket-firewall\/sts@e080a269a3d37e571ad64e94f72536b48eb9921c/);
+  assert.match(manifest, /actions\/github-sts@e080a269a3d37e571ad64e94f72536b48eb9921c/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);
   assert.match(manifest, /dev: \$\{\{ inputs\.dev \}\}/);
@@ -20,8 +20,8 @@ test("uses both STS exchanges and the aegis download policy", () => {
 
 test("pins the requested release and verifies its checksums and provenance", () => {
   const downloader = fs.readFileSync(path.join(__dirname, "download.cjs"), "utf8");
-  assert.match(downloader, /20260915T173101Z-2497d0eeb3fc/);
-  assert.match(downloader, /2497d0eeb3fc6d1589e2808cb3f72ac1da9bb552/);
+  assert.match(downloader, /20260916T103300Z-3a125feb7af3/);
+  assert.match(downloader, /3a125feb7af364c325e455f42f3fe9bbbe2e2fef/);
   assert.match(downloader, /SHA256SUMS/);
   assert.match(downloader, /provenance\.sigstore\.json/);
   assert.match(downloader, /attestation.*verify/s);
@@ -30,12 +30,12 @@ test("pins the requested release and verifies its checksums and provenance", () 
 });
 
 test("selects the exact release artifact for every supported OS and architecture", () => {
-  assert.equal(assetName("Linux", "X64"), "aegis-2497d0eeb3fc-linux-amd64.deb");
-  assert.equal(assetName("Linux", "ARM64"), "aegis-2497d0eeb3fc-linux-arm64.deb");
-  assert.equal(assetName("macOS", "X64"), "aegis-2497d0eeb3fc-macos-amd64.tar.gz");
-  assert.equal(assetName("macOS", "ARM64"), "aegis-2497d0eeb3fc-macos-arm64.tar.gz");
-  assert.equal(assetName("Windows", "X64"), "aegis-2497d0eeb3fc-windows-amd64.zip");
-  assert.equal(assetName("Windows", "ARM64"), "aegis-2497d0eeb3fc-windows-arm64.zip");
+  assert.equal(assetName("Linux", "X64"), "aegis-3a125feb7af3-linux-amd64.deb");
+  assert.equal(assetName("Linux", "ARM64"), "aegis-3a125feb7af3-linux-arm64.deb");
+  assert.equal(assetName("macOS", "X64"), "aegis-3a125feb7af3-macos-amd64.tar.gz");
+  assert.equal(assetName("macOS", "ARM64"), "aegis-3a125feb7af3-macos-arm64.tar.gz");
+  assert.equal(assetName("Windows", "X64"), "aegis-3a125feb7af3-windows-amd64.zip");
+  assert.equal(assetName("Windows", "ARM64"), "aegis-3a125feb7af3-windows-arm64.zip");
   assert.throws(() => assetName("Plan9", "X64"), /Unsupported runner OS/);
   assert.throws(() => assetName("Linux", "RISCV64"), /Unsupported runner architecture/);
 });
