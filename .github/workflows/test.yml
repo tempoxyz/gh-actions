@@ -227,8 +227,8 @@ jobs:
             fi
           done
           # The three actionlint installers (reusable workflow, scan composite, standalone composite)
-          # must pin the same release and tarball digests.
-          for var in ACTIONLINT_VERSION SHA256; do
+          # must pin the same upstream commit.
+          for var in ACTIONLINT_VERSION; do
             r=$(grep -oE "${var}=\"[^\"]+\"" "$reusable" | sort -u | tr '\n' ' ')
             c=$(grep -oE "${var}=\"[^\"]+\"" "$composite" | sort -u | tr '\n' ' ')
             a=$(grep -oE "${var}=\"[^\"]+\"" actions/actionlint/action.yml | sort -u | tr '\n' ' ')
@@ -423,8 +423,24 @@ jobs:
           make-default: "false"
       # Scoped to the new first-party actions: older files in actions/ contain test fixtures and
       # identifiers that typos flags, and adopting typos repo-wide is a separate decision.
-      - name: Smoke test actionlint (digest-pinned image) on this repository's workflows
+      - name: Smoke test actionlint (commit-pinned source) on this repository's workflows
         uses: ./actions/actionlint
+      - name: Check service command and entrypoint support
+        run: |
+          actionlint - <<'YAML'
+          name: Service command regression
+          on: push
+          jobs:
+            test:
+              runs-on: ubuntu-latest
+              services:
+                postgres:
+                  image: postgres:18.2-alpine
+                  entrypoint: docker-entrypoint.sh
+                  command: postgres -c max_connections=400
+              steps:
+                - run: echo ready
+          YAML
       - name: Shellcheck cargo-cooldown script
         run: shellcheck actions/cargo-cooldown/check.sh
       - name: Smoke test typos (release attestation) on the first-party action sources

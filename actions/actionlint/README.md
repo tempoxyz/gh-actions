@@ -1,11 +1,16 @@
 # actionlint
 
-Lint GitHub Actions workflows with [actionlint](https://github.com/rhysd/actionlint), run from the
-digest-pinned upstream container image. Replaces `reviewdog/action-actionlint` for repositories that
+Lint GitHub Actions workflows with [actionlint](https://github.com/rhysd/actionlint), built from upstream commit
+[`011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7`](https://github.com/rhysd/actionlint/commit/011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7). Replaces `reviewdog/action-actionlint` for repositories that
 only need the lint result as a job status; findings are printed to the log and fail the step.
 
 For a combined security scan (zizmor) and lint, use [`scan-github-actions`](../scan-github-actions)
-instead, which runs the same pinned actionlint image after zizmor.
+instead, which runs the same commit-pinned actionlint binary after zizmor.
+
+The runner must have Go installed (as GitHub-hosted Ubuntu runners do). Go automatically
+selects a compatible toolchain if needed. The build runs outside the caller checkout;
+module downloads are verified through `sum.golang.org`. This commit supports service
+container `command` and `entrypoint`, which are not supported by release v1.7.12.
 
 ## Inputs
 
