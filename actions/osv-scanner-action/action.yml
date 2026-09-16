@@ -1,5 +1,5 @@
 name: OSV Scanner
-description: Scan dependencies or compare OSV results without GitHub Advanced Security
+description: Scan dependencies with verified native OSV binaries on Linux, macOS, and Windows
 
 inputs:
   mode:

@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 async function fixture(t) {
-  const { run } = await import('./run.mjs');
+  const { run: nativeRun } = await import('./run.mjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osv-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const source = path.join(root, 'source');
@@ -13,17 +13,19 @@ async function fixture(t) {
   fs.mkdirSync(source); fs.mkdirSync(results);
   const env = { GITHUB_WORKSPACE: source, RUNNER_TEMP: root, OSV_RESULTS_DIRECTORY: results };
   const write = (name, data = { results: [] }) => fs.writeFileSync(path.join(results, name), JSON.stringify(data));
-  return { run, env, results, source, write };
+  const binary = path.join(root, 'osv-scanner.exe');
+  const run = (env, execute) => nativeRun(env, execute, binary);
+  return { run, env, results, source, write, binary };
 }
 
-test('scan preserves argument boundaries, isolates source, and accepts findings for comparison', async t => {
+test('native scan preserves argument boundaries, working directory, and accepts findings for comparison', async t => {
   const f = await fixture(t);
   f.env.OSV_SCAN_ARGS = '--lockfile\na path/package-lock.json';
-  const found = f.run(f.env, (command, args) => {
-    assert.equal(command, 'docker');
-    assert.ok(args.includes(`type=bind,source=${fs.realpathSync(f.source)},target=/github/workspace,readonly`));
+  const found = f.run(f.env, (command, args, options) => {
+    assert.equal(command, f.binary);
+    assert.equal(options.cwd, fs.realpathSync(f.source));
     assert.ok(args.includes('a path/package-lock.json'));
-    assert.ok(args.includes('/root/osv-scanner'));
+    assert.ok(args.includes(`--output-file=${path.join(fs.realpathSync(f.results), 'results.json')}`));
     assert.ok(!args.some(arg => arg.includes('GITHUB_TOKEN')));
     f.write('results.json');
     return { status: 1 };
@@ -68,7 +70,8 @@ test('report blocks new vulnerabilities and supports an explicit warn-only mode'
   const f = await fixture(t);
   f.env.OSV_MODE = 'report';
   f.write('old-results.json'); f.write('new-results.json');
-  const report = () => { f.write('diff.json'); return { status: 1 }; };
+  f.write('new-results.json', { results: [{ source: { path: 'package-lock.json' }, packages: [{ package: { name: 'test', version: '1' }, vulnerabilities: [{ id: 'TEST-1' }] }] }] });
+  const report = () => assert.fail('report mode must not launch a process');
   assert.throws(() => f.run(f.env, report), /New dependency vulnerabilities/);
   f.env.OSV_FAIL_ON_VULN = 'false';
   assert.equal(f.run(f.env, report), true);
@@ -76,7 +79,7 @@ test('report blocks new vulnerabilities and supports an explicit warn-only mode'
 
 test('rejects source-controlled results, escaping filenames and output overrides', async t => {
   const f = await fixture(t);
-  const never = () => assert.fail('container must not run');
+  const never = () => assert.fail('scanner must not run');
   assert.throws(() => f.run({ ...f.env, OSV_RESULTS_DIRECTORY: f.source }, never), /outside the checkout/);
   assert.throws(() => f.run({ ...f.env, OSV_RESULTS_FILE: '../escape.json' }, never), /simple JSON/);
   assert.throws(() => f.run({ ...f.env, OSV_SCAN_ARGS: '--output-file=other.json' }, never), /managed by the action/);

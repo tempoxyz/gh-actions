@@ -1,18 +1,31 @@
 # OSV Scanner
 
-Tempo-owned composite action for OSV source scans and PR vulnerability comparisons.
-Uses the same OSV Scanner and reporter image as Google's
-[scanner action](https://github.com/google/osv-scanner-action/blob/8ac9e5ce44cc7178e0e04229a91bdcc003166e57/osv-scanner-action/action.yml)
-and [PR workflow](https://github.com/google/osv-scanner-action/blob/8ac9e5ce44cc7178e0e04229a91bdcc003166e57/.github/workflows/osv-scanner-reusable-pr.yml),
-pinned to the v2.6.0 multi-architecture image digest. No Google-owned action is invoked.
-The container is downloaded from `ghcr.io/google/osv-scanner-action`; it is not hosted
-in the Tempo registry. Docker image pulls and OSV API access must be allowed by runner policy.
+Tempo-owned action for native OSV dependency scans and PR vulnerability comparisons
+on Linux, macOS, and Windows. It installs OSV Scanner v2.6.0 for the runner's OS and
+architecture (x64 or ARM64). Node.js 20+ is required; Docker and Go are not required.
 
 Prefer the [Dependency Scan workflow](../../.github/workflows/dependency-scan.yml).
-This action requires a Linux runner with Docker and Node.js. The source workspace is
-mounted read-only, results are mounted separately, and GitHub/OIDC credentials are
-not passed to the container. Call analysis is disabled, so the scan does not run
-Rust build scripts. Scanner configuration files and ignore rules still apply.
+The design follows Google's [PR workflow](https://github.com/google/osv-scanner-action/blob/8ac9e5ce44cc7178e0e04229a91bdcc003166e57/.github/workflows/osv-scanner-reusable-pr.yml).
+Google does not publish cross-platform reporter binaries, so comparison and report
+generation run in Node.js. The comparison follows upstream's occurrence-count gate
+and then its source/package/advisory diff: an unchanged vulnerability or a moved
+lockfile alone is baselined; an added vulnerable occurrence is reported.
+
+## Binary verification
+
+`releases.json` pins SHA-256 hashes for every platform's scanner, SLSA verifier,
+and provenance files. The verifier is bootstrapped from its pinned digest, then
+verifies its own SLSA provenance. The scanner must pass both its pinned checksum
+and SLSA verification for `github.com/google/osv-scanner` at the exact release tag
+before execution. Failed verification stops the action. Cached downloads under
+`runner.temp` are rechecked on every scan invocation.
+
+Runner policy must allow GitHub release downloads, Sigstore verification, OSV API
+access, and any package metadata endpoints the selected scanners use. No GitHub
+or OIDC credentials or process-injection environment variables are forwarded to
+the native child processes. Call analysis is disabled, so Rust build scripts are
+not run. Scans run directly on the runner, with its filesystem permissions; there
+is no container or read-only mount. Scanner configuration and ignore rules apply.
 
 | Input | Default | Description |
 |-------|---------|-------------|
@@ -28,15 +41,22 @@ still produce valid JSON. Operational failures, missing results, and invalid JSO
 always fail. The `vulnerabilities-found` output indicates findings in either mode.
 
 Report mode requires `old-results.json` and `new-results.json`. It writes `diff.json`,
-`results.sarif`, and `summary.md`, prints annotations and a table, and appends the
-Markdown report to the job summary. It does not upload to GitHub Code Scanning.
+`results.sarif`, and `summary.md`, prints annotations and a Markdown report, and
+appends it to the job summary. Artifact locations are normalized for both Windows
+and POSIX paths. It does not upload to GitHub Code Scanning.
 
-The reporter follows upstream's vulnerability comparison semantics, not a raw
-package diff: existing findings are baselined, and new findings fail by default.
 License checks, Scorecard results, and dependency-review-action's inputs/outputs
 are not provided by this action.
 
-Run wrapper regression tests with `node --test actions/osv-scanner-action/run.test.js`.
-When updating OSV, update `IMAGE` in `run.mjs`, verify the registry digest, and test
-clean, vulnerable, unchanged, removed, empty, and failed scan comparisons with the
-real image before changing the workflow's pinned action revision.
+## Tests and updates
+
+Run `node --test actions/osv-scanner-action/*.test.js` for unit tests and
+`node actions/osv-scanner-action/integration.mjs` for verified native installation
+and real scans. The integration test requires network access. CI runs both on
+`ubuntu-latest`, `macos-latest`, and `windows-latest`, including paths with spaces,
+clean/introduced/unchanged/removed findings, empty inventories, malformed lockfiles,
+warning-only behavior, report artifacts, a wrong provenance identity, and a corrupt
+cached binary. The reusable workflow is also exercised on all three platforms.
+
+When updating OSV or the verifier, update the versions and hashes in `releases.json`,
+run all platform tests, and update the workflow's pinned action revision.
