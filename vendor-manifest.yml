@@ -198,30 +198,6 @@ actions:
       Node action; runs dist/restore.js, dist/save.js. excluded: src/, tests/, tsconfig*.json,
       rollup.config.*, package-lock.json, CHANGELOG*
 
-  - name: actions/checkout
-    ref: v7.0.1
-    ref_type: tag
-    sha: 3d3c42e5aac5ba805825da76410c181273ba90b1
-    exclude:
-      - src/
-      - __test__/
-      - images/
-      - tsconfig*.json
-      - jest.config.*
-      - eslint.config.*
-      - .prettierrc*
-      - .prettierignore
-      - package-lock.json
-      - CHANGELOG*
-      - '**/*.test.*'
-      - .licensed.yml
-      - .licenses/
-      - adrs/
-    notes: >-
-      Node action; runs dist/index.js. excluded: src/, __test__/, images/, tsconfig*.json,
-      jest.config.*, eslint.config.*, .prettierrc*, .prettierignore, package-lock.json, CHANGELOG*,
-      **/*.test.*, .licensed.yml, .licenses/, adrs/
-
   - name: actions/upload-artifact
     ref: v7.0.1
     ref_type: tag

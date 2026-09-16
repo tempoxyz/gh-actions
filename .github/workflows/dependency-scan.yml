@@ -1,7 +1,7 @@
 name: Dependency Scan
 
-# Based on google/osv-scanner-action's reusable PR workflow. All action references
-# are owned by Tempo; reports stay in Actions and do not require Code Security.
+# Based on google/osv-scanner-action's reusable PR workflow. Reports stay in
+# Actions and do not require Code Security.
 on:
   workflow_call:
     inputs:
@@ -92,7 +92,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout base revision
-        uses: tempoxyz/gh-actions/vendor/actions/checkout@9969ea7c9c0b3d9f1f15b6f939a20311afd3173a
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ steps.prepare.outputs.base }}
           persist-credentials: false
@@ -106,7 +106,7 @@ jobs:
           results-file: old-results.json
 
       - name: Checkout proposed revision
-        uses: tempoxyz/gh-actions/vendor/actions/checkout@9969ea7c9c0b3d9f1f15b6f939a20311afd3173a
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ steps.prepare.outputs.head }}
           persist-credentials: false
