@@ -58,7 +58,7 @@ jobs:
       vulnerabilities-found: ${{ steps.report.outputs.vulnerabilities-found }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@de8817e2eae66bc85468011ba8c7a9c2792570d1
+        uses: tempoxyz/gh-actions/actions/secure-runner@32e21ece7b549aa54538cb84e921250f704f7d21
 
       - name: Resolve revisions and prepare isolated results directory
         id: prepare
