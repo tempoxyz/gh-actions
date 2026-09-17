@@ -19,10 +19,10 @@ test("uses the Windows ARM64-aware Harden Runner before Socket Firewall", () => 
   );
 });
 
-test("pins the merged Socket Firewall with Aegis rate-limit retries", () => {
+test("pins the merged Socket Firewall with Aegis diagnostics and pending-scan policy", () => {
   assert.match(
     manifest,
-    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@e5e82e889322e904d3b9de2cc4cb25ca66c0015d/,
+    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@4a5ecd87e0314508adc4743d82221e0459402df9/,
   );
 });
 
