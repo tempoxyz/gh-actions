@@ -1,9 +1,15 @@
 # Secure Runner
 
 Start Harden Runner with authenticated StepSecurity policy-store access, then
-install Socket Firewall Enterprise with a short-lived Socket token. Use this
+install Aegis through Socket Firewall with a short-lived Socket token. Use this
 action as the first step in a job. The nested remote actions retain their pre-job
 initialization and post-job cleanup, including token revocation.
+
+The Socket Firewall pin selects Aegis `20260917T173242Z-f442872beb5d`, including
+pnpm block reasons, Socket lookup diagnostics, and effective non-blocking
+`pendingScan` policy actions. The release's provenance must match its pinned
+source commit and `refs/heads/main`; see [Socket Firewall](../socket-firewall)
+for policy behavior and supported runners.
 
 ## Inputs
 
@@ -20,7 +26,7 @@ test matrix would otherwise request a separate StepSecurity credential per job.
 `dev` also selects the Socket STS endpoint. Both services use production by
 default; set `dev: true` to use their development endpoints.
 
-The caller must grant `id-token: write` for both STS exchanges. Harden Runner
+The caller must grant `id-token: write` for the STS exchanges. Harden Runner
 policies must allow the network access needed to install and use Socket Firewall.
 
 Harden Runner does not support Windows ARM64. On that runner, this action emits a
@@ -30,8 +36,8 @@ GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
 permissions the workflow declares. On a `pull_request` run without an OIDC token,
 Harden Runner emits a warning annotation and runs with the inline policy from the
 `egress-policy`, `allowed-endpoints`, and `denied-endpoints` inputs instead of the
-StepSecurity policy store, and Socket Firewall installs its Free edition instead of
-Enterprise, since the Enterprise token is minted from the job's OIDC identity. Any
+StepSecurity policy store. Socket Firewall emits a warning and skips package
+firewall installation, so package downloads are not inspected or blocked. Any
 other event without an OIDC token fails, since that means the job is missing
 `id-token: write`.
 
