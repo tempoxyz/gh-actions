@@ -41,7 +41,7 @@ jobs:
           persist-credentials: false
 
       - name: Test Socket Firewall action helpers
-        run: node --test actions/socket-firewall/action.test.js actions/socket-firewall/sts/action.test.js
+        run: node --test actions/socket-firewall/action.test.js actions/socket-sts/action.test.js
 
       - name: Verify secure-runner installed Aegis
         id: aegis

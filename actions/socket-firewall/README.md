@@ -18,8 +18,9 @@ jitter. Transient API failures retain a separate two-retry budget. Unresolved
 scans still fail closed by default. Per-attempt diagnostics are written to the
 Aegis service log; callers must collect that log to expose them in CI artifacts.
 
-The caller must grant `id-token: write`. The generated token is revoked when
-the job finishes and is also covered by the STS lease expiration.
+The caller must grant `id-token: write`. The standalone
+[`socket-sts`](../socket-sts) action provides the generated token, revokes it
+when the job finishes, and limits its lifetime with the STS lease expiration.
 
 GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
 permissions the workflow declares. On such a run, the action emits a warning
