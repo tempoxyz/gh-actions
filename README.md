@@ -586,11 +586,6 @@ check `binary_comparison_result == "success"` and
 `depot_sha256 == clean_build_sha256`. Extraction failures and mismatches also
 upload a diagnostic manifest; failures before the comparison job do not.
 
-Run the shell-step regression tests locally with
-`node --test testdata/reproducible-image-verify/workflow.test.mjs`. These stub
-Docker/Depot calls to cover both successful verification and rejection paths;
-a dispatched run in the caller repository validates registry and Depot access.
-
 ### `rust-lint`
 
 Runs a common Rust lint set: `cargo clippy`, `cargo fmt`, `typos`, and `cargo deny`.
