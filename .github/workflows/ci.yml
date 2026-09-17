@@ -32,6 +32,9 @@ jobs:
       - name: Run vendor tooling tests
         run: node --test vendor/lib.test.js
 
+      - name: Test reproducible image verification
+        run: node --test testdata/reproducible-image-verify/workflow.test.mjs
+
       # ensure-secure-runner ships @actions/workflow-parser as a committed esbuild bundle. Rebuild
       # it from the lockfile (verifying registry signatures and provenance attestations first)
       # and fail if the committed file differs, so a dependency bump cannot land without its bundle.

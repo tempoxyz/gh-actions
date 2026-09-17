@@ -1,0 +1,512 @@
+name: Reproducible Image Verification
+
+# Build recipes belong to the caller. This workflow verifies one binary extracted
+# from a pushed candidate image; it does not verify the whole image or an EIF.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Source ref to resolve once; defaults to the caller's commit."
+        type: string
+        default: ""
+      build-definitions-sha:
+        description: "Full trusted caller-repository commit SHA supplying build definitions."
+        type: string
+        required: true
+      build-definition-paths:
+        description: "Newline-separated files to overlay from the trusted commit, including the build script, Dockerfile, bake file, and .dockerignore."
+        type: string
+        required: true
+      depot-project:
+        description: "Depot project authorized for the caller's GitHub OIDC identity."
+        type: string
+        required: true
+      candidate-repository:
+        description: "Dedicated non-production GHCR repository, without a tag or digest."
+        type: string
+        required: true
+      bake-file:
+        description: "Repository-relative Docker Bake file."
+        type: string
+        required: true
+      bake-target:
+        description: "Single Bake target that produces the candidate image."
+        type: string
+        required: true
+      binary-path:
+        description: "Absolute binary path inside the candidate image."
+        type: string
+        required: true
+      build-script:
+        description: "Repository-relative executable accepting VERSION and NO_CACHE=1."
+        type: string
+        default: scripts/reproducible-build.sh
+      rebuild-output:
+        description: "Repository-relative binary produced by the clean build script."
+        type: string
+        required: true
+      candidate-runner:
+        description: "Ephemeral Linux runner for the Depot build."
+        type: string
+        default: depot-ubuntu-latest-16
+      artifact-name:
+        description: "Unique comparison manifest artifact name within the caller run."
+        type: string
+        default: reproducible-candidate-binary-verification
+      retention-days:
+        description: "Comparison manifest retention in days."
+        type: number
+        default: 7
+    outputs:
+      source-sha:
+        description: "Resolved source commit SHA."
+        value: ${{ jobs.resolve.outputs.commit_sha }}
+      candidate-image-digest:
+        description: "Digest of the Depot-produced candidate image."
+        value: ${{ jobs.candidate.outputs.candidate_digest }}
+      candidate-tag:
+        description: "Run-specific candidate tag."
+        value: ${{ jobs.candidate.outputs.candidate_tag }}
+      binary-sha256:
+        description: "SHA-256 of the candidate binary compared with the clean rebuild."
+        value: ${{ jobs.compare.outputs.binary_sha256 }}
+
+permissions: {}
+
+jobs:
+  resolve:
+    name: Resolve reproducible verification commit
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      commit_sha: ${{ steps.commit.outputs.commit_sha }}
+      short_sha: ${{ steps.commit.outputs.short_sha }}
+      source_date_epoch: ${{ steps.commit.outputs.source_date_epoch }}
+      version: ${{ steps.commit.outputs.version }}
+      verifier_sha: ${{ steps.commit.outputs.verifier_sha }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@c1eeb5fcba4838f20d6920e3901272cf3a14749d # main
+
+      - name: Check out requested ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Record immutable build inputs
+        id: commit
+        shell: bash
+        env:
+          BUILD_DEFINITIONS_SHA: ${{ inputs.build-definitions-sha }}
+          BUILD_DEFINITION_PATHS: ${{ inputs.build-definition-paths }}
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+          BAKE_FILE: ${{ inputs.bake-file }}
+          BAKE_TARGET: ${{ inputs.bake-target }}
+          CANDIDATE_REPOSITORY: ${{ inputs.candidate-repository }}
+          BINARY_PATH: ${{ inputs.binary-path }}
+        run: |
+          set -euo pipefail
+
+          commit_sha="$(git rev-parse HEAD)"
+          short_sha="$(git rev-parse --short=7 HEAD)"
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
+          verifier_sha="$BUILD_DEFINITIONS_SHA"
+
+          [[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Resolved ref is not a full commit SHA: $commit_sha" >&2
+            exit 1
+          }
+          [[ "$source_date_epoch" =~ ^[0-9]+$ ]] || {
+            echo "Invalid SOURCE_DATE_EPOCH: $source_date_epoch" >&2
+            exit 1
+          }
+          [[ "$verifier_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Invalid verifier SHA: $verifier_sha" >&2
+            exit 1
+          }
+          [[ "$CANDIDATE_REPOSITORY" =~ ^ghcr\.io/[a-z0-9._-]+/[a-z0-9._/-]+$ ]] || {
+            echo "candidate-repository must be a GHCR repository without a tag or digest" >&2
+            exit 1
+          }
+          [[ "$BAKE_TARGET" =~ ^[a-zA-Z0-9_-]+$ && "$BINARY_PATH" == /* ]] || {
+            echo "Expected a single Bake target and an absolute binary path" >&2
+            exit 1
+          }
+          for required_path in .dockerignore "$BUILD_SCRIPT" "$BAKE_FILE"; do
+            if ! grep -Fxq -- "$required_path" <<< "$BUILD_DEFINITION_PATHS"; then
+              echo "Missing trusted build definition: $required_path" >&2
+              exit 1
+            fi
+          done
+
+          {
+            echo "commit_sha=$commit_sha"
+            echo "short_sha=$short_sha"
+            echo "source_date_epoch=$source_date_epoch"
+            echo "version=sha-$short_sha"
+            echo "verifier_sha=$verifier_sha"
+          } >> "$GITHUB_OUTPUT"
+
+  candidate:
+    name: Build and push reproducible candidate
+    defaults:
+      run:
+        working-directory: source
+    needs: resolve
+    runs-on: ${{ inputs.candidate-runner }}
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+    outputs:
+      candidate_repository: ${{ steps.candidate.outputs.repository }}
+      candidate_tag: ${{ steps.candidate.outputs.tag }}
+      candidate_digest: ${{ steps.bake.outputs.digest }}
+    env:
+      CANDIDATE_REPOSITORY: ${{ inputs.candidate-repository }}
+      SOURCE_DATE_EPOCH: ${{ needs.resolve.outputs.source_date_epoch }}
+      GIT_SHA: ${{ needs.resolve.outputs.commit_sha }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@c1eeb5fcba4838f20d6920e3901272cf3a14749d # main
+
+      - name: Check out resolved commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.commit_sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Check out trusted verification definitions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.verifier_sha }}
+          path: .reproducible-verifier
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Use trusted reproducible build definitions
+        shell: bash
+        env:
+          BUILD_DEFINITION_PATHS: ${{ inputs.build-definition-paths }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          import shutil
+
+          trusted = Path(os.environ["GITHUB_WORKSPACE"]) / ".reproducible-verifier"
+          for name in os.environ["BUILD_DEFINITION_PATHS"].splitlines():
+              if not name.strip():
+                  continue
+              path = Path(name)
+              if path.is_absolute() or ".." in path.parts or ".git" in path.parts:
+                  raise SystemExit(f"Invalid build definition path: {name}")
+              for base in (trusted, Path.cwd()):
+                  if any((base / part).is_symlink() for part in (path, *path.parents)):
+                      raise SystemExit(f"Symlink in build definition path: {name}")
+              if not (trusted / path).is_file():
+                  raise SystemExit(f"Build definition is not a file: {name}")
+              path.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(trusted / path, path)
+          PYTHON
+
+      - uses: tempoxyz/gh-actions/vendor/depot/setup-action@b61457a6d6d06485b118a3c0e9637c94186c8c5a # main
+
+      - name: Log in to Container Registry
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@b61457a6d6d06485b118a3c0e9637c94186c8c5a # main
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set candidate image reference
+        id: candidate
+        shell: bash
+        env:
+          CANDIDATE_TAG: run-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.resolve.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          echo "repository=$CANDIDATE_REPOSITORY" >> "$GITHUB_OUTPUT"
+          echo "tag=$CANDIDATE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push reproducible candidate image
+        id: bake
+        shell: bash
+        env:
+          CANDIDATE_IMAGE: ${{ steps.candidate.outputs.repository }}:${{ steps.candidate.outputs.tag }}
+          DEPOT_PROJECT: ${{ inputs.depot-project }}
+          BAKE_FILE: ${{ inputs.bake-file }}
+          BAKE_TARGET: ${{ inputs.bake-target }}
+        run: |
+          set -euo pipefail
+
+          metadata_file="$RUNNER_TEMP/depot-bake-metadata.json"
+          depot bake \
+            --project "$DEPOT_PROJECT" \
+            --push \
+            --metadata-file "$metadata_file" \
+            -f "$BAKE_FILE" \
+            --set "$BAKE_TARGET.tags=$CANDIDATE_IMAGE" \
+            "$BAKE_TARGET"
+
+          digest="$(jq -er \
+            --arg target "$BAKE_TARGET" '.[$target]["containerimage.digest"]' \
+            "$metadata_file")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "Depot did not return a valid image digest: $digest" >&2
+            exit 1
+          }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  rebuild:
+    name: Rebuild reproducibly without Docker cache
+    defaults:
+      run:
+        working-directory: source
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      clean_sha256: ${{ steps.hash.outputs.sha256 }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@c1eeb5fcba4838f20d6920e3901272cf3a14749d # main
+
+      - name: Check out resolved commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.commit_sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Check out trusted verification definitions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.verifier_sha }}
+          path: .reproducible-verifier
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Use trusted reproducible build definitions
+        shell: bash
+        env:
+          BUILD_DEFINITION_PATHS: ${{ inputs.build-definition-paths }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          import shutil
+
+          trusted = Path(os.environ["GITHUB_WORKSPACE"]) / ".reproducible-verifier"
+          for name in os.environ["BUILD_DEFINITION_PATHS"].splitlines():
+              if not name.strip():
+                  continue
+              path = Path(name)
+              if path.is_absolute() or ".." in path.parts or ".git" in path.parts:
+                  raise SystemExit(f"Invalid build definition path: {name}")
+              for base in (trusted, Path.cwd()):
+                  if any((base / part).is_symlink() for part in (path, *path.parents)):
+                      raise SystemExit(f"Symlink in build definition path: {name}")
+              if not (trusted / path).is_file():
+                  raise SystemExit(f"Build definition is not a file: {name}")
+              path.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(trusted / path, path)
+          PYTHON
+
+      - name: Build reproducibly without Docker or BuildKit cache
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          NO_CACHE: "1"
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+        run: |
+          set -euo pipefail
+          docker builder prune --all --force
+          "./$BUILD_SCRIPT"
+
+      - name: Hash clean rebuild
+        id: hash
+        shell: bash
+        env:
+          REBUILD_OUTPUT: ${{ inputs.rebuild-output }}
+        run: |
+          set -euo pipefail
+          sha256="$(sha256sum -- "$REBUILD_OUTPUT" | awk '{print $1}')"
+          [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "Invalid clean-build SHA-256: $sha256" >&2
+            exit 1
+          }
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+  compare:
+    name: Compare reproducible candidate binary
+    outputs:
+      binary_sha256: ${{ steps.compare.outputs.depot_sha256 }}
+    needs:
+      - resolve
+      - candidate
+      - rebuild
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: read
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@c1eeb5fcba4838f20d6920e3901272cf3a14749d # main
+
+      - name: Log in to Container Registry
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@b61457a6d6d06485b118a3c0e9637c94186c8c5a # main
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract candidate binary and compare checksums
+        id: compare
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ needs.resolve.outputs.commit_sha }}
+          VERIFIER_SHA: ${{ needs.resolve.outputs.verifier_sha }}
+          # toJSON keeps this compatible with actionlint versions whose job schema
+          # predates GitHub's workflow identity fields.
+          JOB_CONTEXT: ${{ toJSON(job) }}
+          SOURCE_DATE_EPOCH: ${{ needs.resolve.outputs.source_date_epoch }}
+          CANDIDATE_REPOSITORY: ${{ needs.candidate.outputs.candidate_repository }}
+          CANDIDATE_TAG: ${{ needs.candidate.outputs.candidate_tag }}
+          CANDIDATE_DIGEST: ${{ needs.candidate.outputs.candidate_digest }}
+          CLEAN_SHA256: ${{ needs.rebuild.outputs.clean_sha256 }}
+          BINARY_PATH: ${{ inputs.binary-path }}
+          MANIFEST: ${{ runner.temp }}/reproducible-image-verification.json
+        run: |
+          set -Eeuo pipefail
+
+          verification_workflow_sha="$(jq -er '.workflow_sha | select(test("^[0-9a-f]{40}$"))' <<< "$JOB_CONTEXT")"
+          image_digest="$CANDIDATE_DIGEST"
+          depot_sha256=""
+          comparison_result="failed"
+          failure="candidate extraction or checksum comparison did not complete"
+          container_id=""
+
+          write_manifest() {
+            jq -n \
+              --arg commit_sha "$COMMIT_SHA" \
+              --arg verifier_sha "$VERIFIER_SHA" \
+              --arg verification_workflow_sha "$verification_workflow_sha" \
+              --arg source_date_epoch "$SOURCE_DATE_EPOCH" \
+              --arg candidate_repository "$CANDIDATE_REPOSITORY" \
+              --arg candidate_tag "$CANDIDATE_TAG" \
+              --arg image_digest "$image_digest" \
+              --arg binary_path "$BINARY_PATH" \
+              --arg depot_sha256 "$depot_sha256" \
+              --arg clean_build_sha256 "$CLEAN_SHA256" \
+              --arg binary_comparison_result "$comparison_result" \
+              --arg failure "$failure" \
+              '{
+                commit_sha: $commit_sha,
+                verifier_sha: $verifier_sha,
+                verification_workflow_sha: $verification_workflow_sha,
+                source_date_epoch: $source_date_epoch,
+                candidate_repository: $candidate_repository,
+                candidate_tag: $candidate_tag,
+                image_digest: $image_digest,
+                binary_path: $binary_path,
+                depot_sha256: $depot_sha256,
+                clean_build_sha256: $clean_build_sha256,
+                verification_scope: "image binary only",
+                binary_comparison_result: $binary_comparison_result,
+                failure: $failure
+              }' > "$MANIFEST"
+          }
+
+          cleanup() {
+            status=$?
+            if [[ -n "$container_id" ]]; then
+              docker rm -f "$container_id" >/dev/null 2>&1 || true
+            fi
+            write_manifest
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          if [[ ! "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            failure="Depot returned an invalid candidate image digest"
+            echo "Invalid Depot digest: $image_digest" >&2
+            exit 1
+          fi
+
+          immutable_image="$CANDIDATE_REPOSITORY@$image_digest"
+          pulled=false
+          for attempt in {1..12}; do
+            if docker pull "$immutable_image"; then
+              pulled=true
+              break
+            fi
+            echo "Waiting for $immutable_image to become readable (attempt $attempt/12)"
+            sleep 5
+          done
+          if [[ "$pulled" != true ]]; then
+            failure="could not pull Depot-produced candidate image digest"
+            echo "Could not pull $immutable_image" >&2
+            exit 1
+          fi
+
+          container_id="$(docker create "$immutable_image")"
+          docker cp "$container_id:$BINARY_PATH" "$RUNNER_TEMP/candidate-binary"
+          depot_sha256="$(sha256sum "$RUNNER_TEMP/candidate-binary" | awk '{print $1}')"
+
+          if [[ "$depot_sha256" == "$CLEAN_SHA256" ]]; then
+            comparison_result="success"
+            failure=""
+            echo "Reproducible candidate binary checksum matches clean rebuild"
+          else
+            failure="candidate binary checksum does not match clean rebuild"
+            echo "::error::Reproducible image verification mismatch"
+          fi
+
+          {
+            echo "comparison_result=$comparison_result"
+            echo "image_digest=$image_digest"
+            echo "depot_sha256=$depot_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload verification manifest
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}/reproducible-image-verification.json
+          if-no-files-found: warn
+          retention-days: ${{ inputs.retention-days }}
+
+      - name: Fail on checksum mismatch
+        if: steps.compare.outputs.comparison_result == 'failed'
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ needs.resolve.outputs.commit_sha }}
+          IMAGE_DIGEST: ${{ steps.compare.outputs.image_digest }}
+          DEPOT_SHA256: ${{ steps.compare.outputs.depot_sha256 }}
+          CLEAN_SHA256: ${{ needs.rebuild.outputs.clean_sha256 }}
+          BINARY_PATH: ${{ inputs.binary-path }}
+        run: |
+          set -euo pipefail
+          echo "Reproducible image verification failed:" >&2
+          echo "  commit SHA: $COMMIT_SHA" >&2
+          echo "  image digest: $IMAGE_DIGEST" >&2
+          echo "  binary path: $BINARY_PATH" >&2
+          echo "  Depot SHA-256: $DEPOT_SHA256" >&2
+          echo "  clean-build SHA-256: $CLEAN_SHA256" >&2
+          exit 1
