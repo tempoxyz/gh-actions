@@ -7,23 +7,29 @@ GitHub actor.
 
 The action uses GitHub STS policy `download-releases` in `tempoxyz/aegis` to
 download the native artifact for the runner operating system and architecture
-from release `20260917T074427Z-cc48075c9387`. Before installation, it verifies
+from release `20260917T173242Z-f442872beb5d`. Before installation, it verifies
 the artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
-including the signer workflow and source commit.
+including the signer workflow, pinned source commit, and `refs/heads/main` source
+ref. Releases built from pull-request or feature-branch refs are rejected.
 
 Supported runners are Linux and Windows on X64 or ARM64, and macOS on ARM64.
 This release does not publish Intel macOS artifacts; the action fails explicitly
 on macOS X64 rather than attempting to download a missing artifact.
 
-This release polls incomplete Socket `pendingScan` responses until the existing
-90-second lookup deadline (or an earlier caller deadline), rather than stopping
-after three attempts. Pending backoff is 2, 4, 8, then 10 seconds, plus up to 25%
-jitter. HTTP 429 responses also retry within that deadline, honoring a valid
-`Retry-After` delay or HTTP date and otherwise using the same backoff schedule.
-Transient network/read errors and HTTP 502/503/504 retain a separate two-retry
-budget. Unresolved scans still fail closed by default. Per-attempt diagnostics
-are written to the Aegis service log; callers must collect that log to expose
-them in CI artifacts.
+This release honors effective Socket `pendingScan` actions of `ignore` or
+`monitor`, including `alertPriorities` overrides, without requiring complete
+analysis. Other alerts and records are still validated, so policy blocks still
+win. Other pending actions retain bounded polling until the 90-second lookup
+deadline (or an earlier caller deadline), then fail closed by default. Pending
+backoff is 2, 4, 8, then 10 seconds, plus up to 25% jitter. HTTP 429 responses
+also retry within that deadline, honoring a valid `Retry-After` delay or HTTP
+date and otherwise using the same backoff schedule. Transient network/read
+errors and HTTP 502/503/504 retain a separate two-retry budget.
+
+HTTP/1.x block responses now expose the reason and request ID in the status text
+that pnpm displays. Lookup failures are classified separately from policy
+denials. Per-attempt Socket diagnostics are written to the Aegis service log;
+callers must collect that log to expose them in CI artifacts.
 
 The caller must grant `id-token: write`. The standalone
 [`socket-sts`](../socket-sts) action provides the generated token, revokes it
