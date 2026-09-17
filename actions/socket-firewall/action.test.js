@@ -20,22 +20,23 @@ test("uses both STS exchanges and the aegis download policy", () => {
 
 test("pins the requested release and verifies its checksums and provenance", () => {
   const downloader = fs.readFileSync(path.join(__dirname, "download.cjs"), "utf8");
-  assert.match(downloader, /20260917T074427Z-cc48075c9387/);
-  assert.match(downloader, /cc48075c9387ff084e819b70f96dba0e1e7daca9/);
+  assert.match(downloader, /20260917T173242Z-f442872beb5d/);
+  assert.match(downloader, /f442872beb5dc9563adda4f1e302845ec1ef0a25/);
   assert.match(downloader, /SHA256SUMS/);
   assert.match(downloader, /provenance\.sigstore\.json/);
   assert.match(downloader, /attestation.*verify/s);
   assert.match(downloader, /tempoxyz\/aegis\/\.github\/workflows\/release\.yml/);
+  assert.match(downloader, /"--source-ref", "refs\/heads\/main"/);
   assert.match(downloader, /--deny-self-hosted-runners/);
 });
 
 test("selects the exact release artifact for every supported OS and architecture", () => {
-  assert.equal(assetName("Linux", "X64"), "aegis-cc48075c9387-linux-amd64.deb");
-  assert.equal(assetName("Linux", "ARM64"), "aegis-cc48075c9387-linux-arm64.deb");
+  assert.equal(assetName("Linux", "X64"), "aegis-f442872beb5d-linux-amd64.deb");
+  assert.equal(assetName("Linux", "ARM64"), "aegis-f442872beb5d-linux-arm64.deb");
   assert.throws(() => assetName("macOS", "X64"), /only ARM64 macOS runners/);
-  assert.equal(assetName("macOS", "ARM64"), "aegis-cc48075c9387-macos-arm64.tar.gz");
-  assert.equal(assetName("Windows", "X64"), "aegis-cc48075c9387-windows-amd64.zip");
-  assert.equal(assetName("Windows", "ARM64"), "aegis-cc48075c9387-windows-arm64.zip");
+  assert.equal(assetName("macOS", "ARM64"), "aegis-f442872beb5d-macos-arm64.tar.gz");
+  assert.equal(assetName("Windows", "X64"), "aegis-f442872beb5d-windows-amd64.zip");
+  assert.equal(assetName("Windows", "ARM64"), "aegis-f442872beb5d-windows-arm64.zip");
   assert.throws(() => assetName("Plan9", "X64"), /Unsupported runner OS/);
   assert.throws(() => assetName("Linux", "RISCV64"), /Unsupported runner architecture/);
 });
