@@ -36,7 +36,7 @@ jobs:
       updates: ${{ steps.find.outputs.updates }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@c1eeb5fcba4838f20d6920e3901272cf3a14749d # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@e8383309ef9889168bdfb1e678e9b01903b6f51f # main
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,7 +84,7 @@ jobs:
         name: ${{ fromJSON(needs.discover.outputs.updates) }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@c1eeb5fcba4838f20d6920e3901272cf3a14749d # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@e8383309ef9889168bdfb1e678e9b01903b6f51f # main
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
