@@ -5,9 +5,9 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-const RELEASE_TAG = "20260916T103300Z-3a125feb7af3";
-const RELEASE_COMMIT = "3a125feb7af364c325e455f42f3fe9bbbe2e2fef";
-const RELEASE_VERSION = "3a125feb7af3";
+const RELEASE_TAG = "20260917T074427Z-cc48075c9387";
+const RELEASE_COMMIT = "cc48075c9387ff084e819b70f96dba0e1e7daca9";
+const RELEASE_VERSION = "cc48075c9387";
 
 function assetName(runnerOS, runnerArch) {
   const operatingSystem = {
@@ -18,6 +18,9 @@ function assetName(runnerOS, runnerArch) {
   const architecture = { X64: "amd64", ARM64: "arm64" }[runnerArch];
   if (!operatingSystem) throw new Error(`Unsupported runner OS: ${runnerOS}`);
   if (!architecture) throw new Error(`Unsupported runner architecture: ${runnerArch}`);
+  if (runnerOS === "macOS" && runnerArch === "X64") {
+    throw new Error("This Aegis release supports only ARM64 macOS runners; Intel macOS is unsupported");
+  }
   return `aegis-${RELEASE_VERSION}-${operatingSystem[0]}-${architecture}.${operatingSystem[1]}`;
 }
 

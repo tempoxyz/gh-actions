@@ -7,16 +7,23 @@ GitHub actor.
 
 The action uses GitHub STS policy `download-releases` in `tempoxyz/aegis` to
 download the native artifact for the runner operating system and architecture
-from release `20260916T103300Z-3a125feb7af3`. Before installation, it verifies
+from release `20260917T074427Z-cc48075c9387`. Before installation, it verifies
 the artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
 including the signer workflow and source commit.
+
+Supported runners are Linux and Windows on X64 or ARM64, and macOS on ARM64.
+This release does not publish Intel macOS artifacts; the action fails explicitly
+on macOS X64 rather than attempting to download a missing artifact.
 
 This release polls incomplete Socket `pendingScan` responses until the existing
 90-second lookup deadline (or an earlier caller deadline), rather than stopping
 after three attempts. Pending backoff is 2, 4, 8, then 10 seconds, plus up to 25%
-jitter. Transient API failures retain a separate two-retry budget. Unresolved
-scans still fail closed by default. Per-attempt diagnostics are written to the
-Aegis service log; callers must collect that log to expose them in CI artifacts.
+jitter. HTTP 429 responses also retry within that deadline, honoring a valid
+`Retry-After` delay or HTTP date and otherwise using the same backoff schedule.
+Transient network/read errors and HTTP 502/503/504 retain a separate two-retry
+budget. Unresolved scans still fail closed by default. Per-attempt diagnostics
+are written to the Aegis service log; callers must collect that log to expose
+them in CI artifacts.
 
 The caller must grant `id-token: write`. The standalone
 [`socket-sts`](../socket-sts) action provides the generated token, revokes it
