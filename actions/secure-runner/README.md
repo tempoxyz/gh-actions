@@ -5,11 +5,10 @@ install Aegis through Socket Firewall with a short-lived Socket token. Use this
 action as the first step in a job. The nested remote actions retain their pre-job
 initialization and post-job cleanup, including token revocation.
 
-The Socket Firewall pin selects Aegis `20260917T173242Z-f442872beb5d`, including
-pnpm block reasons, Socket lookup diagnostics, and effective non-blocking
-`pendingScan` policy actions. The release's provenance must match its pinned
-source commit and `refs/heads/main`; see [Socket Firewall](../socket-firewall)
-for policy behavior and supported runners.
+The Socket Firewall pin selects the latest stable Aegis release on each run,
+excluding drafts and prereleases. The release's checksum and provenance are
+verified against its release-tag source commit and `refs/heads/main`; see
+[Socket Firewall](../socket-firewall) for policy behavior and supported runners.
 
 ## Inputs
 
