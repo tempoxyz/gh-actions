@@ -1,11 +1,13 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { host, rateLimitDelay, retry, retryRateLimited } = require("./http.cjs");
 const { publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
+const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("selects the fixed development and production endpoints", () => {
   assert.equal(host("true"), "socket-sts.tehq.dev");
@@ -129,11 +131,34 @@ test("revokes tokens by deleting the exchange resource", () => {
   assert.deepEqual(JSON.parse(revoke.body), { token });
 });
 
+test("can register a post-job Aegis audit-log upload", async () => {
+  assert.match(manifest, /upload-aegis-report:/);
+  assert.match(manifest, /default: "false"/);
+  assert.match(manifest, /runs:\r?\n  using: "node24"\r?\n  main: "main\.cjs"\r?\n  post: "post\.cjs"/);
+  const { aegisReportPath, artifactName } = require("./dist/artifact-upload.cjs");
+  assert.equal(aegisReportPath("linux"), "/var/log/aegis/service.jsonl");
+  assert.equal(aegisReportPath("darwin"), "/Library/Application Support/Aegis/service.jsonl");
+  assert.equal(
+    aegisReportPath("win32", { ProgramData: "C:\\ProgramData" }),
+    "C:\\ProgramData\\Aegis\\service.jsonl",
+  );
+  assert.equal(
+    artifactName("socket-sts 2", { GITHUB_JOB: "lint / check" }),
+    "aegis-service-log-lint---check-socket-sts-2",
+  );
+  assert.match(fs.readFileSync(path.join(__dirname, "post.cjs"), "utf8"), /STATE_upload_aegis_report/);
+});
+
 test("post is a no-op when no token was minted", () => {
-  const result = spawnSync(process.execPath, [path.join(__dirname, "post.cjs")], {
-    encoding: "utf8",
-    env: { ...process.env, STATE_token: "" },
-  });
-  assert.equal(result.status, 0);
-  assert.match(`${result.stdout}${result.stderr}`, /skipping revocation/);
+  const withoutNode = fs.mkdtempSync(path.join(os.tmpdir(), "socket-sts-no-node-"));
+  try {
+    const result = spawnSync(process.execPath, [path.join(__dirname, "post.cjs")], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: withoutNode, STATE_token: "" },
+    });
+    assert.equal(result.status, 0);
+    assert.match(`${result.stdout}${result.stderr}`, /skipping revocation/);
+  } finally {
+    fs.rmSync(withoutNode, { force: true, recursive: true });
+  }
 });
