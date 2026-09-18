@@ -88,7 +88,7 @@ jobs:
       verifier_sha: ${{ steps.commit.outputs.verifier_sha }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@e8aff38749ab86cb2efa941b893edd4519cda1c5 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@f83f03ffdfcf32e88af01ff90ebf98711187bc01 # main
 
       - name: Check out requested ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -174,7 +174,7 @@ jobs:
       VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@e8aff38749ab86cb2efa941b893edd4519cda1c5 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@f83f03ffdfcf32e88af01ff90ebf98711187bc01 # main
 
       - name: Check out resolved commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -282,7 +282,7 @@ jobs:
       clean_sha256: ${{ steps.hash.outputs.sha256 }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@e8aff38749ab86cb2efa941b893edd4519cda1c5 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@f83f03ffdfcf32e88af01ff90ebf98711187bc01 # main
 
       - name: Check out resolved commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -366,7 +366,7 @@ jobs:
       packages: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@e8aff38749ab86cb2efa941b893edd4519cda1c5 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@f83f03ffdfcf32e88af01ff90ebf98711187bc01 # main
 
       - name: Log in to Container Registry
         uses: tempoxyz/gh-actions/vendor/docker/login-action@b61457a6d6d06485b118a3c0e9637c94186c8c5a # main
