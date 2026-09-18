@@ -48,7 +48,7 @@ test("main entrypoint executes as CommonJS", () => {
   assert.doesNotMatch(output, /ERR_AMBIGUOUS_MODULE_SYNTAX/);
 });
 
-for (const owner of ["tempoxyz", "foundry-rs", "alloy-rs", "bluealloy", "wevm"]) {
+for (const owner of ["tempoxyz", "foundry-rs", "alloy-rs", "bluealloy", "wevm", "paradigmxyz", "ParadigmXYZ"]) {
   test(`main accepts ${owner} before resolving STS inputs`, () => {
     const result = spawnSync(process.execPath, [path.join(actionDirectory, "main.js")], {
       encoding: "utf8",
@@ -68,23 +68,25 @@ for (const owner of ["tempoxyz", "foundry-rs", "alloy-rs", "bluealloy", "wevm"])
   });
 }
 
-test("main rejects unsupported repository owners before resolving STS inputs", () => {
-  const result = spawnSync(process.execPath, [path.join(actionDirectory, "main.js")], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      GITHUB_REPOSITORY_OWNER: "outside-contributor",
-      INPUT_DEV: "invalid",
-      ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
-      ACTIONS_ID_TOKEN_REQUEST_URL: "",
-    },
-  });
-  const output = `${result.stdout}${result.stderr}`;
+for (const owner of ["outside-contributor", "paradigmxyz-other"]) {
+  test(`main rejects unsupported owner ${owner} before resolving STS inputs`, () => {
+    const result = spawnSync(process.execPath, [path.join(actionDirectory, "main.js")], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GITHUB_REPOSITORY_OWNER: owner,
+        INPUT_DEV: "invalid",
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
+        ACTIONS_ID_TOKEN_REQUEST_URL: "",
+      },
+    });
+    const output = `${result.stdout}${result.stderr}`;
 
-  assert.equal(result.status, 1);
-  assert.match(output, /only supports repositories owned by tempoxyz, foundry-rs, alloy-rs, bluealloy, or wevm/);
-  assert.doesNotMatch(output, /dev must|id-token/);
-});
+    assert.equal(result.status, 1);
+    assert.match(output, /only supports repositories owned by tempoxyz, foundry-rs, alloy-rs, bluealloy, wevm, or paradigmxyz/);
+    assert.doesNotMatch(output, /dev must|id-token/);
+  });
+}
 
 test("post entrypoint executes as CommonJS without a token", () => {
   const result = spawnSync(process.execPath, [path.join(actionDirectory, "post.js")], {
