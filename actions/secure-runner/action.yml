@@ -61,6 +61,15 @@ runs:
         disable-enforcement: ${{ inputs.disable-enforcement }}
         token: ${{ inputs.token }}
 
+    # Self-hosted runners can run JavaScript actions via the runner's bundled
+    # runtime without having `node` on PATH for Socket Firewall's shell steps.
+    - name: Set up Node.js for Socket Firewall
+      if: inputs.disable-enforcement != 'true'
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+
     - name: Install Socket Firewall
       if: inputs.disable-enforcement != 'true'
       uses: tempoxyz/gh-actions/actions/socket-firewall@acce1cd90e4c695cfc97b71e8289ac762eb52fec # main

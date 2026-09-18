@@ -5,6 +5,12 @@ install Aegis through Socket Firewall with a short-lived Socket token. Use this
 action as the first step in a job. The nested remote actions retain their pre-job
 initialization and post-job cleanup, including token revocation.
 
+After Harden Runner starts, this action puts Node.js 24 on `PATH` for Socket
+Firewall's installation scripts, including on self-hosted runners without a
+system Node.js installation. Automatic package-manager caching is disabled
+because this runs before checkout. Callers can select their application's Node.js
+version later in the job.
+
 The Socket Firewall pin selects the latest stable Aegis release on each run,
 excluding drafts and prereleases, and supports the Intel macOS CLI artifacts
 restored in Aegis v0.4.0. The release's checksum and provenance are
