@@ -37,12 +37,8 @@ errors and HTTP 502/503/504 retain a separate two-retry budget.
 
 HTTP/1.x block responses now expose the reason and request ID in the status text
 that pnpm displays. Lookup failures are classified separately from policy
-denials. Per-attempt Socket diagnostics are written to the Aegis service log.
-Every enforcing invocation registers a post-job upload of that final log as a
-seven-day GitHub Actions artifact, including when a later package-manager step
-fails. The uploader is skipped for fork pull requests because no firewall or
-audit log is installed there. An unavailable log or artifact service emits a
-warning and never obscures the job's original result.
+denials. Per-attempt Socket diagnostics are written to the Aegis service log;
+callers must collect that log to expose them in CI artifacts.
 
 The caller must grant `id-token: write`. The standalone
 [`socket-sts`](../socket-sts) action provides the generated token, revokes it

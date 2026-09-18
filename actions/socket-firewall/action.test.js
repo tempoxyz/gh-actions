@@ -12,12 +12,11 @@ const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("uses both STS exchanges and the aegis download policy", () => {
-  assert.match(manifest, /actions\/socket-sts@666b70c920d6ef1d9f41185609e156f78eb1a8d6/);
+  assert.match(manifest, /actions\/socket-sts@e8aff38749ab86cb2efa941b893edd4519cda1c5/);
   assert.match(manifest, /actions\/github-sts@0c5eca66caf2483b8ddc5cbddd6a858213467a65/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);
   assert.match(manifest, /dev: \$\{\{ inputs\.dev \}\}/);
-  assert.match(manifest, /upload-aegis-report: "true"/);
   assert.match(manifest, /INPUT_SOCKET_TOKEN: \$\{\{ steps\.socket-token\.outputs\.token \}\}/);
   assert.match(manifest, /aegis install --config/);
 });
@@ -205,10 +204,4 @@ test("forwards the Aegis binary and audit log through the compatibility outputs"
   assert.match(manifest, /steps\.install-linux\.outputs\.report/);
   assert.match(manifest, /steps\.install-macos\.outputs\.report/);
   assert.match(manifest, /steps\.install-windows\.outputs\.report/);
-});
-
-test("registers a post-job audit-log artifact for enforcing runs", () => {
-  const step = manifest.split(/\n    - name: /).find((entry) => entry.startsWith("Exchange GitHub OIDC token for a Socket token"));
-  assert.match(step, /if: steps\.oidc\.outputs\.available == 'true'/);
-  assert.match(step, /upload-aegis-report: "true"/);
 });

@@ -5,6 +5,10 @@ API token. The token is masked before it is published as an action output and
 is revoked automatically when the job finishes. The Socket STS lease also
 limits the token lifetime.
 
+Socket STS is a `node24` action, so its main and post-job handlers always use
+the GitHub Actions runner's bundled Node runtime. They do not rely on `node`
+being installed or available on `PATH`.
+
 The caller must grant `id-token: write`.
 
 ## Inputs
@@ -12,6 +16,11 @@ The caller must grant `id-token: write`.
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
 | `dev` | Use the development Socket STS endpoint for integration testing | No | `false` |
+| `upload-aegis-report` | Upload the final Aegis audit log after the job finishes | No | `false` |
+
+When `upload-aegis-report` is `true`, the post-job handler uploads the final
+Aegis service log as a seven-day artifact. It reports a missing log or artifact
+service failure as a warning, preserving the job's original result.
 
 ## Outputs
 
