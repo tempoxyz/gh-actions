@@ -34,7 +34,7 @@ test("downloads the latest stable release and verifies its checksums and provena
 test("selects the exact latest-release artifact for every supported OS and architecture", () => {
   assert.equal(assetName("1.2.3", "Linux", "X64"), "aegis-1.2.3-linux-amd64.deb");
   assert.equal(assetName("1.2.3", "Linux", "ARM64"), "aegis-1.2.3-linux-arm64.deb");
-  assert.throws(() => assetName("1.2.3", "macOS", "X64"), /only ARM64 macOS runners/);
+  assert.equal(assetName("1.2.3", "macOS", "X64"), "aegis-1.2.3-macos-amd64.tar.gz");
   assert.equal(assetName("1.2.3", "macOS", "ARM64"), "aegis-1.2.3-macos-arm64.tar.gz");
   assert.equal(assetName("1.2.3", "Windows", "X64"), "aegis-1.2.3-windows-amd64.zip");
   assert.equal(assetName("1.2.3", "Windows", "ARM64"), "aegis-1.2.3-windows-arm64.zip");

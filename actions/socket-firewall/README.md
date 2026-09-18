@@ -13,9 +13,9 @@ artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
 including the signer workflow, release-tag source commit, and `refs/heads/main`
 source ref. Releases built from pull-request or feature-branch refs are rejected.
 
-Supported runners are Linux and Windows on X64 or ARM64, and macOS on ARM64.
-This release does not publish Intel macOS artifacts; the action fails explicitly
-on macOS X64 rather than attempting to download a missing artifact.
+Supported runners are Linux, Windows, and macOS on X64 or ARM64. Aegis v0.4.0
+restores Intel macOS artifacts; macOS X64 runners use the `macos-amd64.tar.gz`
+CLI package with the same checksum and provenance verification as other targets.
 
 This release honors effective Socket `pendingScan` actions of `ignore` or
 `monitor`, including `alertPriorities` overrides, without requiring complete

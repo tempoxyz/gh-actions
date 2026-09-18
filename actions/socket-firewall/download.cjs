@@ -14,9 +14,6 @@ function assetName(releaseVersion, runnerOS, runnerArch) {
   const architecture = { X64: "amd64", ARM64: "arm64" }[runnerArch];
   if (!operatingSystem) throw new Error(`Unsupported runner OS: ${runnerOS}`);
   if (!architecture) throw new Error(`Unsupported runner architecture: ${runnerArch}`);
-  if (runnerOS === "macOS" && runnerArch === "X64") {
-    throw new Error("This Aegis release supports only ARM64 macOS runners; Intel macOS is unsupported");
-  }
   return `aegis-${releaseVersion}-${operatingSystem[0]}-${architecture}.${operatingSystem[1]}`;
 }
 
