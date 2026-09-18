@@ -16,6 +16,9 @@ excluding drafts and prereleases, and supports the Intel macOS CLI artifacts
 restored in Aegis v0.4.0. The release's checksum and provenance are
 verified against its release-tag source commit and `refs/heads/main`; see
 [Socket Firewall](../socket-firewall) for policy behavior and supported runners.
+On enforcing runs, Socket Firewall also uploads Aegis's final service log as a
+seven-day job artifact, preserving Socket diagnostics from later dependency
+download failures.
 
 ## Inputs
 
