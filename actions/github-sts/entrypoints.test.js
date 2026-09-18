@@ -1,8 +1,11 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
+const https = require("node:https");
 const path = require("node:path");
 const test = require("node:test");
-const { buildExchangeUrl, exchangeRequestOptions } = require("./main.js");
+const { buildExchangeUrl, exchangeRequestOptions, main } = require("./main.js");
 const {
   revocationRequestOptions,
   revokeToken,
@@ -48,8 +51,8 @@ test("main entrypoint executes as CommonJS", () => {
   assert.doesNotMatch(output, /ERR_AMBIGUOUS_MODULE_SYNTAX/);
 });
 
-for (const owner of ["tempoxyz", "foundry-rs", "alloy-rs", "bluealloy", "wevm", "paradigmxyz", "ParadigmXYZ"]) {
-  test(`main accepts ${owner} before resolving STS inputs`, () => {
+for (const owner of ["paradigmxyz", "newly-onboarded-org", ""]) {
+  test(`main validates STS inputs without checking owner ${owner || "<unset>"}`, () => {
     const result = spawnSync(process.execPath, [path.join(actionDirectory, "main.js")], {
       encoding: "utf8",
       env: {
@@ -68,23 +71,70 @@ for (const owner of ["tempoxyz", "foundry-rs", "alloy-rs", "bluealloy", "wevm", 
   });
 }
 
-for (const owner of ["outside-contributor", "paradigmxyz-other"]) {
-  test(`main rejects unsupported owner ${owner} before resolving STS inputs`, () => {
-    const result = spawnSync(process.execPath, [path.join(actionDirectory, "main.js")], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        GITHUB_REPOSITORY_OWNER: owner,
-        INPUT_DEV: "invalid",
-        ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
-        ACTIONS_ID_TOKEN_REQUEST_URL: "",
-      },
+for (const status of [200, 403]) {
+  test(`main delegates a new organization's authorization to STS (HTTP ${status})`, async (t) => {
+    const env = {
+      GITHUB_REPOSITORY_OWNER: "newly-onboarded-org",
+      GITHUB_REPOSITORY: "newly-onboarded-org/example",
+      INPUT_DEV: "false",
+      INPUT_SCOPE: "tempoxyz/aegis",
+      INPUT_POLICY: "download-releases",
+      INPUT_TTL: "15m",
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: "test-request-token",
+      ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token",
+      GITHUB_OUTPUT: "test-output",
+      GITHUB_STATE: "test-state",
+    };
+    const previous = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, env);
+    t.after(() => {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     });
-    const output = `${result.stdout}${result.stderr}`;
 
-    assert.equal(result.status, 1);
-    assert.match(output, /only supports repositories owned by tempoxyz, foundry-rs, alloy-rs, bluealloy, wevm, or paradigmxyz/);
-    assert.doesNotMatch(output, /dev must|id-token/);
+    const calls = [];
+    t.mock.method(https, "request", (url, options, callback) => {
+      calls.push({ url: new URL(url), options });
+      const oidc = calls.length === 1;
+      const response = new EventEmitter();
+      response.statusCode = oidc ? 200 : status;
+      response.setEncoding = () => {};
+      const request = new EventEmitter();
+      request.end = () => {
+        callback(response);
+        response.emit("data", JSON.stringify(oidc ? { value: "test-oidc" } : status === 200
+          ? { token: "test-installation-token", expires_at: "2030-01-01T00:00:00Z" }
+          : { message: "caller organization is not permitted by this service" }));
+        response.emit("end");
+      };
+      return request;
+    });
+    const writes = t.mock.method(fs, "appendFileSync", () => {});
+    const logs = t.mock.method(console, "log", () => {});
+
+    if (status === 200) {
+      await main();
+      assert.deepEqual(writes.mock.calls.map(({ arguments: args }) => args), [
+        ["test-output", "token=test-installation-token\n"],
+        ["test-output", "expires-at=2030-01-01T00:00:00Z\n"],
+        ["test-state", "token=test-installation-token\nsts_host=gh-sts.tehq.net\n"],
+      ]);
+      assert.deepEqual(logs.mock.calls.map(({ arguments: args }) => args), [
+        ["::add-mask::test-installation-token"],
+      ]);
+    } else {
+      await assert.rejects(main(), /GitHub STS exchange failed \(HTTP 403\): caller organization is not permitted by this service/);
+      assert.equal(writes.mock.callCount(), 0);
+      assert.equal(logs.mock.callCount(), 0);
+    }
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].url.searchParams.get("audience"), "gh-sts.tehq.net");
+    assert.equal(calls[0].options.headers.Authorization, "Bearer test-request-token");
+    assert.equal(calls[1].url.href, "https://gh-sts.tehq.net/sts/exchange?scope=tempoxyz%2Faegis&identity=download-releases&ttl=15m");
+    assert.equal(calls[1].options.method, "POST");
+    assert.equal(calls[1].options.headers.Authorization, "Bearer test-oidc");
   });
 }
 

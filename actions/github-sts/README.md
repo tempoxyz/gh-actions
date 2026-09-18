@@ -51,10 +51,12 @@ policy's optional `max_ttl`. The effective lifetime is the shortest of the
 requested TTL, the policy maximum, and GitHub's one-hour installation-token
 limit. The `expires-at` output reports that effective deadline.
 
-The action only runs for repositories owned by `tempoxyz`, `foundry-rs`, `alloy-rs`, `bluealloy`, `wevm`, or `paradigmxyz`.
-This name check rejects unsupported callers before requesting a GitHub OIDC
-token or contacting the STS. The STS remains authoritative and validates the
-token's immutable numeric repository owner ID.
+The action delegates caller authorization to the STS, which verifies the signed
+GitHub OIDC token, checks its immutable numeric repository owner ID against the
+server's allowlist, and enforces the target repository's trust policy. Rejected
+exchanges fail the action. There is no action-side organization list to update
+when onboarding an organization; callers already using this version need no
+action repin for subsequent server-side authorization changes.
 
 The minted installation token is revoked through STS when the job finishes,
 so its provider credential and STS ownership-ledger row are cleared together,

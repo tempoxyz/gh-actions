@@ -2,8 +2,6 @@ const fs = require("node:fs");
 const https = require("node:https");
 const { isTransientStatus, retry } = require("./retry.js");
 
-const SUPPORTED_REPOSITORY_OWNERS = new Set(["tempoxyz", "foundry-rs", "alloy-rs", "bluealloy", "wevm", "paradigmxyz"]);
-
 function input(name) {
   const key = name.toUpperCase();
   return process.env[`INPUT_${key}`] || process.env[`INPUT_${key.replaceAll("-", "_")}`] || "";
@@ -46,11 +44,6 @@ function exchangeRequestOptions(oidc) {
 }
 
 async function main() {
-  const repositoryOwner = process.env.GITHUB_REPOSITORY_OWNER || "";
-  if (!SUPPORTED_REPOSITORY_OWNERS.has(repositoryOwner.toLowerCase())) {
-    throw new Error("github-sts only supports repositories owned by tempoxyz, foundry-rs, alloy-rs, bluealloy, wevm, or paradigmxyz");
-  }
-
   const dev = input("dev");
   const host = dev === "true" ? "gh-sts.tehq.dev" : dev === "false" ? "gh-sts.tehq.net" : null;
   if (!host) throw new Error("dev must be either true or false");
@@ -112,4 +105,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildExchangeUrl, exchangeRequestOptions };
+module.exports = { buildExchangeUrl, exchangeRequestOptions, main };
