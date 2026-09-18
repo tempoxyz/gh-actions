@@ -21,7 +21,7 @@ jobs:
       id-token: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@e8383309ef9889168bdfb1e678e9b01903b6f51f # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@e8aff38749ab86cb2efa941b893edd4519cda1c5 # main
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
