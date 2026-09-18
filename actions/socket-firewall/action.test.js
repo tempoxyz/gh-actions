@@ -12,7 +12,7 @@ const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("uses both STS exchanges and the aegis download policy", () => {
-  assert.match(manifest, /actions\/socket-sts@2d61cf54e0a096d4210a59dff2f908a59f1f23ab/);
+  assert.match(manifest, /actions\/socket-sts@666b70c920d6ef1d9f41185609e156f78eb1a8d6/);
   assert.match(manifest, /actions\/github-sts@0c5eca66caf2483b8ddc5cbddd6a858213467a65/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);

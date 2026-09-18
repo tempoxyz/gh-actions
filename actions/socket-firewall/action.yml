@@ -44,7 +44,7 @@ runs:
     - name: Exchange GitHub OIDC token for a Socket token
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-sts@2d61cf54e0a096d4210a59dff2f908a59f1f23ab # main
+      uses: tempoxyz/gh-actions/actions/socket-sts@666b70c920d6ef1d9f41185609e156f78eb1a8d6 # main
       with:
         dev: ${{ inputs.dev }}
         upload-aegis-report: "true"
