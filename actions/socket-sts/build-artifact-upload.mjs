@@ -36,7 +36,7 @@ const text = result.outputFiles[0].text.replace(/[\t ]+(?=\n)/g, "");
 if (check) {
   let current = "";
   try { current = readFileSync(outfile, "utf8"); } catch {}
-  if (current !== text) {
+  if (current.replace(/\r\n/g, "\n") !== text) {
     console.error(`::error::${outfile} is stale; rebuild and commit dist/artifact-upload.cjs`);
     process.exit(1);
   }

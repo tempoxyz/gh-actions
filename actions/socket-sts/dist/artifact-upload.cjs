@@ -54136,6 +54136,8 @@ var require_light = __commonJS({
 // artifact-upload-entry.mjs
 var artifact_upload_entry_exports = {};
 __export(artifact_upload_entry_exports, {
+  aegisReportPath: () => aegisReportPath,
+  artifactName: () => artifactName,
   uploadAegisReport: () => uploadAegisReport
 });
 module.exports = __toCommonJS(artifact_upload_entry_exports);
@@ -98228,5 +98230,7 @@ async function uploadAegisReport({ action: action5, env = process.env } = {}) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  aegisReportPath,
+  artifactName,
   uploadAegisReport
 });

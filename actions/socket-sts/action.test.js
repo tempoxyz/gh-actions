@@ -135,7 +135,7 @@ test("can register a post-job Aegis audit-log upload", async () => {
   assert.match(manifest, /upload-aegis-report:/);
   assert.match(manifest, /default: "false"/);
   assert.match(manifest, /runs:\n  using: "node24"\n  main: "main\.cjs"\n  post: "post\.cjs"/);
-  const { aegisReportPath, artifactName } = await import("./artifact-upload.mjs");
+  const { aegisReportPath, artifactName } = require("./dist/artifact-upload.cjs");
   assert.equal(aegisReportPath("linux"), "/var/log/aegis/service.jsonl");
   assert.equal(aegisReportPath("darwin"), "/Library/Application Support/Aegis/service.jsonl");
   assert.equal(
