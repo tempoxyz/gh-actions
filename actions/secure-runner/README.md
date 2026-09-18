@@ -5,6 +5,12 @@ install Aegis through Socket Firewall with a short-lived Socket token. Use this
 action as the first step in a job. The nested remote actions retain their pre-job
 initialization and post-job cleanup, including token revocation.
 
+No Node installation is required before or inside this action: Socket Firewall
+reuses the runner's bundled Node executable for its setup scripts, even when
+`node` is absent from `PATH`. Harden Runner starts first; Socket Firewall then
+checks GitHub CLI attestation support and bootstraps a verified CLI on Linux if
+needed, before verifying and installing Aegis.
+
 The Socket Firewall pin selects the latest stable Aegis release on each run,
 excluding drafts and prereleases, and supports the Intel macOS CLI artifacts
 restored in Aegis v0.4.0. The release's checksum and provenance are

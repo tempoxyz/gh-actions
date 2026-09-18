@@ -19,6 +19,7 @@ The caller must grant `id-token: write`.
 |------|-------------|
 | `token` | Sensitive short-lived Socket API token, registered with GitHub's secret masker |
 | `expires-at` | Time when Socket STS will revoke the token |
+| `node-path` | Absolute path to the runner-provided Node executable; usable by later steps without installing Node |
 
 ## Usage
 

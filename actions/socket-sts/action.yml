@@ -12,6 +12,8 @@ outputs:
     description: "Sensitive: short-lived Socket API token, registered with GitHub's secret masker"
   expires-at:
     description: "Time when Socket STS will revoke the token"
+  node-path:
+    description: "Absolute path to the Node runtime provided by the GitHub Actions runner"
 
 runs:
   using: "node24"

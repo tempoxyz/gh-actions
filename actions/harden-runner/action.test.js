@@ -392,10 +392,15 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
         protectedJobs += 1;
       } else {
         const steps = jobBlock.split(/\n    steps:\s*\n/, 2)[1] || "";
+        // The integration matrix exercises the candidate wrapper; other jobs
+        // continue to use the production pin.
+        const secureRunnerPin = filename === "test.yml" && jobBlock.startsWith("  socket-firewall-aegis:")
+          ? "706ea10d060345f2fe8bb0fce5e0cf96560f4204"
+          : "e8383309ef9889168bdfb1e678e9b01903b6f51f";
         assert.match(
           steps,
           new RegExp(
-            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/secure-runner@e8383309ef9889168bdfb1e678e9b01903b6f51f[^\n]*`,
+            String.raw`^(?:\s*#[^\n]*\n)*\s*- (?:name:[^\n]+\n\s+)?uses:\s+tempoxyz/gh-actions/actions/secure-runner@${secureRunnerPin}[^\n]*`,
           ),
           `${filename} must use the Secure Runner wrapper as the first step of every runnable job`,
         );
