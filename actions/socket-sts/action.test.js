@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { host, rateLimitDelay, retry, retryRateLimited } = require("./http.cjs");
@@ -149,10 +150,15 @@ test("can register a post-job Aegis audit-log upload", async () => {
 });
 
 test("post is a no-op when no token was minted", () => {
-  const result = spawnSync(process.execPath, [path.join(__dirname, "post.cjs")], {
-    encoding: "utf8",
-    env: { ...process.env, STATE_token: "" },
-  });
-  assert.equal(result.status, 0);
-  assert.match(`${result.stdout}${result.stderr}`, /skipping revocation/);
+  const withoutNode = fs.mkdtempSync(path.join(os.tmpdir(), "socket-sts-no-node-"));
+  try {
+    const result = spawnSync(process.execPath, [path.join(__dirname, "post.cjs")], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: withoutNode, STATE_token: "" },
+    });
+    assert.equal(result.status, 0);
+    assert.match(`${result.stdout}${result.stderr}`, /skipping revocation/);
+  } finally {
+    fs.rmSync(withoutNode, { force: true, recursive: true });
+  }
 });

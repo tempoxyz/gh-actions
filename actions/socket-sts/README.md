@@ -5,9 +5,11 @@ API token. The token is masked before it is published as an action output and
 is revoked automatically when the job finishes. The Socket STS lease also
 limits the token lifetime.
 
-Socket STS is a `node24` action, so its main and post-job handlers always use
-the GitHub Actions runner's bundled Node runtime. They do not rely on `node`
-being installed or available on `PATH`.
+Socket STS is a `node24` action, so its main and post-job handlers use the
+runner-bundled executable that it exposes as `node-path` for Socket Firewall.
+They do not rely on a system `node` installation or on `node` being available
+on `PATH`; this is the same self-hosted-runner-safe runtime model introduced in
+[#199](https://github.com/tempoxyz/gh-actions/pull/199).
 
 The caller must grant `id-token: write`.
 
