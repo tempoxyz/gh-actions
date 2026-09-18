@@ -19,10 +19,10 @@ test("uses the Windows ARM64-aware Harden Runner before Socket Firewall", () => 
   );
 });
 
-test("pins the merged Socket Firewall with latest stable Aegis release discovery", () => {
+test("pins the merged Socket Firewall with Intel macOS support and latest stable Aegis discovery", () => {
   assert.match(
     manifest,
-    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@2ce15102c620d62476e36e9bdc64564bc0b5fe4f/,
+    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@acce1cd90e4c695cfc97b71e8289ac762eb52fec/,
   );
 });
 

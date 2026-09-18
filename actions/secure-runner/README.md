@@ -6,7 +6,8 @@ action as the first step in a job. The nested remote actions retain their pre-jo
 initialization and post-job cleanup, including token revocation.
 
 The Socket Firewall pin selects the latest stable Aegis release on each run,
-excluding drafts and prereleases. The release's checksum and provenance are
+excluding drafts and prereleases, and supports the Intel macOS CLI artifacts
+restored in Aegis v0.4.0. The release's checksum and provenance are
 verified against its release-tag source commit and `refs/heads/main`; see
 [Socket Firewall](../socket-firewall) for policy behavior and supported runners.
 
