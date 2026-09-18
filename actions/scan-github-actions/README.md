@@ -6,7 +6,7 @@ Security scan **and** lint for GitHub Actions workflows. Runs three complementar
 - [zizmor](https://github.com/zizmorcore/zizmor) — **security**: template injection, credential leakage, excessive permissions, unpinned actions, and more.
 - [actionlint](https://github.com/rhysd/actionlint) — **correctness/lint**: workflow syntax, `${{ }}` expression checks, and [shellcheck](https://github.com/koalaman/shellcheck)/[pyflakes](https://github.com/PyCQA/pyflakes) on `run:` scripts.
 
-Both tools run together as a single check (a `Scan GitHub Actions` job in the reusable workflow, or two steps in your own job with the composite action). The **reusable workflow is read-only against Actions and repository data** (`actions: read`, `contents: read`) and never requests `security-events: write`. Callers forward the `STEP_SECURITY_STS_PRD_URL` organization STS URL secret so Harden Runner can read its StepSecurity policy. SARIF upload to GitHub code scanning is available **only via the composite action** (`advanced-security: true`), which runs in a job you control and where you grant `security-events: write`.
+Both tools run together as a single check (a `Scan GitHub Actions` job in the reusable workflow, or two steps in your own job with the composite action). The **reusable workflow is read-only against Actions and repository data** (`actions: read`, `contents: read`) and never requests `security-events: write`. Callers grant `id-token: write` for secure-runner OIDC authentication; no STS URL secret is needed. SARIF upload to GitHub code scanning is available **only via the composite action** (`advanced-security: true`), which runs in a job you control and where you grant `security-events: write`.
 
 **Opinionated defaults** — zizmor online audits enabled, GitHub workflow annotations enabled, regular persona, and SARIF upload disabled; actionlint enabled. Disable the lint pass with `actionlint: false`. Override individual zizmor rules via a `zizmor.yml` config file, and actionlint rules via `.github/actionlint.yaml`, if needed.
 
@@ -23,17 +23,19 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
+  workflow_dispatch:
 
 permissions: {}
 
 jobs:
   scan:
+    name: Scan GitHub Actions
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
     permissions:
       actions: read
       contents: read
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
+      id-token: write
 ```
 
 Disable the lint pass or point zizmor at a custom config:
@@ -41,6 +43,7 @@ Disable the lint pass or point zizmor at a custom config:
 ```yaml
 jobs:
   scan:
+    name: Scan GitHub Actions
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@main
     with:
       actionlint: false            # zizmor only
@@ -48,11 +51,41 @@ jobs:
     permissions:
       actions: read
       contents: read
-    secrets:
-      STEP_SECURITY_STS_PRD_URL: ${{ secrets.STEP_SECURITY_STS_PRD_URL }}
+      id-token: write
 ```
 
 The reusable workflow can also run Pinact policy checks by setting `pinact: true`. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive.
+
+### Required status checks
+
+The examples above emit `Scan GitHub Actions / Scan GitHub Actions`: the caller
+job name followed by the reusable workflow job name. Require that exact check
+from the GitHub Actions app, and preserve both names when updating callers.
+Confirm the emitted name on a completed run before changing a ruleset.
+
+Keep `pull_request` unfiltered when this check is required. Workflow-level
+`paths` or `paths-ignore` filters prevent a run from being created for some PRs,
+leaving the required check pending indefinitely. The reusable workflow cannot
+report a result when its caller never starts. Run on source-only and docs-only
+PRs too; `with.paths` limits scanner input without suppressing the check.
+Include `merge_group` for repositories using a merge queue.
+See GitHub's [required status check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+
+`workflow_dispatch` is useful for diagnostics, but its checks do **not** satisfy
+PR required status checks, even when dispatched on the PR's head commit.
+To unblock an existing PR, remove the caller's PR filters and trigger a new
+`pull_request` run. If the fix lands on the default branch separately, bring it
+into the PR branch and push the updated branch. Confirm that the PR-triggered
+scan reports the required check successfully before merging.
+
+For a diagnostic scan on a branch:
+
+```sh
+gh workflow run scan-github-actions.yml --repo OWNER/REPO --ref PR_BRANCH
+```
+
+The caller must declare `workflow_dispatch` on the default branch. Rerunning an
+unrelated CI workflow does not create a missing scanner run.
 
 ### Composite action
 
