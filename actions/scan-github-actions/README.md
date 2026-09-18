@@ -71,17 +71,21 @@ PRs too; `with.paths` limits scanner input without suppressing the check.
 Include `merge_group` for repositories using a merge queue.
 See GitHub's [required status check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
 
-Keep `workflow_dispatch` available for recovery. If an existing PR is waiting
-on a missing scan, dispatch the caller on the PR's current head branch:
+`workflow_dispatch` is useful for diagnostics, but its checks do **not** satisfy
+PR required status checks, even when dispatched on the PR's head commit.
+To unblock an existing PR, remove the caller's PR filters and trigger a new
+`pull_request` run. If the fix lands on the default branch separately, bring it
+into the PR branch and push the updated branch. Confirm that the PR-triggered
+scan reports the required check successfully before merging.
+
+For a diagnostic scan on a branch:
 
 ```sh
 gh workflow run scan-github-actions.yml --repo OWNER/REPO --ref PR_BRANCH
 ```
 
-The caller must declare `workflow_dispatch` on the default branch. Confirm that
-the run targets the current PR commit and completes successfully. Rerunning an
-unrelated CI workflow does not create the missing scan. Remove the PR trigger
-filters to prevent the next push from getting stuck again.
+The caller must declare `workflow_dispatch` on the default branch. Rerunning an
+unrelated CI workflow does not create a missing scanner run.
 
 ### Composite action
 

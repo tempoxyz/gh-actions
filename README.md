@@ -394,7 +394,7 @@ jobs:
       pinact: true
 ```
 
-For required-check setup and manual recovery, see [Required status checks](actions/scan-github-actions/README.md#required-status-checks). Callers grant `id-token: write` for secure-runner OIDC authentication; no STS URL secret is needed.
+For required-check setup and recovery from missing scans, see [Required status checks](actions/scan-github-actions/README.md#required-status-checks). Callers grant `id-token: write` for secure-runner OIDC authentication; no STS URL secret is needed.
 
 By default zizmor scans the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow zizmor's scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own. Pinact uses its own file discovery; monorepos with action manifests outside its defaults can set `files` in their Pinact configuration.
 
