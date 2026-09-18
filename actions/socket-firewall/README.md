@@ -7,10 +7,11 @@ GitHub actor.
 
 The action uses GitHub STS policy `download-releases` in `tempoxyz/aegis` to
 download the native artifact for the runner operating system and architecture
-from release `20260917T173242Z-f442872beb5d`. Before installation, it verifies
-the artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
-including the signer workflow, pinned source commit, and `refs/heads/main` source
-ref. Releases built from pull-request or feature-branch refs are rejected.
+from GitHub's latest stable Aegis release. GitHub's `releases/latest` API excludes
+draft and prerelease releases. Before installation, the action verifies the
+artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
+including the signer workflow, release-tag source commit, and `refs/heads/main`
+source ref. Releases built from pull-request or feature-branch refs are rejected.
 
 Supported runners are Linux and Windows on X64 or ARM64, and macOS on ARM64.
 This release does not publish Intel macOS artifacts; the action fails explicitly

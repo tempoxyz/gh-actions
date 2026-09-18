@@ -18,10 +18,11 @@ test("uses both STS exchanges and the aegis download policy", () => {
   assert.match(manifest, /aegis install --config/);
 });
 
-test("pins the requested release and verifies its checksums and provenance", () => {
+test("downloads the latest stable release and verifies its checksums and provenance", () => {
   const downloader = fs.readFileSync(path.join(__dirname, "download.cjs"), "utf8");
-  assert.match(downloader, /20260917T173242Z-f442872beb5d/);
-  assert.match(downloader, /f442872beb5dc9563adda4f1e302845ec1ef0a25/);
+  assert.match(downloader, /repos\/tempoxyz\/aegis\/releases\/latest/);
+  assert.match(downloader, /response\.draft \|\| response\.prerelease/);
+  assert.doesNotMatch(downloader, /RELEASE_TAG|RELEASE_COMMIT|RELEASE_VERSION/);
   assert.match(downloader, /SHA256SUMS/);
   assert.match(downloader, /provenance\.sigstore\.json/);
   assert.match(downloader, /attestation.*verify/s);
@@ -30,15 +31,15 @@ test("pins the requested release and verifies its checksums and provenance", () 
   assert.match(downloader, /--deny-self-hosted-runners/);
 });
 
-test("selects the exact release artifact for every supported OS and architecture", () => {
-  assert.equal(assetName("Linux", "X64"), "aegis-f442872beb5d-linux-amd64.deb");
-  assert.equal(assetName("Linux", "ARM64"), "aegis-f442872beb5d-linux-arm64.deb");
-  assert.throws(() => assetName("macOS", "X64"), /only ARM64 macOS runners/);
-  assert.equal(assetName("macOS", "ARM64"), "aegis-f442872beb5d-macos-arm64.tar.gz");
-  assert.equal(assetName("Windows", "X64"), "aegis-f442872beb5d-windows-amd64.zip");
-  assert.equal(assetName("Windows", "ARM64"), "aegis-f442872beb5d-windows-arm64.zip");
-  assert.throws(() => assetName("Plan9", "X64"), /Unsupported runner OS/);
-  assert.throws(() => assetName("Linux", "RISCV64"), /Unsupported runner architecture/);
+test("selects the exact latest-release artifact for every supported OS and architecture", () => {
+  assert.equal(assetName("1.2.3", "Linux", "X64"), "aegis-1.2.3-linux-amd64.deb");
+  assert.equal(assetName("1.2.3", "Linux", "ARM64"), "aegis-1.2.3-linux-arm64.deb");
+  assert.throws(() => assetName("1.2.3", "macOS", "X64"), /only ARM64 macOS runners/);
+  assert.equal(assetName("1.2.3", "macOS", "ARM64"), "aegis-1.2.3-macos-arm64.tar.gz");
+  assert.equal(assetName("1.2.3", "Windows", "X64"), "aegis-1.2.3-windows-amd64.zip");
+  assert.equal(assetName("1.2.3", "Windows", "ARM64"), "aegis-1.2.3-windows-arm64.zip");
+  assert.throws(() => assetName("1.2.3", "Plan9", "X64"), /Unsupported runner OS/);
+  assert.throws(() => assetName("1.2.3", "Linux", "RISCV64"), /Unsupported runner architecture/);
 });
 
 test("requires one safe checksum entry for the selected artifact", () => {
