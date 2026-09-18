@@ -44,7 +44,7 @@ runs:
     - name: Exchange GitHub OIDC token for a Socket token
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-sts@9e86c566882f325b2fc981650396c4de0a34a6c9
+      uses: tempoxyz/gh-actions/actions/socket-sts@b8601b685d8994d3cc4588f2509dd13d9c95fcc9
       with:
         dev: ${{ inputs.dev }}
 
@@ -58,6 +58,15 @@ runs:
         ttl: 15m
         dev: ${{ inputs.dev }}
 
+    - name: Ensure GitHub CLI supports attestation verification
+      if: steps.oidc.outputs.available == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.release-token.outputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/../setup-foundry/ensure-gh.sh"
+
+    # Socket STS runs on the runner's bundled Node, even when PATH has no node.
+    # Reuse that exact executable without installing a runtime or changing PATH.
     - name: Download and verify Aegis
       if: steps.oidc.outputs.available == 'true'
       id: download
@@ -66,7 +75,8 @@ runs:
         GH_TOKEN: ${{ steps.release-token.outputs.token }}
         RUNNER_ARCHITECTURE: ${{ runner.arch }}
         RUNNER_OPERATING_SYSTEM: ${{ runner.os }}
-      run: node "$GITHUB_ACTION_PATH/download.cjs"
+        RUNNER_NODE: ${{ steps.socket-token.outputs.node-path }}
+      run: '"$RUNNER_NODE" "$GITHUB_ACTION_PATH/download.cjs"'
 
     # Aegis deliberately rejects credentials in its JSON configuration. This
     # provider keeps the token in memory and exposes it only at an unguessable
@@ -77,7 +87,8 @@ runs:
       shell: bash
       env:
         INPUT_SOCKET_TOKEN: ${{ steps.socket-token.outputs.token }}
-      run: node "$GITHUB_ACTION_PATH/token-provider.cjs"
+        RUNNER_NODE: ${{ steps.socket-token.outputs.node-path }}
+      run: '"$RUNNER_NODE" "$GITHUB_ACTION_PATH/token-provider.cjs"'
 
     - name: Install Aegis package on Linux
       if: steps.oidc.outputs.available == 'true' && runner.os == 'Linux'

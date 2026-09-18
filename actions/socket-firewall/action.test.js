@@ -1,6 +1,9 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
+const crypto = require("node:crypto");
+const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { assetName, expectedDigest } = require("./download.cjs");
 const { PACKAGES, npmCLI } = require("./npm-install.cjs");
@@ -9,7 +12,7 @@ const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("uses both STS exchanges and the aegis download policy", () => {
-  assert.match(manifest, /actions\/socket-sts@9e86c566882f325b2fc981650396c4de0a34a6c9/);
+  assert.match(manifest, /actions\/socket-sts@b8601b685d8994d3cc4588f2509dd13d9c95fcc9/);
   assert.match(manifest, /actions\/github-sts@e080a269a3d37e571ad64e94f72536b48eb9921c/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);
@@ -59,7 +62,16 @@ test("configures all non-Maven managers without passing the token to the provide
 
 test("serves the Socket token only from its random loopback route", async () => {
   const token = "socket-token-" + "a".repeat(32);
-  const { child, url } = await startProvider(token);
+  const previousPath = process.env.PATH;
+  let provider;
+  try {
+    process.env.PATH = "";
+    provider = await startProvider(token);
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
+  const { child, url } = provider;
   try {
     const response = await fetch(url, { method: "POST" });
     assert.equal(response.status, 200);
@@ -68,6 +80,87 @@ test("serves the Socket token only from its random loopback route", async () => 
     assert.equal(missing.status, 404);
   } finally {
     child.kill();
+  }
+});
+
+test("setup uses the STS runtime without installing Node or modifying PATH", () => {
+  for (const script of ["download.cjs", "token-provider.cjs"]) {
+    const step = manifest.split(/\n    - name: /).find((value) => value.includes(`/${script}`));
+    assert.ok(step);
+    assert.match(step, /RUNNER_NODE: \$\{\{ steps\.socket-token\.outputs\.node-path \}\}/);
+    assert.ok(step.includes(`run: '"$RUNNER_NODE" "$GITHUB_ACTION_PATH/${script}"'`));
+  }
+  assert.doesNotMatch(manifest, /actions\/setup-node|GITHUB_PATH|run: node /);
+});
+
+test("download works without node on PATH and fails closed on verification errors", {
+  skip: process.platform === "win32" && "POSIX shell fixture; Windows is covered by the live action matrix",
+}, () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "socket-no-node-"));
+  const digest = crypto.createHash("sha256").update("artifact").digest("hex");
+  try {
+    const bin = path.join(directory, "bin with spaces");
+    fs.mkdirSync(bin);
+    const runtime = path.join(bin, "runner-runtime");
+    fs.symlinkSync(process.execPath, runtime);
+    fs.writeFileSync(path.join(bin, "gh"), `#!/bin/sh
+set -eu
+case "$1 $2" in
+  'api repos/tempoxyz/aegis/releases/latest')
+    printf '%s\\n' '{"tag_name":"v1.2.3","draft":false,"prerelease":false}' ;;
+  'api repos/tempoxyz/aegis/git/ref/tags/v1.2.3')
+    printf '%s\\n' '${"a".repeat(40)}' ;;
+  'release download')
+    shift 2
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --dir ]; then target=$2; fi
+      shift
+    done
+    printf artifact > "$target/aegis-1.2.3-linux-amd64.deb"
+    printf '%s  %s\\n' "$TEST_DIGEST" aegis-1.2.3-linux-amd64.deb > "$target/SHA256SUMS"
+    printf '{}' > "$target/provenance.sigstore.json" ;;
+  'attestation verify')
+    printf '%s\\n' "$@" > "$TEST_ATTESTATION_ARGS"
+    exit "$TEST_ATTESTATION_STATUS" ;;
+  *) exit 99 ;;
+esac
+`, { mode: 0o700 });
+    const command = manifest.match(/run: '([^'\n]*\/download\.cjs[^'\n]*)'/)[1];
+    for (const scenario of ["success", "checksum", "provenance"]) {
+      const output = path.join(directory, `${scenario}.output`);
+      const args = path.join(directory, `${scenario}.args`);
+      const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", command], {
+        encoding: "utf8",
+        env: {
+          PATH: bin,
+          RUNNER_NODE: runtime,
+          GITHUB_ACTION_PATH: __dirname,
+          GITHUB_OUTPUT: output,
+          RUNNER_TEMP: directory,
+          GH_TOKEN: "test-release-token",
+          RUNNER_OPERATING_SYSTEM: "Linux",
+          RUNNER_ARCHITECTURE: "X64",
+          TEST_DIGEST: scenario === "checksum" ? "0".repeat(64) : digest,
+          TEST_ATTESTATION_ARGS: args,
+          TEST_ATTESTATION_STATUS: scenario === "provenance" ? "1" : "0",
+        },
+      });
+      if (scenario === "success") {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(fs.readFileSync(output, "utf8"), /package=.*aegis-1\.2\.3-linux-amd64\.deb/);
+        const verification = fs.readFileSync(args, "utf8");
+        assert.ok(verification.includes("--source-digest\n" + "a".repeat(40)));
+        assert.ok(verification.includes("--signer-workflow\ntempoxyz/aegis/.github/workflows/release.yml"));
+        assert.ok(verification.includes("--source-ref\nrefs/heads/main"));
+        assert.ok(verification.includes("--deny-self-hosted-runners"));
+      } else {
+        assert.notEqual(result.status, 0, scenario);
+        assert.equal(fs.existsSync(output), false, `${scenario} must not publish an artifact`);
+      }
+      if (scenario === "checksum") assert.equal(fs.existsSync(args), false);
+    }
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
   }
 });
 
@@ -90,6 +183,7 @@ test("fork pull requests emit a warning and skip all enforcement setup", () => {
   for (const name of [
     "Exchange GitHub OIDC token for a Socket token",
     "Exchange GitHub OIDC token for Aegis release access",
+    "Ensure GitHub CLI supports attestation verification",
     "Download and verify Aegis",
     "Prepare Aegis configuration",
     "Install Aegis package on Linux",
