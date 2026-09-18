@@ -51,7 +51,7 @@ runs:
     - name: Exchange GitHub OIDC token for Aegis release access
       if: steps.oidc.outputs.available == 'true'
       id: release-token
-      uses: tempoxyz/gh-actions/actions/github-sts@e080a269a3d37e571ad64e94f72536b48eb9921c
+      uses: tempoxyz/gh-actions/actions/github-sts@0c5eca66caf2483b8ddc5cbddd6a858213467a65 # main
       with:
         scope: tempoxyz/aegis
         policy: download-releases
