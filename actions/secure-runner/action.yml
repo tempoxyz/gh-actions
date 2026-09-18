@@ -70,6 +70,13 @@ runs:
         node-version: 24
         package-manager-cache: false
 
+    - name: Ensure GitHub CLI supports attestation verification
+      if: inputs.disable-enforcement != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/../setup-foundry/ensure-gh.sh"
+
     - name: Install Socket Firewall
       if: inputs.disable-enforcement != 'true'
       uses: tempoxyz/gh-actions/actions/socket-firewall@acce1cd90e4c695cfc97b71e8289ac762eb52fec # main

@@ -11,6 +11,10 @@ system Node.js installation. Automatic package-manager caching is disabled
 because this runs before checkout. Callers can select their application's Node.js
 version later in the job.
 
+The action also checks GitHub CLI's attestation support before downloading Aegis.
+It reuses the Foundry installer's checksum-pinned, provenance-verified CLI
+bootstrap on Linux when the runner's CLI is missing or too old.
+
 The Socket Firewall pin selects the latest stable Aegis release on each run,
 excluding drafts and prereleases, and supports the Intel macOS CLI artifacts
 restored in Aegis v0.4.0. The release's checksum and provenance are
