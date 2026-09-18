@@ -183,6 +183,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`dependency-scan`](#dependency-scan) | Detect newly introduced dependency vulnerabilities with OSV | Linux, macOS, Windows |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
 | [`reproducible-image-verify`](#reproducible-image-verify) | Compare a Depot candidate image's binary with an independent clean rebuild | zones |
+| [`reproducible-eif-verify`](#reproducible-eif-verify) | Compare independently built unsigned Nitro EIF measurements | zones |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-deny`](#rust-deny) | Deny-only wrapper around rust-lint | rust repos |
 | [`rust-fmt`](#rust-fmt-and-rust-clippy) | Formatting-only wrapper around rust-lint | rust repos |
@@ -585,6 +586,74 @@ recipe commit, shared workflow commit, and comparison result. Download it and
 check `binary_comparison_result == "success"` and
 `depot_sha256 == clean_build_sha256`. Extraction failures and mismatches also
 upload a diagnostic manifest; failures before the comparison job do not.
+
+### `reproducible-eif-verify`
+
+Builds an unsigned Nitro EIF through Depot and again without Docker cache on a
+fresh GitHub-hosted runner. A third job runs `nitro-cli describe-eif` on both
+uploaded EIFs, validates their CRCs, and requires identical PCR0/PCR1/PCR2.
+The full-file SHA-256 values and `byte_identical` result are recorded separately:
+EIF metadata can differ without changing the measured enclave payload.
+This verifies build artifacts, not a deployed enclave or the EIF in a release image.
+
+The caller owns the build recipes and supplies an immutable toolchain image
+containing Nitro CLI, the guest kernel, NSM module, and bootstrap utilities. Both
+builds and the comparison use that exact image digest. Toolchain reproducibility
+itself is outside this comparison. An extra build input (for example, genesis
+JSON) is downloaded independently in each build and must match a supplied SHA-256.
+
+```yaml
+jobs:
+  verify-eif:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    uses: tempoxyz/gh-actions/.github/workflows/reproducible-eif-verify.yml@main
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+      build-definitions-sha: ${{ github.workflow_sha }}
+      build-definition-paths: |
+        .dockerignore
+        docker/Dockerfile.reproducible
+        scripts/reproducible-eif-build.sh
+      build-script: scripts/reproducible-eif-build.sh
+      eif-builder-image: ${{ inputs.eif_builder_image }} # image@sha256:<64 hex digits>
+      build-input-url: ${{ inputs.genesis_url }}
+      build-input-sha256: ${{ inputs.genesis_sha256 }}
+      depot-project: your-depot-project
+```
+
+Pin the shared workflow to a reviewed full SHA. Restrict dispatch and recipe
+selection to a trusted workflow. Source refs resolve once, and both builds overlay
+the listed regular files from `build-definitions-sha`; include every build helper.
+The caller needs read access to the toolchain registry and Depot OIDC authorization.
+
+The executable build script receives these environment variables:
+
+| Variable | Contract |
+| --- | --- |
+| `BUILD_BACKEND` | `depot` for the candidate, `docker` for the independent rebuild |
+| `NO_CACHE` | `0` for Depot, `1` for the clean rebuild; the script must honor it |
+| `DEPOT_PROJECT` | Caller-supplied Depot project |
+| `GIT_SHA`, `SOURCE_DATE_EPOCH` | Resolved source commit and its commit timestamp |
+| `EIF_BUILDER_IMAGE` | Toolchain pinned by registry digest |
+| `BUILD_INPUT_FILE` | Absolute path to the verified downloaded input |
+| `OUT_DIR` | Absolute output directory; write `enclave.eif` here |
+
+Optional inputs are `candidate-runner` (default `depot-ubuntu-latest-16`),
+`artifact-name` (default `reproducible-eif-verification`), and `retention-days`
+(default `7`). Use distinct artifact names for multiple calls in one run.
+Artifacts `<artifact-name>-depot` and `<artifact-name>-docker` contain the EIFs;
+`<artifact-name>` contains `manifest.json` and both raw Nitro descriptions.
+
+Require `comparison_result == "success"` in the manifest. It records source,
+recipe and shared workflow revisions, the toolchain digest, input checksum, both
+EIF checksums and PCR measurements. Build or comparison failures fail the workflow;
+the comparison attempts to upload diagnostics even if one build failed.
+Outputs are `source-sha`, `candidate-eif-sha256`, `rebuild-eif-sha256`, `pcr0`, `pcr1`,
+and `pcr2`. Consume measurement outputs only after successful verification.
 
 ### `rust-lint`
 

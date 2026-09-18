@@ -1,0 +1,363 @@
+name: Reproducible EIF Verification
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Source ref to resolve once; defaults to the caller's commit."
+        type: string
+        default: ""
+      build-definitions-sha:
+        description: "Full trusted caller-repository commit supplying build recipes."
+        type: string
+        required: true
+      build-definition-paths:
+        description: "Newline-separated recipe files to overlay, including .dockerignore and the build script."
+        type: string
+        required: true
+      build-script:
+        description: "Executable accepting BUILD_BACKEND, NO_CACHE, SOURCE_DATE_EPOCH, GIT_SHA, EIF_BUILDER_IMAGE, BUILD_INPUT_FILE and OUT_DIR; writes OUT_DIR/enclave.eif."
+        type: string
+        required: true
+      eif-builder-image:
+        description: "Digest-pinned linux/amd64 image with nitro-cli as its entrypoint and the kernel/bootstrap used by both builds."
+        type: string
+        required: true
+      build-input-url:
+        description: "HTTPS URL of a required build input, such as an enclave genesis file."
+        type: string
+        required: true
+      build-input-sha256:
+        description: "Expected SHA-256 of the downloaded build input."
+        type: string
+        required: true
+      depot-project:
+        description: "Depot project authorized for the caller's GitHub OIDC identity."
+        type: string
+        required: true
+      candidate-runner:
+        description: "Ephemeral Linux runner for the Depot build."
+        type: string
+        default: depot-ubuntu-latest-16
+      artifact-name:
+        description: "Unique artifact prefix within the caller run."
+        type: string
+        default: reproducible-eif-verification
+      retention-days:
+        description: "EIF and comparison manifest retention in days."
+        type: number
+        default: 7
+    outputs:
+      source-sha:
+        description: "Resolved source commit."
+        value: ${{ jobs.resolve.outputs.source_sha }}
+      candidate-eif-sha256:
+        description: "Full-file SHA-256 of the Depot-built EIF."
+        value: ${{ jobs.compare.outputs.candidate_sha256 }}
+      rebuild-eif-sha256:
+        description: "Full-file SHA-256 of the clean-built EIF."
+        value: ${{ jobs.compare.outputs.rebuild_sha256 }}
+      pcr0:
+        description: "Verified PCR0 measurement."
+        value: ${{ jobs.compare.outputs.pcr0 }}
+      pcr1:
+        description: "Verified PCR1 measurement."
+        value: ${{ jobs.compare.outputs.pcr1 }}
+      pcr2:
+        description: "Verified PCR2 measurement."
+        value: ${{ jobs.compare.outputs.pcr2 }}
+
+permissions: {}
+
+jobs:
+  resolve:
+    name: Resolve EIF build inputs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      source_sha: ${{ steps.inputs.outputs.source_sha }}
+      source_date_epoch: ${{ steps.inputs.outputs.source_date_epoch }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@e8383309ef9889168bdfb1e678e9b01903b6f51f # main
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Validate and resolve inputs
+        id: inputs
+        env:
+          RECIPE_SHA: ${{ inputs.build-definitions-sha }}
+          RECIPE_PATHS: ${{ inputs.build-definition-paths }}
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+          EIF_BUILDER_IMAGE: ${{ inputs.eif-builder-image }}
+          BUILD_INPUT_URL: ${{ inputs.build-input-url }}
+          BUILD_INPUT_SHA256: ${{ inputs.build-input-sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$RECIPE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EIF_BUILDER_IMAGE" =~ ^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$ ]]
+          [[ "$BUILD_INPUT_URL" == https://* ]]
+          [[ "$BUILD_INPUT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          for path in .dockerignore "$BUILD_SCRIPT"; do
+            grep -Fxq -- "$path" <<< "$RECIPE_PATHS" || {
+              echo "Missing trusted build definition: $path" >&2
+              exit 1
+            }
+          done
+          {
+            echo "source_sha=$(git rev-parse HEAD)"
+            echo "source_date_epoch=$(git show -s --format=%ct HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build EIF (${{ matrix.backend }})
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [depot, docker]
+    runs-on: ${{ matrix.backend == 'depot' && inputs.candidate-runner || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@e8383309ef9889168bdfb1e678e9b01903b6f51f # main
+
+      - name: Check out resolved source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          path: source
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Check out trusted build definitions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.build-definitions-sha }}
+          path: .reproducible-verifier
+          persist-credentials: false
+
+      - name: Overlay trusted build definitions
+        env:
+          BUILD_DEFINITION_PATHS: ${{ inputs.build-definition-paths }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          import shutil
+
+          trusted = Path(os.environ["GITHUB_WORKSPACE"]) / ".reproducible-verifier"
+          for name in os.environ["BUILD_DEFINITION_PATHS"].splitlines():
+              if not name.strip():
+                  continue
+              path = Path(name)
+              if path.is_absolute() or ".." in path.parts or ".git" in path.parts:
+                  raise SystemExit(f"Invalid build definition path: {name}")
+              for base in (trusted, Path.cwd()):
+                  if any((base / part).is_symlink() for part in (path, *path.parents)):
+                      raise SystemExit(f"Symlink in build definition path: {name}")
+              if not (trusted / path).is_file():
+                  raise SystemExit(f"Build definition is not a file: {name}")
+              path.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(trusted / path, path)
+          PYTHON
+
+      - name: Set up Depot
+        if: matrix.backend == 'depot'
+        uses: tempoxyz/gh-actions/vendor/depot/setup-action@b61457a6d6d06485b118a3c0e9637c94186c8c5a # main
+
+      - name: Log in to toolchain registry
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@b61457a6d6d06485b118a3c0e9637c94186c8c5a # main
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download and verify build input
+        env:
+          BUILD_INPUT_URL: ${{ inputs.build-input-url }}
+          BUILD_INPUT_SHA256: ${{ inputs.build-input-sha256 }}
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --fail-with-body --location --retry 3 \
+            --output "$RUNNER_TEMP/build-input" "$BUILD_INPUT_URL"
+          printf '%s  %s\n' "$BUILD_INPUT_SHA256" "$RUNNER_TEMP/build-input" | sha256sum --check --strict
+
+      - name: Build EIF
+        env:
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+          BUILD_BACKEND: ${{ matrix.backend }}
+          NO_CACHE: ${{ matrix.backend == 'docker' && '1' || '0' }}
+          DEPOT_PROJECT: ${{ inputs.depot-project }}
+          EIF_BUILDER_IMAGE: ${{ inputs.eif-builder-image }}
+          BUILD_INPUT_FILE: ${{ runner.temp }}/build-input
+          OUT_DIR: ${{ runner.temp }}/eif-output
+          SOURCE_DATE_EPOCH: ${{ needs.resolve.outputs.source_date_epoch }}
+          GIT_SHA: ${{ needs.resolve.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$NO_CACHE" == 1 ]]; then
+            docker builder prune --all --force
+          fi
+          "./$BUILD_SCRIPT"
+          test -s "$OUT_DIR/enclave.eif"
+
+      - name: Upload EIF
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}-${{ matrix.backend }}
+          path: ${{ runner.temp }}/eif-output/enclave.eif
+          if-no-files-found: error
+          overwrite: true
+          retention-days: ${{ inputs.retention-days }}
+
+  compare:
+    name: Compare EIF measurements
+    needs: [resolve, build]
+    if: ${{ always() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+    outputs:
+      candidate_sha256: ${{ steps.compare.outputs.candidate_sha256 }}
+      rebuild_sha256: ${{ steps.compare.outputs.rebuild_sha256 }}
+      pcr0: ${{ steps.compare.outputs.pcr0 }}
+      pcr1: ${{ steps.compare.outputs.pcr1 }}
+      pcr2: ${{ steps.compare.outputs.pcr2 }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@e8383309ef9889168bdfb1e678e9b01903b6f51f # main
+
+      - name: Download Depot EIF
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}-depot
+          path: ${{ runner.temp }}/eifs/${{ inputs.artifact-name }}-depot
+
+      - name: Download clean EIF
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}-docker
+          path: ${{ runner.temp }}/eifs/${{ inputs.artifact-name }}-docker
+
+      - name: Log in to toolchain registry
+        if: ${{ !cancelled() }}
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@b61457a6d6d06485b118a3c0e9637c94186c8c5a # main
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Measure EIFs and compare PCRs
+        if: ${{ !cancelled() }}
+        id: compare
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          RECIPE_SHA: ${{ inputs.build-definitions-sha }}
+          RECIPE_PATHS: ${{ inputs.build-definition-paths }}
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+          JOB_CONTEXT: ${{ toJSON(job) }}
+          SOURCE_DATE_EPOCH: ${{ needs.resolve.outputs.source_date_epoch }}
+          EIF_BUILDER_IMAGE: ${{ inputs.eif-builder-image }}
+          BUILD_INPUT_URL: ${{ inputs.build-input-url }}
+          BUILD_INPUT_SHA256: ${{ inputs.build-input-sha256 }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          env = os.environ
+          output = Path(env["RUNNER_TEMP"]) / "eif-verification"
+          output.mkdir()
+          manifest = {
+              "source_sha": env["SOURCE_SHA"],
+              "build_definitions_sha": env["RECIPE_SHA"],
+              "build_definition_paths": env["RECIPE_PATHS"].splitlines(),
+              "build_script": env["BUILD_SCRIPT"],
+              "verification_workflow_sha": json.loads(env["JOB_CONTEXT"])["workflow_sha"],
+              "source_date_epoch": int(env["SOURCE_DATE_EPOCH"]),
+              "eif_builder_image": env["EIF_BUILDER_IMAGE"],
+              "build_input": {"url": env["BUILD_INPUT_URL"], "sha256": env["BUILD_INPUT_SHA256"]},
+              "verification_scope": "unsigned EIF PCR0/PCR1/PCR2",
+              "build_result": env["BUILD_RESULT"],
+              "builds": {},
+              "comparison_result": "failed",
+          }
+          try:
+              for backend in ("depot", "docker"):
+                  path = Path(env["RUNNER_TEMP"]) / "eifs" / f'{env["ARTIFACT_NAME"]}-{backend}' / "enclave.eif"
+                  with path.open("rb") as stream:
+                      digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                  report = subprocess.check_output([
+                      "docker", "run", "--rm", "--platform", "linux/amd64", "--network", "none",
+                      "--volume", f"{path.parent}:/input:ro", env["EIF_BUILDER_IMAGE"],
+                      "describe-eif", "--eif-path", "/input/enclave.eif",
+                  ], text=True)
+                  (output / f"{backend}-describe.json").write_text(report)
+                  info = json.loads(report)
+                  if info.get("CheckCRC") is not True or info.get("IsSigned") is not False:
+                      raise ValueError(f"{backend}: expected a valid, unsigned EIF")
+                  measurements = info["Measurements"]
+                  if not measurements["HashAlgorithm"].startswith("Sha384"):
+                      raise ValueError(f"{backend}: expected SHA-384 measurements")
+                  pcrs = {key: measurements[key] for key in ("PCR0", "PCR1", "PCR2")}
+                  if not all(re.fullmatch(r"[0-9a-f]{96}", value) for value in pcrs.values()):
+                      raise ValueError(f"{backend}: invalid PCR measurement")
+                  manifest["builds"][backend] = {"sha256": digest, "measurements": pcrs}
+              candidate, rebuild = (manifest["builds"][backend] for backend in ("depot", "docker"))
+              manifest["byte_identical"] = candidate["sha256"] == rebuild["sha256"]
+              if env["BUILD_RESULT"] != "success":
+                  raise ValueError("One or both builds failed")
+              if candidate["measurements"] != rebuild["measurements"]:
+                  raise ValueError("PCR0/PCR1/PCR2 differ between Depot and the clean rebuild")
+              manifest["comparison_result"] = "success"
+              with open(env["GITHUB_OUTPUT"], "a") as stream:
+                  print(f'candidate_sha256={candidate["sha256"]}', file=stream)
+                  print(f'rebuild_sha256={rebuild["sha256"]}', file=stream)
+                  for key, value in candidate["measurements"].items():
+                      print(f"{key.lower()}={value}", file=stream)
+          except Exception as error:
+              manifest["failure"] = str(error)
+          finally:
+              (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+              with open(env["GITHUB_STEP_SUMMARY"], "a") as stream:
+                  print(f'EIF PCR comparison: **{manifest["comparison_result"]}**', file=stream)
+                  print(f'\nFull-file byte identity: `{manifest.get("byte_identical", "unavailable")}`', file=stream)
+              print(json.dumps(manifest, indent=2))
+          if manifest["comparison_result"] != "success":
+              raise SystemExit(1)
+          PYTHON
+
+      - name: Upload comparison manifest
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}/eif-verification
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: ${{ inputs.retention-days }}
