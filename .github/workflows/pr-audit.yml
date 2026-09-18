@@ -50,7 +50,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@e8aff38749ab86cb2efa941b893edd4519cda1c5 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@f83f03ffdfcf32e88af01ff90ebf98711187bc01 # main
 
       - name: Resolve target
         id: target
@@ -205,7 +205,7 @@ jobs:
       statuses: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@e8aff38749ab86cb2efa941b893edd4519cda1c5 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@f83f03ffdfcf32e88af01ff90ebf98711187bc01 # main
 
       - name: Report audit status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -262,7 +262,7 @@ jobs:
       statuses: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@e8aff38749ab86cb2efa941b893edd4519cda1c5 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@f83f03ffdfcf32e88af01ff90ebf98711187bc01 # main
 
       - name: Pass merge group
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
