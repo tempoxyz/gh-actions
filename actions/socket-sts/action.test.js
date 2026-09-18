@@ -115,6 +115,7 @@ test("masks the token before publishing it as output or state", () => {
       "github-state",
       "token=socket%token-with-sensitive-value\n",
     ],
+    ["append", "github-output", `node-path=${process.execPath}\n`],
   ]);
 });
 

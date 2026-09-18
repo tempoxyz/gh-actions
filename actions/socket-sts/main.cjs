@@ -26,6 +26,9 @@ function publishToken(token, expiresAt) {
   append(required("GITHUB_OUTPUT"), "token", token);
   append(required("GITHUB_OUTPUT"), "expires-at", expiresAt);
   append(required("GITHUB_STATE"), "token", token);
+  // Composite shell steps can reuse this runtime without installing Node or
+  // assuming that the runner's bundled executable is available on PATH.
+  append(required("GITHUB_OUTPUT"), "node-path", process.execPath);
 }
 
 async function main() {
