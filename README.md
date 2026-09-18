@@ -182,6 +182,7 @@ This repo does not yet publish version tags; SHA pinning is the recommended stab
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |
 | [`dependency-scan`](#dependency-scan) | Detect newly introduced dependency vulnerabilities with OSV | Linux, macOS, Windows |
 | [`reproducible-build`](#reproducible-build) | Reproducible build verification | tempo |
+| [`reproducible-image-verify`](#reproducible-image-verify) | Compare a Depot candidate image's binary with an independent clean rebuild | zones |
 | [`rust-lint`](#rust-lint) | Shared Rust clippy, fmt, typos, and deny checks | rust repos |
 | [`rust-deny`](#rust-deny) | Deny-only wrapper around rust-lint | rust repos |
 | [`rust-fmt`](#rust-fmt-and-rust-clippy) | Formatting-only wrapper around rust-lint | rust repos |
@@ -520,6 +521,70 @@ Optional inputs:
 - `build-script` (default: `./scripts/reproducible-build.sh`)
 - `runs-on` (default: `depot-ubuntu-latest-16`)
 - `retention-days` (default: `7`)
+
+### `reproducible-image-verify`
+
+Resolves one source commit, builds and pushes a candidate through Depot, rebuilds
+without Docker cache on a separate GitHub-hosted runner, and compares the binary
+extracted from the candidate's immutable image digest. A mismatch fails the run.
+Verification covers the selected binary, not the complete container or an EIF.
+
+Keep the Dockerfile, Bake target, and executable build script in the caller's
+repository. The workflow checks out the requested source and overlays the listed
+recipe files from a separate trusted commit. Include every recipe/helper needed
+by both builds in `build-definition-paths`; paths must name regular files, not
+directories or symlinks. The script must honor `NO_CACHE=1` and `VERSION`, and write
+the binary at `rebuild-output`. Bake receives `SOURCE_DATE_EPOCH`, `GIT_SHA`, and
+`VERSION` from the resolved source commit.
+
+```yaml
+jobs:
+  verify:
+    # Keep publishing restricted to an explicitly dispatched, trusted workflow.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'tempoxyz/zones' &&
+      github.ref == 'refs/heads/main'
+    uses: tempoxyz/gh-actions/.github/workflows/reproducible-image-verify.yml@main
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+      build-definitions-sha: ${{ github.workflow_sha }}
+      build-definition-paths: |
+        .dockerignore
+        docker/Dockerfile.reproducible
+        docker/docker-bake.hcl
+        scripts/reproducible-build.sh
+      depot-project: 0c6tg19qsp
+      candidate-repository: ghcr.io/tempoxyz/tempo-zone-repro
+      bake-file: docker/docker-bake.hcl
+      bake-target: tempo-zone-reproducible
+      binary-path: /usr/local/bin/tempo-zone
+      rebuild-output: out/tempo-zone
+```
+
+Pin the shared workflow to a reviewed full SHA in production. The caller controls
+triggers, repository/branch restrictions, and permission grants. Use a dedicated
+non-production GHCR repository; the workflow creates `run-<id>-<attempt>-<sha>`
+tags. Depot must authorize the caller's OIDC identity, and the caller's token must
+have access to that GHCR package. No additional secrets are required.
+
+Optional inputs are `build-script` (default `scripts/reproducible-build.sh`),
+`candidate-runner` (default `depot-ubuntu-latest-16`), `artifact-name` (default
+`reproducible-candidate-binary-verification`), and `retention-days` (default `7`).
+Choose distinct artifact names and candidate repositories for multiple calls in
+one run. The clean rebuild always uses a fresh `ubuntu-latest` runner.
+
+Outputs are `source-sha`, `candidate-image-digest`, `candidate-tag`, and
+`binary-sha256`. Dependent jobs should run only when verification succeeds.
+The JSON artifact records both checksums, the image digest, source commit, trusted
+recipe commit, shared workflow commit, and comparison result. Download it and
+check `binary_comparison_result == "success"` and
+`depot_sha256 == clean_build_sha256`. Extraction failures and mismatches also
+upload a diagnostic manifest; failures before the comparison job do not.
 
 ### `rust-lint`
 
