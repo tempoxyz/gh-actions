@@ -1,4 +1,5 @@
 const { host, request, retry } = require("./http.cjs");
+const { uploadAegisReport } = require("./dist/artifact-upload.cjs");
 
 function buildRevokeRequest(token, dev) {
   const body = JSON.stringify({ token });
@@ -24,17 +25,27 @@ async function main() {
   }
   if (!/^\S{20,4096}$/.test(token))
     throw new Error("stored Socket token is invalid");
-  const revoke = buildRevokeRequest(
-    token,
-    process.env.STATE_dev || "false",
-  );
-  const response = await retry(() =>
-    request(revoke.url, revoke.options, revoke.body),
-  );
-  if (response.status !== 204) {
-    throw new Error(`Socket STS revocation failed (HTTP ${response.status})`);
+  try {
+    const revoke = buildRevokeRequest(
+      token,
+      process.env.STATE_dev || "false",
+    );
+    const response = await retry(() =>
+      request(revoke.url, revoke.options, revoke.body),
+    );
+    if (response.status !== 204) {
+      throw new Error(`Socket STS revocation failed (HTTP ${response.status})`);
+    }
+    console.log("Socket API token revoked.");
+  } finally {
+    if (process.env.STATE_upload_aegis_report === "true") {
+      try {
+        await uploadAegisReport({ action: process.env.STATE_action || "socket-sts" });
+      } catch (error) {
+        console.log(`::warning title=Aegis audit-log upload failed::${error.message}`);
+      }
+    }
   }
-  console.log("Socket API token revoked.");
 }
 
 if (require.main === module) {

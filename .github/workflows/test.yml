@@ -40,6 +40,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify Socket STS artifact uploader bundle
+        working-directory: actions/socket-sts
+        run: |
+          npm ci --ignore-scripts
+          npm run check
+
       - name: Test Socket Firewall action helpers
         run: node --test actions/socket-firewall/action.test.js actions/socket-sts/action.test.js
 
