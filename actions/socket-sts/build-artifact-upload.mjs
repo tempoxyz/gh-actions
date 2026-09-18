@@ -30,7 +30,9 @@ const result = await build({
   write: false,
   logLevel: "warning",
 });
-const text = result.outputFiles[0].text;
+// Third-party source comments can contain trailing whitespace. Normalize the
+// generated file so repository whitespace checks stay meaningful.
+const text = result.outputFiles[0].text.replace(/[\t ]+(?=\n)/g, "");
 if (check) {
   let current = "";
   try { current = readFileSync(outfile, "utf8"); } catch {}
