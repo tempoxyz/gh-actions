@@ -58,7 +58,7 @@ jobs:
       binaries: ${{ steps.binaries.outputs.json }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@258a455cfa40825cff63be54ee65b14177e78fbc # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
 
       - name: Resolve binary matrix
         id: binaries
@@ -91,14 +91,14 @@ jobs:
         binary: ${{ fromJSON(needs.resolve.outputs.binaries) }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@258a455cfa40825cff63be54ee65b14177e78fbc # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: ${{ inputs.checkout-submodules }}
       - name: Install Rust toolchain
-        uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@6f436eb3a168279692739e8c0c9fdb52b94bfae7
+        uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@fd333b1fd4005946c158c1588601874e36965d93
         with:
           toolchain: ${{ inputs.rust-toolchain }}
       - name: Install mold linker
@@ -131,7 +131,7 @@ jobs:
           fi
           mold --version
       - name: Enable sccache
-        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
+        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@fd333b1fd4005946c158c1588601874e36965d93
       - name: Build
         env:
           BINARY: ${{ matrix.binary }}

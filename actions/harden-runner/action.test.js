@@ -12,7 +12,7 @@ const { main: postMain } = require("./post.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@258a455cfa40825cff63be54ee65b14177e78fbc/;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@fd333b1fd4005946c158c1588601874e36965d93/;
 
 function usesSecureRunner(filename, visited = new Set()) {
   if (visited.has(filename)) return false;
@@ -392,7 +392,7 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
         protectedJobs += 1;
       } else {
         const steps = jobBlock.split(/\n    steps:\s*\n/, 2)[1] || "";
-        const secureRunnerPin = "258a455cfa40825cff63be54ee65b14177e78fbc";
+        const secureRunnerPin = "fd333b1fd4005946c158c1588601874e36965d93";
         assert.match(
           steps,
           new RegExp(
