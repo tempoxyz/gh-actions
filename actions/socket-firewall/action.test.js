@@ -12,8 +12,8 @@ const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("uses both STS exchanges and the aegis download policy", () => {
-  assert.match(manifest, /actions\/socket-sts@96e969f0226e938cac6ea1978141867a0fbf031b/);
-  assert.match(manifest, /actions\/aegis-report@96e969f0226e938cac6ea1978141867a0fbf031b/);
+  assert.match(manifest, /actions\/socket-sts@7b297429b5893c7e74e2d20a4114041d97a16285/);
+  assert.match(manifest, /actions\/aegis-report@7b297429b5893c7e74e2d20a4114041d97a16285/);
   assert.ok(
     manifest.indexOf("aegis install --config") < manifest.indexOf("actions/aegis-report@"),
     "the audit-log post handler must be registered after Aegis installation",
