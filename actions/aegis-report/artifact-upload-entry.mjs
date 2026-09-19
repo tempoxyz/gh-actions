@@ -1,1 +1,6 @@
-export { aegisReportPath, artifactName, uploadAegisReport } from "./artifact-upload.mjs";
+export {
+  aegisReportExists,
+  aegisReportPath,
+  artifactName,
+  uploadAegisReport,
+} from "./artifact-upload.mjs";

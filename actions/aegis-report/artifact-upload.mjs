@@ -22,6 +22,21 @@ export function artifactName(action, env = process.env) {
   return `aegis-service-log-${safe(env.GITHUB_JOB || "job")}-${safe(action || "aegis-report")}`;
 }
 
+export function aegisReportExists(source, platform = process.platform, run = execFileSync) {
+  if (platform === "linux") {
+    try {
+      // Aegis deliberately keeps its Linux audit-log directory root-only. Check
+      // with the same privilege used for the subsequent copy, rather than
+      // treating the runner's inability to traverse it as a missing report.
+      run("sudo", ["test", "-f", source], { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return existsSync(source) && statSync(source).isFile();
+}
+
 export function copyAegisReport(source, destination, platform = process.platform) {
   mkdirSync(dirname(destination), { recursive: true });
   if (platform === "linux") {
@@ -34,7 +49,7 @@ export function copyAegisReport(source, destination, platform = process.platform
 
 export async function uploadAegisReport({ action, env = process.env } = {}) {
   const source = aegisReportPath(process.platform, env);
-  if (!existsSync(source) || !statSync(source).isFile()) {
+  if (!aegisReportExists(source)) {
     throw new Error(`Aegis audit log was not found at ${source}`);
   }
   const destination = join(env.RUNNER_TEMP || dirname(source), "aegis-service.jsonl");

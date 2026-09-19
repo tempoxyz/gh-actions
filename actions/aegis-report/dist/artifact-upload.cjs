@@ -54136,6 +54136,7 @@ var require_light = __commonJS({
 // artifact-upload-entry.mjs
 var artifact_upload_entry_exports = {};
 __export(artifact_upload_entry_exports, {
+  aegisReportExists: () => aegisReportExists,
   aegisReportPath: () => aegisReportPath,
   artifactName: () => artifactName,
   uploadAegisReport: () => uploadAegisReport
@@ -98205,6 +98206,17 @@ function artifactName(action5, env = process.env) {
   const safe = (value) => value.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 128);
   return `aegis-service-log-${safe(env.GITHUB_JOB || "job")}-${safe(action5 || "aegis-report")}`;
 }
+function aegisReportExists(source, platform2 = process.platform, run = import_node_child_process.execFileSync) {
+  if (platform2 === "linux") {
+    try {
+      run("sudo", ["test", "-f", source], { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return (0, import_node_fs2.existsSync)(source) && (0, import_node_fs2.statSync)(source).isFile();
+}
 function copyAegisReport(source, destination, platform2 = process.platform) {
   (0, import_node_fs2.mkdirSync)((0, import_node_path.dirname)(destination), { recursive: true });
   if (platform2 === "linux") {
@@ -98216,7 +98228,7 @@ function copyAegisReport(source, destination, platform2 = process.platform) {
 }
 async function uploadAegisReport({ action: action5, env = process.env } = {}) {
   const source = aegisReportPath(process.platform, env);
-  if (!(0, import_node_fs2.existsSync)(source) || !(0, import_node_fs2.statSync)(source).isFile()) {
+  if (!aegisReportExists(source)) {
     throw new Error(`Aegis audit log was not found at ${source}`);
   }
   const destination = (0, import_node_path.join)(env.RUNNER_TEMP || (0, import_node_path.dirname)(source), "aegis-service.jsonl");
@@ -98230,6 +98242,7 @@ async function uploadAegisReport({ action: action5, env = process.env } = {}) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  aegisReportExists,
   aegisReportPath,
   artifactName,
   uploadAegisReport
