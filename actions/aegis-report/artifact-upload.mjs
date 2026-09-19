@@ -19,7 +19,7 @@ export function aegisReportPath(platform = process.platform, env = process.env) 
 
 export function artifactName(action, env = process.env) {
   const safe = (value) => value.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 128);
-  return `aegis-service-log-${safe(env.GITHUB_JOB || "job")}-${safe(action || "socket-sts")}`;
+  return `aegis-service-log-${safe(env.GITHUB_JOB || "job")}-${safe(action || "aegis-report")}`;
 }
 
 export function copyAegisReport(source, destination, platform = process.platform) {

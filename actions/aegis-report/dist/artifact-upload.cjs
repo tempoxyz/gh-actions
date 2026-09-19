@@ -98203,7 +98203,7 @@ function aegisReportPath(platform2 = process.platform, env = process.env) {
 }
 function artifactName(action5, env = process.env) {
   const safe = (value) => value.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 128);
-  return `aegis-service-log-${safe(env.GITHUB_JOB || "job")}-${safe(action5 || "socket-sts")}`;
+  return `aegis-service-log-${safe(env.GITHUB_JOB || "job")}-${safe(action5 || "aegis-report")}`;
 }
 function copyAegisReport(source, destination, platform2 = process.platform) {
   (0, import_node_fs2.mkdirSync)((0, import_node_path.dirname)(destination), { recursive: true });

@@ -7,7 +7,6 @@ const test = require("node:test");
 const { host, rateLimitDelay, retry, retryRateLimited } = require("./http.cjs");
 const { publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
-const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("selects the fixed development and production endpoints", () => {
   assert.equal(host("true"), "socket-sts.tehq.dev");
@@ -129,26 +128,6 @@ test("revokes tokens by deleting the exchange resource", () => {
   assert.equal(revoke.options.method, "DELETE");
   assert.equal(revoke.options.headers["content-type"], "application/json");
   assert.deepEqual(JSON.parse(revoke.body), { token });
-});
-
-test("can register a post-job Aegis audit-log upload", async () => {
-  assert.match(
-    manifest,
-    /upload-aegis-report:\r?\n    description: "Upload the final Aegis audit log as a job artifact"\r?\n    required: false\r?\n    default: "true"/,
-  );
-  assert.match(manifest, /runs:\r?\n  using: "node24"\r?\n  main: "main\.cjs"\r?\n  post: "post\.cjs"/);
-  const { aegisReportPath, artifactName } = require("./dist/artifact-upload.cjs");
-  assert.equal(aegisReportPath("linux"), "/var/log/aegis/service.jsonl");
-  assert.equal(aegisReportPath("darwin"), "/Library/Application Support/Aegis/service.jsonl");
-  assert.equal(
-    aegisReportPath("win32", { ProgramData: "C:\\ProgramData" }),
-    "C:\\ProgramData\\Aegis\\service.jsonl",
-  );
-  assert.equal(
-    artifactName("socket-sts 2", { GITHUB_JOB: "lint / check" }),
-    "aegis-service-log-lint---check-socket-sts-2",
-  );
-  assert.match(fs.readFileSync(path.join(__dirname, "post.cjs"), "utf8"), /STATE_upload_aegis_report/);
 });
 
 test("post is a no-op when no token was minted", () => {

@@ -1,5 +1,5 @@
 {
-  "name": "socket-sts",
+  "name": "aegis-report",
   "private": true,
   "engines": {
     "node": ">=24"
