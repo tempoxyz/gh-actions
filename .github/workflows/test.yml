@@ -101,7 +101,7 @@ jobs:
 
       - name: Reinstall Aegis on the same Linux runner
         if: runner.os == 'Linux'
-        uses: tempoxyz/gh-actions/actions/socket-firewall@d7bef0a0614aa95b6f42521e9a18cb0debb8c5e5 # Linux lifecycle
+        uses: ./actions/socket-firewall
 
       - name: Verify fresh credentials and active service after reinstall
         if: runner.os == 'Linux'
