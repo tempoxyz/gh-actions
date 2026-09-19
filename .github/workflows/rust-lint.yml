@@ -98,7 +98,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -160,7 +160,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -189,7 +189,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -232,7 +232,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -263,7 +263,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
 
       - name: Decide whether the needed jobs succeeded or failed
         uses: tempoxyz/gh-actions/actions/check-needs@fd333b1fd4005946c158c1588601874e36965d93

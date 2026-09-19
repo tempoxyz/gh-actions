@@ -21,7 +21,7 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
-const SECURE = "tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93";
+const SECURE = "tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00";
 
 const workflow = (jobs) => `on: push\npermissions: {}\njobs:\n${jobs}`;
 const job = (id, steps) => `  ${id}:\n    runs-on: ubuntu-latest\n    steps:\n${steps.map((s) => `      - ${s}\n`).join("")}`;
