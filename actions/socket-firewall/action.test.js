@@ -22,7 +22,16 @@ test("uses both STS exchanges and the aegis download policy", () => {
   assert.match(manifest, /actions\/github-sts@0a60d757d0f4725a34f22f7b9ebf7b91b4b00bcf/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);
-  assert.match(manifest, /dev: \$\{\{ inputs\.dev \}\}/);
+  assert.match(
+    manifest,
+    /actions\/socket-sts@[\s\S]*?dev: \$\{\{ inputs\.dev \}\}/,
+    "the Socket token follows the requested development endpoint",
+  );
+  assert.match(
+    manifest,
+    /policy: download-releases[\s\S]*?dev: "false"/,
+    "Aegis releases always use the production GitHub STS app",
+  );
   assert.match(manifest, /INPUT_SOCKET_TOKEN: \$\{\{ steps\.socket-token\.outputs\.token \}\}/);
   assert.match(manifest, /aegis install --config/);
 });

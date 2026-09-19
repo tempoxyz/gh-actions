@@ -63,7 +63,7 @@ writing the credential to disk.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `dev` | Use the development Socket STS endpoint for integration testing | No | `false` |
+| `dev` | Use the development Socket STS endpoint for integration testing. Aegis release downloads continue to use production GitHub STS, which owns the release policy and read access. | No | `false` |
 
 ## Outputs
 
