@@ -1,0 +1,7 @@
+name: "Aegis Report"
+description: "Upload the final Aegis audit log as a job artifact"
+
+runs:
+  using: "node24"
+  main: "main.cjs"
+  post: "post.cjs"
