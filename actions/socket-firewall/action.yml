@@ -57,7 +57,10 @@ runs:
         scope: tempoxyz/aegis
         policy: download-releases
         ttl: 15m
-        dev: ${{ inputs.dev }}
+        # Aegis releases and their trust policy are production resources. The
+        # development GitHub STS app is intentionally not installed on Aegis,
+        # so Socket STS's development endpoint must not select it here.
+        dev: "false"
 
     - name: Ensure GitHub CLI supports attestation verification
       if: steps.oidc.outputs.available == 'true'
