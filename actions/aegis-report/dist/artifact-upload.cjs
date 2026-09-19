@@ -98216,7 +98216,16 @@ function copyAegisReport(source, destination, platform2 = process.platform) {
 }
 async function uploadAegisReport({ action: action5, env = process.env } = {}) {
   const source = aegisReportPath(process.platform, env);
-  if (!(0, import_node_fs2.existsSync)(source) || !(0, import_node_fs2.statSync)(source).isFile()) {
+  const present = process.platform === "linux" ? (() => {
+    try {
+      (0, import_node_child_process.execFileSync)("sudo", ["-n", "test", "-f", source]);
+      return true;
+    } catch (error2) {
+      if (error2.status === 1) return false;
+      throw error2;
+    }
+  })() : (0, import_node_fs2.existsSync)(source) && (0, import_node_fs2.statSync)(source).isFile();
+  if (!present) {
     throw new Error(`Aegis audit log was not found at ${source}`);
   }
   const destination = (0, import_node_path.join)(env.RUNNER_TEMP || (0, import_node_path.dirname)(source), "aegis-service.jsonl");

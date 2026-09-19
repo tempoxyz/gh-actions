@@ -38,9 +38,16 @@ errors and HTTP 502/503/504 retain a separate two-retry budget.
 HTTP/1.x block responses now expose the reason and request ID in the status text
 that pnpm displays. Lookup failures are classified separately from policy
 denials. Per-attempt Socket diagnostics are written to the Aegis service log.
-After Aegis is installed, the action registers a dedicated post-job handler to
+Before Aegis is installed, the action registers a dedicated post-job handler to
 upload the final log as a seven-day `aegis-service-log-<job>-aegis-report`
 artifact. Upload failures are warnings and do not hide the original job result.
+
+On dedicated Linux runners, the handler first uninstalls any previous managed
+installation with its incumbent binary. A new installation uses this job's token
+provider. At job shutdown, logs upload before the owned installation is removed,
+and Socket STS then revokes the token. Cleanup errors fail the job. This supports
+sequential reuse of persistent runners; simultaneous jobs on the same host are
+not supported. Partial recovery state is preserved rather than forcibly deleted.
 
 The caller must grant `id-token: write`. The standalone
 [`socket-sts`](../socket-sts) action provides the generated token, revokes it
