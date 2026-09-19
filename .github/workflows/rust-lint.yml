@@ -98,7 +98,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@258a455cfa40825cff63be54ee65b14177e78fbc # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -140,7 +140,7 @@ jobs:
           fi
           mold --version
       - name: Enable sccache
-        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
+        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@fd333b1fd4005946c158c1588601874e36965d93
       - name: Run clippy
         run: |
           # CLIPPY_FLAGS is a space-separated flag list that must word-split.
@@ -160,7 +160,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@258a455cfa40825cff63be54ee65b14177e78fbc # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -189,7 +189,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@258a455cfa40825cff63be54ee65b14177e78fbc # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -232,7 +232,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@258a455cfa40825cff63be54ee65b14177e78fbc # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -243,7 +243,7 @@ jobs:
         run: |
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
           rustup default "$RUST_TOOLCHAIN"
-      - uses: tempoxyz/gh-actions/vendor/EmbarkStudios/cargo-deny-action@6f436eb3a168279692739e8c0c9fdb52b94bfae7
+      - uses: tempoxyz/gh-actions/vendor/EmbarkStudios/cargo-deny-action@fd333b1fd4005946c158c1588601874e36965d93
         with:
           rust-version: ${{ inputs.deny-rust-toolchain }}
           command: check all
@@ -263,10 +263,10 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@258a455cfa40825cff63be54ee65b14177e78fbc # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@fd333b1fd4005946c158c1588601874e36965d93 # main
 
       - name: Decide whether the needed jobs succeeded or failed
-        uses: tempoxyz/gh-actions/actions/check-needs@ab45d76f6e7420a094281a22aee1973ecc0754f8
+        uses: tempoxyz/gh-actions/actions/check-needs@fd333b1fd4005946c158c1588601874e36965d93
         with:
           jobs: ${{ toJSON(needs) }}
           allowed-skips: >-
