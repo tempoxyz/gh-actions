@@ -1,6 +1,12 @@
 name: "Aegis Report"
 description: "Upload the final Aegis audit log as a job artifact"
 
+inputs:
+  linux-installation-config:
+    description: "Opt in to Linux CI lifecycle management using this job's new Aegis configuration"
+    required: false
+    default: ""
+
 runs:
   using: "node24"
   main: "main.cjs"
