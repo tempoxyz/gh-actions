@@ -4,7 +4,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { host, rateLimitDelay, retry, retryRateLimited } = require("./http.cjs");
+const {
+  REQUEST_TIMEOUT_MS,
+  host,
+  rateLimitDelay,
+  request,
+  retry,
+  retryRateLimited,
+} = require("./http.cjs");
 const { publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
@@ -27,6 +34,55 @@ test("does not retry an exchange after receiving an HTTP response", async () => 
 
   assert.equal(attempts, 1);
   assert.equal(response.status, 502);
+});
+
+test("retries transport failures with exponential backoff", async () => {
+  let attempts = 0;
+  const delays = [];
+  const response = await retry(
+    async () => {
+      attempts += 1;
+      if (attempts < 3) throw new Error("connection reset");
+      return { status: 200, body: "recovered" };
+    },
+    { sleep: async (delay) => delays.push(delay) },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [1_000, 2_000]);
+});
+
+test("times out an unresponsive request after five seconds", async () => {
+  const https = require("node:https");
+  const { EventEmitter } = require("node:events");
+  const originalRequest = https.request;
+  const timeouts = [];
+  https.request = () => {
+    const call = new EventEmitter();
+    call.end = () => {};
+    call.destroy = (error) => process.nextTick(() => call.emit("error", error));
+    return call;
+  };
+
+  const originalSetTimeout = global.setTimeout;
+  global.setTimeout = (callback, delay) => {
+    timeouts.push(delay);
+    process.nextTick(callback);
+    return {};
+  };
+
+  try {
+    await assert.rejects(request("https://example.test"), {
+      code: "ETIMEDOUT",
+      message: `request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+    });
+  } finally {
+    https.request = originalRequest;
+    global.setTimeout = originalSetTimeout;
+  }
+
+  assert.deepEqual(timeouts, [REQUEST_TIMEOUT_MS]);
 });
 
 test("honors Socket STS rate-limit metadata before retrying", async () => {

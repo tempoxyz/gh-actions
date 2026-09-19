@@ -1,9 +1,13 @@
 const https = require("node:https");
 
 const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504]);
+const REQUEST_TIMEOUT_MS = 5 * 1000;
+const RETRY_ATTEMPTS = 4;
 
 function request(url, options = {}, body) {
   return new Promise((resolve, reject) => {
+    let timeout;
+    const clearRequestTimeout = () => clearTimeout(timeout);
     const call = https.request(url, options, (response) => {
       let value = "";
       response.setEncoding("utf8");
@@ -13,11 +17,20 @@ function request(url, options = {}, body) {
           call.destroy(new Error("response is too large"));
         }
       });
-      response.on("end", () =>
-        resolve({ status: response.statusCode, headers: response.headers, body: value }),
-      );
+      response.on("end", () => {
+        clearRequestTimeout();
+        resolve({ status: response.statusCode, headers: response.headers, body: value });
+      });
     });
-    call.on("error", reject);
+    timeout = setTimeout(() => {
+      const error = new Error(`request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+      error.code = "ETIMEDOUT";
+      call.destroy(error);
+    }, REQUEST_TIMEOUT_MS);
+    call.on("error", (error) => {
+      clearRequestTimeout();
+      reject(error);
+    });
     if (body !== undefined) call.write(body);
     call.end();
   });
@@ -114,21 +127,25 @@ async function retryRateLimited(operation, options = {}) {
 
 async function retry(operation, options = {}) {
   const retryHttpResponses = options.retryHttpResponses !== false;
+  const sleep =
+    options.sleep ||
+    ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
+  const attempts = options.attempts ?? RETRY_ATTEMPTS;
   let last;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       last = await operation();
       if (
         !retryHttpResponses ||
         !TRANSIENT.has(last.status) ||
-        attempt === 3
+        attempt === attempts - 1
       ) {
         return last;
       }
     } catch (error) {
-      if (attempt === 3) throw error;
+      if (attempt === attempts - 1) throw error;
     }
-    await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 1000));
+    await sleep(2 ** attempt * 1000);
   }
   return last;
 }
@@ -141,6 +158,8 @@ function host(dev) {
 
 module.exports = {
   MAX_RATE_LIMIT_DELAY_MS,
+  REQUEST_TIMEOUT_MS,
+  RETRY_ATTEMPTS,
   host,
   rateLimitDelay,
   request,
