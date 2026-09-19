@@ -18,7 +18,7 @@ jobs:
       tests: ${{ steps.tests.outputs.tests }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@34a9c8294286435b1c06841d42c8771db21aac8e # main
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,7 +49,7 @@ jobs:
         test: ${{ fromJSON(needs.discover.outputs.tests) }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@34a9c8294286435b1c06841d42c8771db21aac8e # main
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,7 +70,7 @@ jobs:
       id-token: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@34a9c8294286435b1c06841d42c8771db21aac8e # main
 
       - name: Check matrix results
         env:

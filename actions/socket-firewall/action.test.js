@@ -12,14 +12,14 @@ const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("uses both STS exchanges and the aegis download policy", () => {
-  assert.match(manifest, /actions\/socket-sts@3938e31b3549d362ea26de0d9977c3338d01bb8e/);
+  assert.match(manifest, /actions\/socket-sts@34a9c8294286435b1c06841d42c8771db21aac8e/);
   assert.match(manifest, /upload-aegis-report: "false"/);
-  assert.match(manifest, /actions\/aegis-report@fd333b1fd4005946c158c1588601874e36965d93/);
+  assert.match(manifest, /actions\/aegis-report@34a9c8294286435b1c06841d42c8771db21aac8e/);
   assert.ok(
     manifest.indexOf("aegis install --config") < manifest.indexOf("actions/aegis-report@"),
     "the audit-log post handler must be registered after Aegis installation",
   );
-  assert.match(manifest, /actions\/github-sts@fd333b1fd4005946c158c1588601874e36965d93/);
+  assert.match(manifest, /actions\/github-sts@34a9c8294286435b1c06841d42c8771db21aac8e/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);
   assert.match(manifest, /dev: \$\{\{ inputs\.dev \}\}/);

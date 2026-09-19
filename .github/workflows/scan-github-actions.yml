@@ -65,7 +65,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@643871a3df7845be7942057231d3c0cb05a29d00 # main
+        uses: tempoxyz/gh-actions/actions/secure-runner@34a9c8294286435b1c06841d42c8771db21aac8e # main
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,7 +73,7 @@ jobs:
           persist-credentials: false
 
       - name: Ensure every job starts with secure-runner
-        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@fd333b1fd4005946c158c1588601874e36965d93
+        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@34a9c8294286435b1c06841d42c8771db21aac8e
 
       - name: Resolve pinact config
         if: ${{ inputs.pinact }}
@@ -185,7 +185,7 @@ jobs:
 
       - name: Scan GitHub Actions
         if: ${{ !cancelled() }}
-        uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@fd333b1fd4005946c158c1588601874e36965d93
+        uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@34a9c8294286435b1c06841d42c8771db21aac8e
         with:
           inputs: ${{ inputs.paths }}
           persona: regular
