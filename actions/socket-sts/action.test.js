@@ -132,8 +132,10 @@ test("revokes tokens by deleting the exchange resource", () => {
 });
 
 test("can register a post-job Aegis audit-log upload", async () => {
-  assert.match(manifest, /upload-aegis-report:/);
-  assert.match(manifest, /default: "false"/);
+  assert.match(
+    manifest,
+    /upload-aegis-report:\r?\n    description: "Upload the final Aegis audit log as a job artifact"\r?\n    required: false\r?\n    default: "true"/,
+  );
   assert.match(manifest, /runs:\r?\n  using: "node24"\r?\n  main: "main\.cjs"\r?\n  post: "post\.cjs"/);
   const { aegisReportPath, artifactName } = require("./dist/artifact-upload.cjs");
   assert.equal(aegisReportPath("linux"), "/var/log/aegis/service.jsonl");

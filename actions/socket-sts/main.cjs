@@ -32,7 +32,7 @@ function publishToken(token, expiresAt) {
 }
 
 async function main() {
-  const uploadAegisReport = process.env["INPUT_UPLOAD-AEGIS-REPORT"] || "false";
+  const uploadAegisReport = process.env["INPUT_UPLOAD-AEGIS-REPORT"] || "true";
   if (uploadAegisReport !== "true" && uploadAegisReport !== "false") {
     throw new Error("upload-aegis-report must be either true or false");
   }

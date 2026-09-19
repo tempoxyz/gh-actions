@@ -9,7 +9,7 @@ inputs:
   upload-aegis-report:
     description: "Upload the final Aegis audit log as a job artifact"
     required: false
-    default: "false"
+    default: "true"
 
 outputs:
   token:
