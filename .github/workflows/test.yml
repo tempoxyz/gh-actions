@@ -47,7 +47,7 @@ jobs:
           npm run check
 
       - name: Test Socket Firewall action helpers
-        run: node --test actions/socket-firewall/action.test.js actions/socket-sts/action.test.js
+        run: node --test actions/socket-firewall/action.test.js actions/socket-sts/action.test.js actions/aegis-report/*.test.js
 
       - name: Verify secure-runner installed Aegis
         id: aegis
