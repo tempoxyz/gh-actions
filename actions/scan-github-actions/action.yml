@@ -53,7 +53,7 @@ runs:
         echo "config=$cfg" >> "$GITHUB_OUTPUT"
 
     - name: Scan GitHub Actions
-      uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@34a9c8294286435b1c06841d42c8771db21aac8e
+      uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@0a60d757d0f4725a34f22f7b9ebf7b91b4b00bcf
       with:
         inputs: ${{ inputs.paths }}
         persona: regular

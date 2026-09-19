@@ -15,14 +15,14 @@ test("uses the Windows ARM64-aware Harden Runner before Socket Firewall", () => 
   assert.ok(socketFirewall > hardenRunner);
   assert.match(
     manifest,
-    /uses: tempoxyz\/gh-actions\/actions\/harden-runner@34a9c8294286435b1c06841d42c8771db21aac8e/,
+    /uses: tempoxyz\/gh-actions\/actions\/harden-runner@0a60d757d0f4725a34f22f7b9ebf7b91b4b00bcf/,
   );
 });
 
 test("pins Socket Firewall using the runner's bundled Node runtime", () => {
   assert.match(
     manifest,
-    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@34a9c8294286435b1c06841d42c8771db21aac8e/,
+    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@0a60d757d0f4725a34f22f7b9ebf7b91b4b00bcf/,
   );
   assert.doesNotMatch(manifest, /actions\/setup-node/);
 });
