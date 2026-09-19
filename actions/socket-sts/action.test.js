@@ -8,6 +8,13 @@ const { host, rateLimitDelay, retry, retryRateLimited } = require("./http.cjs");
 const { publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 
+test("does not own Aegis audit-log uploads", () => {
+  const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
+  const post = fs.readFileSync(path.join(__dirname, "post.cjs"), "utf8");
+  assert.doesNotMatch(manifest, /aegis/i);
+  assert.doesNotMatch(post, /aegis/i);
+});
+
 test("selects the fixed development and production endpoints", () => {
   assert.equal(host("true"), "socket-sts.tehq.dev");
   assert.equal(host("false"), "socket-sts.tehq.net");

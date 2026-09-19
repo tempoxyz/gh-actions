@@ -19,6 +19,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`harden-runner`](actions/harden-runner) | Start Harden Runner with authenticated StepSecurity policy-store access, falling back to the inline policy on fork pull requests
 | [`socket-sts`](actions/socket-sts) | Exchange GitHub OIDC tokens for short-lived Socket API tokens
 | [`socket-firewall`](actions/socket-firewall) | Install Aegis with a short-lived, repository-scoped Socket token
+| [`aegis-report`](actions/aegis-report) | Upload the final Aegis audit log as a job artifact
 | [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR
 | [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache
