@@ -6,6 +6,11 @@ inputs:
     description: "Use the development Socket STS endpoint"
     required: false
     default: "false"
+  upload-aegis-report:
+    description: "Upload the final Aegis audit log as a job artifact"
+    required: false
+    default: "true"
+
 outputs:
   token:
     description: "Sensitive: short-lived Socket API token, registered with GitHub's secret masker"

@@ -1,0 +1,17 @@
+{
+  "name": "socket-sts",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build-artifact-upload.mjs",
+    "check": "node build-artifact-upload.mjs --check"
+  },
+  "dependencies": {
+    "@actions/artifact": "6.2.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
