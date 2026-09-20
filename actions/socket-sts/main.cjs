@@ -1,5 +1,12 @@
 const fs = require("node:fs");
-const { host, request, retry, retryRateLimited } = require("./http.cjs");
+const {
+  host,
+  isExchangeInProgress,
+  request,
+  retry,
+  retryExchangeInProgress,
+  retryRateLimited,
+} = require("./http.cjs");
 
 function required(name) {
   const value = process.env[name] || "";
@@ -58,17 +65,24 @@ async function main() {
   }
 
   const exchange = await retryRateLimited(() =>
-    retry(
-      () =>
-        request(`https://${endpoint}/sts/exchange`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${oidc}`,
-            "content-length": "0",
-            "user-agent": "tempoxyz-socket-sts-action",
-          },
-        }),
-      { retryHttpResponses: false },
+    retryExchangeInProgress(() =>
+      retry(
+        () =>
+          request(`https://${endpoint}/sts/exchange`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${oidc}`,
+              "content-length": "0",
+              "user-agent": "tempoxyz-socket-sts-action",
+            },
+          }),
+        {
+          // Let the outer handlers own 429 and the service's idempotent
+          // in-progress response so their retries are properly paced.
+          shouldRetryResponse: (response) =>
+            response.status !== 429 && !isExchangeInProgress(response),
+        },
+      ),
     ),
   );
   let result = {};
