@@ -9,6 +9,10 @@ const usage = [
   '[dry-run] [note="per-run audit guidance"]`',
 ].join("");
 
+// `super-fast` is the documented spelling; the others are common variants that
+// would otherwise be rejected as an unknown argument.
+const SUPER_FAST_ALIASES = new Set(["super-fast", "superfast", "super_fast"]);
+
 function parseArgs(body, commandRegex) {
   const prefix = new RegExp(commandRegex, "i");
   const args = body.replace(prefix, "").trim();
@@ -40,7 +44,7 @@ function parseArgs(body, commandRegex) {
   }
 
   for (const part of parts) {
-    if (part === "super-fast") {
+    if (SUPER_FAST_ALIASES.has(part)) {
       superFast = true;
       continue;
     }
