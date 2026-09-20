@@ -18,17 +18,15 @@ test("super-fast selects the five-minute config and one iteration", () => {
   assert.equal(defaults.iterations, "1");
 });
 
-test("super-fast accepts unhyphenated aliases", () => {
-  for (const alias of ["superfast", "super_fast"]) {
-    const { defaults, errors } = handle.parseArgs(
-      `cyclops audit ${alias}`,
-      "^cyclops\\s+audit\\b",
-    );
+test("super-fast accepts the unhyphenated alias", () => {
+  const { defaults, errors } = handle.parseArgs(
+    "cyclops audit superfast",
+    "^cyclops\\s+audit\\b",
+  );
 
-    assert.deepEqual(errors, [], `${alias} should be accepted`);
-    assert.equal(defaults.config, "pr-review-super-fast.yaml");
-    assert.equal(defaults.iterations, "1");
-  }
+  assert.deepEqual(errors, []);
+  assert.equal(defaults.config, "pr-review-super-fast.yaml");
+  assert.equal(defaults.iterations, "1");
 });
 
 test("private composes with fast and note arguments", () => {

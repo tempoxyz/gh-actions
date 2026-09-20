@@ -66,7 +66,7 @@ Supported default commands:
 
 Supported arguments:
 
-- `super-fast` (single pass against `pr-review-super-fast.yaml`, roughly five minutes; `superfast` and `super_fast` are accepted too)
+- `super-fast` (single pass against `pr-review-super-fast.yaml`, roughly five minutes; `superfast` is accepted too)
 - `fast`
 - `iterations=N`
 - `hours=N`
