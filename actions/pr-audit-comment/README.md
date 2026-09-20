@@ -2,7 +2,7 @@
 
 Handles PR audit commands posted as issue comments and publishes `pr_audit` events.
 
-Because it needs `issues: write` and `pull-requests: read`, use it in a caller-owned job. This is the privileged counterpart to the read-only [`pr-audit`](../../README.md#pr-audit) reusable workflow.
+Because it needs `issues: write` and `pull-requests: write`, use it in a caller-owned job. `pull-requests: write` is required even though the action only reads the pull request: commenting on a pull request and reacting to a comment on one both go through the issues endpoints but are governed by the `pull-requests` permission, so with `pull-requests: read` the acknowledgement comment and reaction fail with `Resource not accessible by integration`. Those calls are best-effort, so the job still succeeds and the audit still runs — the symptom is a silent audit with no acknowledgement and no feedback on a mistyped command. This is the privileged counterpart to the read-only [`pr-audit`](../../README.md#pr-audit) reusable workflow.
 
 ```yaml
 on:
@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     steps:
       - uses: tempoxyz/gh-actions/actions/pr-audit-comment@main
         with:
@@ -66,6 +66,7 @@ Supported default commands:
 
 Supported arguments:
 
+- `super-fast` (single pass against `pr-review-super-fast.yaml`, roughly five minutes)
 - `fast`
 - `iterations=N`
 - `hours=N`
