@@ -5,6 +5,9 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
+const DOWNLOAD_ATTEMPTS = 3;
+const DOWNLOAD_RETRY_DELAY_MS = 1_000;
+
 function assetName(releaseVersion, runnerOS, runnerArch) {
   const operatingSystem = {
     Linux: ["linux", "deb"],
@@ -57,20 +60,41 @@ function releaseCommit(tag) {
   return commit;
 }
 
+function downloadReleaseAssets(tag, directory, asset) {
+  const args = [
+    "release", "download", tag,
+    "--repo", "tempoxyz/aegis",
+    "--dir", directory,
+    // A failed attempt can have downloaded some of the requested assets.
+    // Replace them on retry so checksum and provenance verification always
+    // consume one complete download attempt.
+    "--clobber",
+    "--pattern", asset,
+    "--pattern", "SHA256SUMS",
+    "--pattern", "provenance.sigstore.json",
+  ];
+  let lastError;
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      execFileSync("gh", args, { stdio: "inherit" });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === DOWNLOAD_ATTEMPTS) break;
+      console.warn(`Aegis release download failed (attempt ${attempt}/${DOWNLOAD_ATTEMPTS}); retrying.`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, DOWNLOAD_RETRY_DELAY_MS * attempt);
+    }
+  }
+  throw lastError;
+}
+
 function main() {
   if (!process.env.GH_TOKEN) throw new Error("Aegis release token is missing");
   const release = latestRelease();
   const asset = assetName(release.version, process.env.RUNNER_OPERATING_SYSTEM, process.env.RUNNER_ARCHITECTURE);
   const commit = releaseCommit(release.tag);
   const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), "aegis-release-"));
-  execFileSync("gh", [
-    "release", "download", release.tag,
-    "--repo", "tempoxyz/aegis",
-    "--dir", directory,
-    "--pattern", asset,
-    "--pattern", "SHA256SUMS",
-    "--pattern", "provenance.sigstore.json",
-  ], { stdio: "inherit" });
+  downloadReleaseAssets(release.tag, directory, asset);
 
   const artifact = path.join(directory, asset);
   const bundle = path.join(directory, "provenance.sigstore.json");
@@ -100,4 +124,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { assetName, expectedDigest };
+module.exports = { assetName, expectedDigest, downloadReleaseAssets };

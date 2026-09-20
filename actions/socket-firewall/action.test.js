@@ -38,6 +38,8 @@ test("downloads the latest stable release and verifies its checksums and provena
   assert.match(downloader, /tempoxyz\/aegis\/\.github\/workflows\/release\.yml/);
   assert.match(downloader, /"--source-ref", "refs\/heads\/main"/);
   assert.match(downloader, /--deny-self-hosted-runners/);
+  assert.match(downloader, /DOWNLOAD_ATTEMPTS = 3/);
+  assert.match(downloader, /--clobber/);
 });
 
 test("selects the exact latest-release artifact for every supported OS and architecture", () => {
@@ -117,6 +119,14 @@ case "$1 $2" in
   'api repos/tempoxyz/aegis/git/ref/tags/v1.2.3')
     printf '%s\\n' '${"a".repeat(40)}' ;;
   'release download')
+    attempts_file=$TEST_DOWNLOAD_ATTEMPTS
+    attempts=0
+    if [ -f "$attempts_file" ]; then IFS= read -r attempts < "$attempts_file"; fi
+    attempts=$((attempts + 1))
+    printf '%s\n' "$attempts" > "$attempts_file"
+    if [ "$attempts" -le "$TEST_DOWNLOAD_FAILURES" ]; then
+      exit 1
+    fi
     shift 2
     while [ "$#" -gt 0 ]; do
       if [ "$1" = --dir ]; then target=$2; fi
@@ -132,9 +142,10 @@ case "$1 $2" in
 esac
 `, { mode: 0o700 });
     const command = manifest.match(/run: '([^'\n]*\/download\.cjs[^'\n]*)'/)[1];
-    for (const scenario of ["success", "checksum", "provenance"]) {
+    for (const scenario of ["success", "retry", "download", "checksum", "provenance"]) {
       const output = path.join(directory, `${scenario}.output`);
       const args = path.join(directory, `${scenario}.args`);
+      const attempts = path.join(directory, `${scenario}.attempts`);
       const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", command], {
         encoding: "utf8",
         env: {
@@ -149,10 +160,13 @@ esac
           TEST_DIGEST: scenario === "checksum" ? "0".repeat(64) : digest,
           TEST_ATTESTATION_ARGS: args,
           TEST_ATTESTATION_STATUS: scenario === "provenance" ? "1" : "0",
+          TEST_DOWNLOAD_ATTEMPTS: attempts,
+          TEST_DOWNLOAD_FAILURES: scenario === "retry" ? "1" : scenario === "download" ? "3" : "0",
         },
       });
-      if (scenario === "success") {
+      if (scenario === "success" || scenario === "retry") {
         assert.equal(result.status, 0, result.stderr);
+        if (scenario === "retry") assert.equal(fs.readFileSync(attempts, "utf8").trim(), "2");
         assert.match(fs.readFileSync(output, "utf8"), /package=.*aegis-1\.2\.3-linux-amd64\.deb/);
         const verification = fs.readFileSync(args, "utf8");
         assert.ok(verification.includes("--source-digest\n" + "a".repeat(40)));
@@ -162,6 +176,7 @@ esac
       } else {
         assert.notEqual(result.status, 0, scenario);
         assert.equal(fs.existsSync(output), false, `${scenario} must not publish an artifact`);
+        if (scenario === "download") assert.equal(fs.readFileSync(attempts, "utf8").trim(), "3");
       }
       if (scenario === "checksum") assert.equal(fs.existsSync(args), false);
     }
