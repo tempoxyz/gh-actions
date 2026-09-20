@@ -7,6 +7,37 @@ const { execFileSync } = require("node:child_process");
 
 const DOWNLOAD_ATTEMPTS = 3;
 const DOWNLOAD_RETRY_DELAY_MS = 1_000;
+const GH_API_TIMEOUT_MS = 10 * 1000;
+
+function sleep(delay) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
+}
+
+function retrySync(operation, description, options = {}) {
+  const attempts = options.attempts ?? DOWNLOAD_ATTEMPTS;
+  const wait = options.sleep || sleep;
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+      console.warn(`${description} failed (attempt ${attempt}/${attempts}); retrying.`);
+      wait(DOWNLOAD_RETRY_DELAY_MS * 2 ** (attempt - 1));
+    }
+  }
+  throw lastError;
+}
+
+function runGh(args, description, options = {}) {
+  const execute = options.execute || execFileSync;
+  return retrySync(
+    () => execute("gh", args, options.execOptions),
+    description,
+    options,
+  );
+}
 
 function assetName(releaseVersion, runnerOS, runnerArch) {
   const operatingSystem = {
@@ -41,9 +72,11 @@ function sha256(file) {
 function latestRelease() {
   // GitHub's `/releases/latest` endpoint excludes draft and prerelease
   // releases, unlike the general releases list.
-  const response = JSON.parse(execFileSync("gh", [
-    "api", "repos/tempoxyz/aegis/releases/latest",
-  ], { encoding: "utf8" }));
+  const response = JSON.parse(runGh(
+    ["api", "repos/tempoxyz/aegis/releases/latest"],
+    "GitHub latest-release request",
+    { execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS } },
+  ));
   if (response.draft || response.prerelease || typeof response.tag_name !== "string") {
     throw new Error("GitHub latest Aegis release is not a stable published release");
   }
@@ -53,9 +86,11 @@ function latestRelease() {
 }
 
 function releaseCommit(tag) {
-  const commit = execFileSync("gh", [
-    "api", `repos/tempoxyz/aegis/git/ref/tags/${tag}`, "--jq", ".object.sha",
-  ], { encoding: "utf8" }).trim();
+  const commit = runGh(
+    ["api", `repos/tempoxyz/aegis/git/ref/tags/${tag}`, "--jq", ".object.sha"],
+    "GitHub release-commit request",
+    { execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS } },
+  ).trim();
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`Aegis release ${tag} has an invalid source commit`);
   return commit;
 }
@@ -73,19 +108,9 @@ function downloadReleaseAssets(tag, directory, asset) {
     "--pattern", "SHA256SUMS",
     "--pattern", "provenance.sigstore.json",
   ];
-  let lastError;
-  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
-    try {
-      execFileSync("gh", args, { stdio: "inherit" });
-      return;
-    } catch (error) {
-      lastError = error;
-      if (attempt === DOWNLOAD_ATTEMPTS) break;
-      console.warn(`Aegis release download failed (attempt ${attempt}/${DOWNLOAD_ATTEMPTS}); retrying.`);
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, DOWNLOAD_RETRY_DELAY_MS * attempt);
-    }
-  }
-  throw lastError;
+  // Do not impose a whole-process 10s timeout here: a healthy artifact
+  // transfer can legitimately take longer. Each failed transfer is retried.
+  runGh(args, "Aegis release download", { execOptions: { stdio: "inherit" } });
 }
 
 function main() {
@@ -101,7 +126,7 @@ function main() {
   const expected = expectedDigest(fs.readFileSync(path.join(directory, "SHA256SUMS"), "utf8"), asset);
   assert.equal(sha256(artifact), expected, `${asset} does not match SHA256SUMS`);
 
-  execFileSync("gh", [
+  runGh([
     "attestation", "verify", artifact,
     "--repo", "tempoxyz/aegis",
     "--bundle", bundle,
@@ -109,7 +134,7 @@ function main() {
     "--source-digest", commit,
     "--source-ref", "refs/heads/main",
     "--deny-self-hosted-runners",
-  ], { stdio: "inherit" });
+  ], "Aegis provenance verification", { execOptions: { stdio: "inherit" } });
 
   appendOutput("package", artifact);
   appendOutput("directory", directory);
@@ -124,4 +149,11 @@ if (require.main === module) {
   }
 }
 
-module.exports = { assetName, expectedDigest, downloadReleaseAssets };
+module.exports = {
+  GH_API_TIMEOUT_MS,
+  assetName,
+  expectedDigest,
+  downloadReleaseAssets,
+  retrySync,
+  runGh,
+};
