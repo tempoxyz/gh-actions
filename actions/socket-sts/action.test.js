@@ -7,9 +7,11 @@ const test = require("node:test");
 const {
   REQUEST_TIMEOUT_MS,
   host,
+  isExchangeInProgress,
   rateLimitDelay,
   request,
   retry,
+  retryExchangeInProgress,
   retryRateLimited,
 } = require("./http.cjs");
 const { publishToken } = require("./main.cjs");
@@ -22,18 +24,22 @@ test("selects the fixed development and production endpoints", () => {
   assert.throws(() => host("yes"), /dev must be either true or false/);
 });
 
-test("does not retry an exchange after receiving an HTTP response", async () => {
+test("retries failed HTTP responses with exponential backoff", async () => {
   let attempts = 0;
+  const delays = [];
   const response = await retry(
     async () => {
       attempts += 1;
-      return { status: 502, body: "upstream failure" };
+      return attempts < 3
+        ? { status: attempts === 1 ? 401 : 505, body: "upstream failure" }
+        : { status: 200, body: "recovered" };
     },
-    { retryHttpResponses: false },
+    { sleep: async (delay) => delays.push(delay) },
   );
 
-  assert.equal(attempts, 1);
-  assert.equal(response.status, 502);
+  assert.equal(attempts, 3);
+  assert.equal(response.status, 200);
+  assert.deepEqual(delays, [1_000, 2_000]);
 });
 
 test("retries transport failures with exponential backoff", async () => {
@@ -53,7 +59,7 @@ test("retries transport failures with exponential backoff", async () => {
   assert.deepEqual(delays, [1_000, 2_000]);
 });
 
-test("times out an unresponsive request after five seconds", async () => {
+test("times out an unresponsive request after ten seconds", async () => {
   const https = require("node:https");
   const { EventEmitter } = require("node:events");
   const originalRequest = https.request;
@@ -83,6 +89,36 @@ test("times out an unresponsive request after five seconds", async () => {
   }
 
   assert.deepEqual(timeouts, [REQUEST_TIMEOUT_MS]);
+});
+
+test("waits for an in-progress idempotent exchange to complete", async () => {
+  let attempts = 0;
+  const delays = [];
+  const response = await retryExchangeInProgress(
+    async () => {
+      attempts += 1;
+      return attempts < 3
+        ? {
+            status: 503,
+            headers: attempts === 1 ? { "retry-after": "2" } : {},
+            body: '{"message":"exchange is already in progress"}',
+          }
+        : { status: 200, headers: {}, body: "recovered" };
+    },
+    { now: () => 0, sleep: async (delay) => delays.push(delay) },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [2_000, 2_000]);
+  assert.equal(
+    isExchangeInProgress({
+      status: 503,
+      body: '{"message":"exchange is already in progress"}',
+    }),
+    true,
+  );
+  assert.equal(isExchangeInProgress({ status: 503, body: "{}" }), false);
 });
 
 test("honors Socket STS rate-limit metadata before retrying", async () => {
