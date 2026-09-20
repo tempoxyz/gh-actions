@@ -5,7 +5,7 @@ const os = require("node:os");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
-const { assetName, expectedDigest } = require("./download.cjs");
+const { GH_API_TIMEOUT_MS, assetName, expectedDigest, runGh } = require("./download.cjs");
 const { PACKAGES, npmCLI } = require("./npm-install.cjs");
 const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.cjs");
 
@@ -40,6 +40,44 @@ test("downloads the latest stable release and verifies its checksums and provena
   assert.match(downloader, /--deny-self-hosted-runners/);
   assert.match(downloader, /DOWNLOAD_ATTEMPTS = 3/);
   assert.match(downloader, /--clobber/);
+  assert.match(downloader, /GH_API_TIMEOUT_MS = 10 \* 1000/);
+  assert.match(downloader, /Aegis provenance verification/);
+});
+
+test("bounds connection waits and retries every Socket Firewall outbound command", () => {
+  const bootstrap = fs.readFileSync(
+    path.join(__dirname, "..", "setup-foundry", "ensure-gh.sh"),
+    "utf8",
+  );
+  assert.match(bootstrap, /curl -fsSL --connect-timeout 10 --retry 3 --retry-all-errors/);
+  assert.match(manifest, /retry bash "\$GITHUB_ACTION_PATH\/\.\.\/setup-foundry\/ensure-gh\.sh"/);
+  assert.match(manifest, /Acquire::http::Timeout=10/);
+  assert.match(manifest, /Acquire::https::Timeout=10/);
+  assert.match(manifest, /retry \/usr\/bin\/aegis install/);
+  assert.match(manifest, /retry \/usr\/local\/bin\/aegis install/);
+  assert.match(manifest, /function Invoke-WithRetry/);
+});
+
+test("retries every GitHub CLI failure with exponential backoff", () => {
+  let attempts = 0;
+  const delays = [];
+  const output = runGh(
+    ["api", "repos/tempoxyz/aegis/releases/latest"],
+    "GitHub latest-release request",
+    {
+      execute: () => {
+        attempts += 1;
+        if (attempts < 3) throw new Error("connection reset");
+        return "{\"tag_name\":\"v1.2.3\"}";
+      },
+      execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS },
+      sleep: (delay) => delays.push(delay),
+    },
+  );
+
+  assert.equal(output, "{\"tag_name\":\"v1.2.3\"}");
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [1_000, 2_000]);
 });
 
 test("selects the exact latest-release artifact for every supported OS and architecture", () => {
