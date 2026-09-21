@@ -37,4 +37,7 @@ runs:
       run: |
         set -euo pipefail
         # shellcheck disable=SC2086  # args are intentionally word-split
-        actionlint $ARGS
+        # actionlint 1.7.12 predates GitHub's $/ self-repository syntax.
+        actionlint $ARGS \
+          -ignore 'specifying action "\$\/.*" in invalid format' \
+          -ignore 'reusable workflow call "\$\/.*" at "uses" is not following'

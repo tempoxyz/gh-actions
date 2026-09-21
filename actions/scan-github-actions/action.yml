@@ -53,7 +53,7 @@ runs:
         echo "config=$cfg" >> "$GITHUB_OUTPUT"
 
     - name: Scan GitHub Actions
-      uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@05ad21abb2ba30be5b2af3f190b398de68537cce
+      uses: $/vendor/zizmorcore/zizmor-action
       with:
         inputs: ${{ inputs.paths }}
         persona: regular
@@ -87,4 +87,8 @@ runs:
     - name: Lint GitHub Actions
       if: ${{ !cancelled() && inputs.actionlint == 'true' }}
       shell: bash
-      run: actionlint -color
+      # actionlint 1.7.12 predates GitHub's $/ self-repository syntax.
+      run: >-
+        actionlint -color
+        -ignore 'specifying action "\$\/.*" in invalid format'
+        -ignore 'reusable workflow call "\$\/.*" at "uses" is not following'

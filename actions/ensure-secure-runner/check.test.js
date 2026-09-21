@@ -45,6 +45,7 @@ test("usesMatches ignores the ref unless the accepted entry pins one", () => {
   assert.equal(usesMatches(SECURE, [SECURE]), true);
   assert.equal(usesMatches("tempoxyz/gh-actions/actions/secure-runner@main", [SECURE]), false);
   assert.equal(usesMatches("", DEFAULT_ACTIONS), false);
+  assert.equal(usesMatches("$/actions/secure-runner", DEFAULT_ACTIONS), true);
 });
 
 test("a job whose first step is secure-runner passes", async () => {
@@ -95,7 +96,7 @@ test("reusable workflow calls are ok when resolved in the same scan and otherwis
   assert.match(report.findings[0].detail, /checked in the repository that defines that workflow/);
   assert.match(formatSummary(report), /### Reusable workflow calls not checked here/);
 
-  const caller = workflow("  lint:\n    uses: ./.github/workflows/lint.yml\n");
+  const caller = workflow("  lint:\n    uses: $/.github/workflows/lint.yml\n");
   const callee = workflow(job("clippy", [`uses: ${SECURE}`]));
   const both = await checkWorkflows([
     { name: ".github/workflows/ci.yml", content: caller },

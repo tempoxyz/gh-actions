@@ -46,12 +46,12 @@ jobs:
       id-token: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@05ad21abb2ba30be5b2af3f190b398de68537cce # main
+        uses: $/actions/secure-runner
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@05ad21abb2ba30be5b2af3f190b398de68537cce
+      - uses: $/vendor/dtolnay/rust-toolchain
         with:
           toolchain: ${{ inputs.rust-toolchain }}
 
@@ -84,32 +84,20 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # Checked out at the reusable workflow's own revision (the label-prs
-      # pattern), so the github-sts action always matches this workflow and
-      # needs no separate SHA pin.
-      - name: Checkout shared actions
-        if: steps.changes.outputs.changed == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .gh-actions
-          persist-credentials: false
-
       - name: Fetch GitHub token via STS
         if: steps.changes.outputs.changed == 'true'
         id: sts
-        uses: ./.gh-actions/actions/github-sts
+        uses: $/actions/github-sts
         with:
           policy: cargo-update-pr
 
-      # First-party replacement for peter-evans/create-pull-request, from the same checkout of
-      # this repository the STS step uses. The commit is created server-side, authored by the STS
-      # App and signed by GitHub, so author/committer inputs are not needed. The composite takes a
-      # single-line commit headline; the cargo update log stays in the PR body.
+      # First-party replacement for peter-evans/create-pull-request. The commit is created
+      # server-side, authored by the STS App and signed by GitHub, so author/committer inputs are
+      # not needed. The composite takes a single-line commit headline; the cargo update log stays
+      # in the PR body.
       - name: Create Pull Request
         if: steps.changes.outputs.changed == 'true'
-        uses: ./.gh-actions/actions/create-pull-request
+        uses: $/actions/create-pull-request
         with:
           token: ${{ steps.sts.outputs.token }}
           branch: ${{ env.BRANCH }}
