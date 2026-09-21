@@ -14,7 +14,7 @@ const {
   retryExchangeInProgress,
   retryRateLimited,
 } = require("./http.cjs");
-const { publishToken } = require("./main.cjs");
+const { ASSERTION_ATTEMPTS, exchangeWithFreshAssertion, publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
@@ -119,6 +119,46 @@ test("waits for an in-progress idempotent exchange to complete", async () => {
     true,
   );
   assert.equal(isExchangeInProgress({ status: 503, body: "{}" }), false);
+});
+
+test("marks an assertion that remains reserved for refresh", async () => {
+  await assert.rejects(
+    retryExchangeInProgress(
+      async () => ({
+        status: 503,
+        headers: {},
+        body: '{"message":"exchange is already in progress"}',
+      }),
+      { now: () => 0, maxDelay: 0, sleep: async () => {} },
+    ),
+    (error) => error.code === "ESTS_EXCHANGE_IN_PROGRESS",
+  );
+});
+
+test("retries a stuck exchange once with a fresh OIDC assertion", async () => {
+  const assertions = [];
+  const exchanges = [];
+  const result = await exchangeWithFreshAssertion(
+    async () => {
+      const assertion = `assertion-${assertions.length + 1}`;
+      assertions.push(assertion);
+      return assertion;
+    },
+    async (assertion) => {
+      exchanges.push(assertion);
+      if (exchanges.length === 1) {
+        const error = new Error("still in progress");
+        error.code = "ESTS_EXCHANGE_IN_PROGRESS";
+        throw error;
+      }
+      return "token";
+    },
+  );
+
+  assert.equal(ASSERTION_ATTEMPTS, 2);
+  assert.equal(result, "token");
+  assert.deepEqual(assertions, ["assertion-1", "assertion-2"]);
+  assert.deepEqual(exchanges, ["assertion-1", "assertion-2"]);
 });
 
 test("honors Socket STS rate-limit metadata before retrying", async () => {

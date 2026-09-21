@@ -153,9 +153,14 @@ async function retryExchangeInProgress(operation, options = {}) {
     const requestedDelay = rateLimitDelay(response, now());
     const remaining = deadline - now();
     if (remaining < 100) {
-      throw new Error(
+      const error = new Error(
         "Exchange is still in progress after the 2 minute retry limit",
       );
+      // Callers can safely obtain a new GitHub OIDC assertion and try again.
+      // This only happens after the service has held the original assertion
+      // for the entire polling window.
+      error.code = "ESTS_EXCHANGE_IN_PROGRESS";
+      throw error;
     }
     if (
       requestedDelay !== null &&
