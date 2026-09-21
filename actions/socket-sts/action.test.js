@@ -6,7 +6,6 @@ const path = require("node:path");
 const test = require("node:test");
 const {
   REQUEST_TIMEOUT_MS,
-  RETRY_ATTEMPTS,
   host,
   isExchangeInProgress,
   rateLimitDelay,
@@ -42,25 +41,6 @@ test("retries failed HTTP responses with exponential backoff", async () => {
   assert.equal(attempts, 3);
   assert.equal(response.status, 200);
   assert.deepEqual(delays, [1_000, 2_000]);
-});
-
-test("recovers from GitHub OIDC 503 responses beyond the former retry budget", async () => {
-  let attempts = 0;
-  const delays = [];
-  const response = await retry(
-    async () => {
-      attempts += 1;
-      return attempts < 5
-        ? { status: 503, body: "GitHub OIDC temporarily unavailable" }
-        : { status: 200, body: "assertion" };
-    },
-    { sleep: async (delay) => delays.push(delay) },
-  );
-
-  assert.equal(RETRY_ATTEMPTS, 6);
-  assert.equal(response.status, 200);
-  assert.equal(attempts, 5);
-  assert.deepEqual(delays, [1_000, 2_000, 4_000, 8_000]);
 });
 
 test("retries transport failures with exponential backoff", async () => {

@@ -1,10 +1,7 @@
 const https = require("node:https");
 
 const REQUEST_TIMEOUT_MS = 10 * 1000;
-// GitHub's OIDC endpoint can transiently return 5xx while a workflow is being
-// provisioned. Match github-sts's initial request plus five retries so an
-// individual matrix job has the same recovery window.
-const RETRY_ATTEMPTS = 6;
+const RETRY_ATTEMPTS = 4;
 
 function request(url, options = {}, body) {
   return new Promise((resolve, reject) => {
