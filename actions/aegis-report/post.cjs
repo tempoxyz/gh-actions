@@ -1,10 +1,17 @@
 const { uploadAegisReport } = require("./dist/artifact-upload.cjs");
+const { retire } = require("./linux-lifecycle.cjs");
 
-async function main() {
+async function main({ upload = uploadAegisReport, cleanup = retire, env = process.env } = {}) {
   try {
-    await uploadAegisReport({ action: process.env.STATE_action || "aegis-report" });
+    await upload({ action: env.STATE_action || "aegis-report" });
   } catch (error) {
     console.log(`::warning title=Aegis audit-log upload failed::${error.message}`);
+  } finally {
+    if (process.platform === "linux" && env.STATE_installation_identity) {
+      // Cleanup errors fail the job: leaving a managed installation on a reused
+      // runner is not a successful lifecycle, even if its workload passed.
+      cleanup({ expectedIdentity: env.STATE_installation_identity });
+    }
   }
 }
 

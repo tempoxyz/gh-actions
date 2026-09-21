@@ -14,11 +14,16 @@ const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 test("uses both STS exchanges and the aegis download policy", () => {
   assert.match(manifest, /actions\/socket-sts@05ad21abb2ba30be5b2af3f190b398de68537cce/);
   assert.match(manifest, /upload-aegis-report: "false"/);
-  assert.match(manifest, /actions\/aegis-report@05ad21abb2ba30be5b2af3f190b398de68537cce/);
+  assert.match(manifest, /actions\/aegis-report@6fa83af0bb7d796cc9686a73457c3caa78ad97d1/);
+  const lifecycle = manifest.indexOf("actions/aegis-report@");
+  const linuxInstall = manifest.indexOf("- name: Install Aegis package on Linux");
+  assert.ok(linuxInstall !== -1, "the Linux installation step must exist");
   assert.ok(
-    manifest.indexOf("aegis install --config") < manifest.indexOf("actions/aegis-report@"),
-    "the audit-log post handler must be registered after Aegis installation",
+    lifecycle < linuxInstall,
+    "the lifecycle handler must retire the incumbent before upgrading and register post cleanup before installation",
   );
+  assert.ok(manifest.indexOf("actions/socket-sts@") < lifecycle);
+  assert.match(manifest, /linux-installation-config:.*runner\.os == 'Linux'.*steps\.config\.outputs\.path/);
   assert.match(manifest, /actions\/github-sts@05ad21abb2ba30be5b2af3f190b398de68537cce/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);

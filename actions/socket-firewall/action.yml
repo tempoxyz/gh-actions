@@ -103,6 +103,14 @@ runs:
         RUNNER_NODE: ${{ steps.socket-token.outputs.node-path }}
       run: '"$RUNNER_NODE" "$GITHUB_ACTION_PATH/token-provider.cjs"'
 
+    # Register after STS (so post runs before credential revocation), but before
+    # installation (so failures still upload logs and clean up owned state).
+    - name: Prepare Aegis lifecycle and register cleanup
+      if: steps.oidc.outputs.available == 'true'
+      uses: tempoxyz/gh-actions/actions/aegis-report@6fa83af0bb7d796cc9686a73457c3caa78ad97d1 # Linux lifecycle
+      with:
+        linux-installation-config: ${{ runner.os == 'Linux' && steps.config.outputs.path || '' }}
+
     - name: Install Aegis package on Linux
       if: steps.oidc.outputs.available == 'true' && runner.os == 'Linux'
       id: install-linux
@@ -182,7 +190,3 @@ runs:
         Invoke-WithRetry { & $binary install --config $env:AEGIS_CONFIG } 'aegis install'
         "path=$binary" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "report=$(Join-Path $env:ProgramData 'Aegis\service.jsonl')" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-    - name: Register Aegis audit-log upload
-      if: steps.oidc.outputs.available == 'true'
-      uses: tempoxyz/gh-actions/actions/aegis-report@05ad21abb2ba30be5b2af3f190b398de68537cce # main
