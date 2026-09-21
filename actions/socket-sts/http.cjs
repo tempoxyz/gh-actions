@@ -133,48 +133,16 @@ async function retryRateLimited(operation, options = {}) {
   }
 }
 
-// Socket STS reserves an OIDC assertion while it mints a token. Repeating the
-// same assertion is safe: once minting finishes, the service returns the
-// original credential. Only this explicit response gets a longer poll; other
-// failures retain the normal bounded retry policy.
-async function retryExchangeInProgress(operation, options = {}) {
-  const sleep =
-    options.sleep ||
-    ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
-  const now = options.now || Date.now;
-  const maxDelay = options.maxDelay ?? MAX_RATE_LIMIT_DELAY_MS;
-  const deadline = now() + maxDelay;
-  let attempt = 0;
-
-  for (;;) {
-    const response = await operation();
-    if (!isExchangeInProgress(response)) return response;
-
-    const requestedDelay = rateLimitDelay(response, now());
-    const remaining = deadline - now();
-    if (remaining < 100) {
-      throw new Error(
-        "Exchange is still in progress after the 2 minute retry limit",
-      );
-    }
-    if (
-      requestedDelay !== null &&
-      (requestedDelay > maxDelay || requestedDelay > remaining)
-    ) {
-      throw new Error(
-        `Exchange retry delay (${Math.ceil(requestedDelay / 1000)}s) exceeds the 2 minute limit`,
-      );
-    }
-    const delay = Math.max(
-      100,
-      requestedDelay ?? Math.min(1000 * 2 ** Math.min(attempt, 5), 30_000, remaining),
-    );
-    console.log(
-      `Socket STS exchange is in progress; retrying in ${Math.ceil(delay / 1000)}s`,
-    );
-    await sleep(delay);
-    attempt += 1;
-  }
+// A pending reservation can represent a hung upstream create that never
+// reaches the server's cleanup path. Do not keep a job coupled to it: obtain a
+// fresh GitHub assertion immediately so the next attempt has a distinct replay
+// key. Other HTTP failures retain the normal bounded retry policy.
+async function retryExchangeInProgress(operation) {
+  const response = await operation();
+  if (!isExchangeInProgress(response)) return response;
+  const error = new Error("Exchange is already in progress");
+  error.code = "ESTS_EXCHANGE_IN_PROGRESS";
+  throw error;
 }
 
 async function retry(operation, options = {}) {

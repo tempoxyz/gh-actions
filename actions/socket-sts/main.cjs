@@ -8,10 +8,33 @@ const {
   retryRateLimited,
 } = require("./http.cjs");
 
+const ASSERTION_ATTEMPTS = 2;
+
 function required(name) {
   const value = process.env[name] || "";
   if (!/^\S+$/.test(value)) throw new Error(`${name} is missing`);
   return value;
+}
+
+async function exchangeWithFreshAssertion(getAssertion, exchange) {
+  let lastError;
+  for (let attempt = 0; attempt < ASSERTION_ATTEMPTS; attempt += 1) {
+    try {
+      return await exchange(await getAssertion());
+    } catch (error) {
+      lastError = error;
+      if (
+        error?.code !== "ESTS_EXCHANGE_IN_PROGRESS" ||
+        attempt === ASSERTION_ATTEMPTS - 1
+      ) {
+        throw error;
+      }
+      console.log(
+        "Socket STS exchange is in progress; retrying with a fresh GitHub OIDC assertion",
+      );
+    }
+  }
+  throw lastError;
 }
 
 function append(file, name, value) {
@@ -51,39 +74,46 @@ async function main() {
     throw new Error("GitHub OIDC URL is invalid");
   oidcUrl.searchParams.set("audience", endpoint);
 
-  const oidcResponse = await retry(() =>
-    request(oidcUrl, {
-      headers: { authorization: `Bearer ${oidcRequestToken}` },
-    }),
-  );
-  if (oidcResponse.status < 200 || oidcResponse.status >= 300) {
-    throw new Error(`GitHub OIDC request failed (HTTP ${oidcResponse.status})`);
-  }
-  const oidc = JSON.parse(oidcResponse.body).value;
-  if (typeof oidc !== "string" || !/^\S+$/.test(oidc)) {
-    throw new Error("GitHub OIDC response is invalid");
-  }
+  const getAssertion = async () => {
+    const oidcResponse = await retry(() =>
+      request(oidcUrl, {
+        headers: { authorization: `Bearer ${oidcRequestToken}` },
+      }),
+    );
+    if (oidcResponse.status < 200 || oidcResponse.status >= 300) {
+      throw new Error(`GitHub OIDC request failed (HTTP ${oidcResponse.status})`);
+    }
+    const oidc = JSON.parse(oidcResponse.body).value;
+    if (typeof oidc !== "string" || !/^\S+$/.test(oidc)) {
+      throw new Error("GitHub OIDC response is invalid");
+    }
+    return oidc;
+  };
 
-  const exchange = await retryRateLimited(() =>
-    retryExchangeInProgress(() =>
-      retry(
-        () =>
-          request(`https://${endpoint}/sts/exchange`, {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${oidc}`,
-              "content-length": "0",
-              "user-agent": "tempoxyz-socket-sts-action",
+  const exchange = await exchangeWithFreshAssertion(
+    getAssertion,
+    (oidc) =>
+      retryRateLimited(() =>
+        retryExchangeInProgress(() =>
+          retry(
+            () =>
+              request(`https://${endpoint}/sts/exchange`, {
+                method: "POST",
+                headers: {
+                  authorization: `Bearer ${oidc}`,
+                  "content-length": "0",
+                  "user-agent": "tempoxyz-socket-sts-action",
+                },
+              }),
+            {
+              // Let the outer handlers own 429 and the service's idempotent
+              // in-progress response so their retries are properly paced.
+              shouldRetryResponse: (response) =>
+                response.status !== 429 && !isExchangeInProgress(response),
             },
-          }),
-        {
-          // Let the outer handlers own 429 and the service's idempotent
-          // in-progress response so their retries are properly paced.
-          shouldRetryResponse: (response) =>
-            response.status !== 429 && !isExchangeInProgress(response),
-        },
+          ),
+        ),
       ),
-    ),
   );
   let result = {};
   try {
@@ -119,4 +149,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, maskSecret, publishToken };
+module.exports = {
+  ASSERTION_ATTEMPTS,
+  exchangeWithFreshAssertion,
+  main,
+  maskSecret,
+  publishToken,
+};
