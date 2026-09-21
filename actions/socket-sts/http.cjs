@@ -46,6 +46,19 @@ function isExchangeInProgress(response) {
   }
 }
 
+function requiresFreshAssertion(response) {
+  try {
+    const message = JSON.parse(response.body).message;
+    return (
+      isExchangeInProgress(response) ||
+      (response.status === 502 &&
+        message === "Socket API token creation timed out")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function header(response, name) {
   const value = response.headers?.[name];
   return Array.isArray(value) ? value[0] : value;
@@ -139,9 +152,13 @@ async function retryRateLimited(operation, options = {}) {
 // key. Other HTTP failures retain the normal bounded retry policy.
 async function retryExchangeInProgress(operation) {
   const response = await operation();
-  if (!isExchangeInProgress(response)) return response;
-  const error = new Error("Exchange is already in progress");
-  error.code = "ESTS_EXCHANGE_IN_PROGRESS";
+  if (!requiresFreshAssertion(response)) return response;
+  const error = new Error(
+    isExchangeInProgress(response)
+      ? "Exchange is already in progress"
+      : "Socket API token creation timed out",
+  );
+  error.code = "ESTS_FRESH_ASSERTION_REQUIRED";
   throw error;
 }
 
@@ -149,6 +166,7 @@ async function retry(operation, options = {}) {
   const retryHttpResponses = options.retryHttpResponses !== false;
   const shouldRetryResponse = options.shouldRetryResponse ||
     ((response) => response.status < 200 || response.status >= 300);
+  const shouldRetryError = options.shouldRetryError || (() => true);
   const sleep =
     options.sleep ||
     ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
@@ -165,7 +183,7 @@ async function retry(operation, options = {}) {
         return last;
       }
     } catch (error) {
-      if (attempt === attempts - 1) throw error;
+      if (attempt === attempts - 1 || !shouldRetryError(error)) throw error;
     }
     await sleep(2 ** attempt * 1000);
   }
@@ -184,6 +202,7 @@ module.exports = {
   RETRY_ATTEMPTS,
   host,
   isExchangeInProgress,
+  requiresFreshAssertion,
   rateLimitDelay,
   request,
   retry,
