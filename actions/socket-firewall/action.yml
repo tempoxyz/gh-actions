@@ -105,7 +105,7 @@ runs:
 
     # Register after STS (so post runs before credential revocation), but before
     # installation (so failures still upload logs and clean up owned state).
-    - name: Register Aegis lifecycle and audit-log upload
+    - name: Prepare Aegis lifecycle and register cleanup
       if: steps.oidc.outputs.available == 'true'
       uses: tempoxyz/gh-actions/actions/aegis-report@6fa83af0bb7d796cc9686a73457c3caa78ad97d1 # Linux lifecycle
       with:
