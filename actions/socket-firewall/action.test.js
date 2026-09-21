@@ -14,7 +14,7 @@ const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 test("uses both STS exchanges and the aegis download policy", () => {
   assert.match(manifest, /actions\/socket-sts@05ad21abb2ba30be5b2af3f190b398de68537cce/);
   assert.match(manifest, /upload-aegis-report: "false"/);
-  assert.match(manifest, /actions\/aegis-report@21e88b736c809c417e6af02c88f01afac29de4b0/);
+  assert.match(manifest, /actions\/aegis-report@6fa83af0bb7d796cc9686a73457c3caa78ad97d1/);
   const lifecycle = manifest.indexOf("actions/aegis-report@");
   const linuxInstall = manifest.indexOf("- name: Install Aegis package on Linux");
   assert.ok(linuxInstall !== -1, "the Linux installation step must exist");
