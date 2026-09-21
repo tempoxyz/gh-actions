@@ -279,7 +279,14 @@ test("action.yml wires the inputs main.mjs reads and the outputs it writes", () 
   for (const output of ["count", "jobs", "workflows", "violations"]) {
     assert.ok(action.includes(`\${{ steps.check.outputs.${output} }}`), `action.yml should expose output ${output}`);
   }
-  assert.match(action, /default: "tempoxyz\/gh-actions\/actions\/secure-runner"/);
+  assert.match(action, /default: "tempoxyz\/gh-actions\/actions\/secure-runner \$\/actions\/secure-runner"/);
+});
+
+test("the reusable scanner relies on the dual-form accepted-action default", () => {
+  const scanner = readFileSync(join(repoRoot, ".github", "workflows", "scan-github-actions.yml"), "utf8");
+  const checker = scanner.match(/- name: Ensure every job starts with secure-runner\n([\s\S]*?)(?=\n      - name:)/)?.[1] ?? "";
+  assert.match(checker, /uses: \$\/actions\/ensure-secure-runner/);
+  assert.doesNotMatch(checker, /^\s+with:/m, "the reusable scanner must not narrow accepted action references");
 });
 
 test("the committed parser bundle matches the version pinned in package.json", () => {
