@@ -2,6 +2,8 @@ const fs = require("node:fs");
 const https = require("node:https");
 const { isTransientStatus, retry } = require("./retry.js");
 
+const REQUEST_TIMEOUT_MS = 10 * 1000;
+
 function input(name) {
   const key = name.toUpperCase();
   return process.env[`INPUT_${key}`] || process.env[`INPUT_${key.replaceAll("-", "_")}`] || "";
@@ -9,14 +11,27 @@ function input(name) {
 
 function request(url, options = {}) {
   return new Promise((resolve, reject) => {
-    const request = https.request(url, options, (response) => {
+    let timeout;
+    const clearRequestTimeout = () => clearTimeout(timeout);
+    const call = https.request(url, options, (response) => {
       let body = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => { body += chunk; });
-      response.on("end", () => resolve({ status: response.statusCode, body }));
+      response.on("end", () => {
+        clearRequestTimeout();
+        resolve({ status: response.statusCode, body });
+      });
     });
-    request.on("error", reject);
-    request.end();
+    timeout = setTimeout(() => {
+      const error = new Error(`request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+      error.code = "ETIMEDOUT";
+      call.destroy(error);
+    }, REQUEST_TIMEOUT_MS);
+    call.on("error", (error) => {
+      clearRequestTimeout();
+      reject(error);
+    });
+    call.end();
   });
 }
 
@@ -105,4 +120,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildExchangeUrl, exchangeRequestOptions, main };
+module.exports = { REQUEST_TIMEOUT_MS, buildExchangeUrl, exchangeRequestOptions, main, request };
