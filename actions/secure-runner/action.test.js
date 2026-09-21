@@ -22,7 +22,7 @@ test("uses the Windows ARM64-aware Harden Runner before Socket Firewall", () => 
 test("pins Socket Firewall with Linux lifecycle management and bundled Node", () => {
   assert.match(
     manifest,
-    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@cefa6d17d2fa9ac6be298344311765a6935a22c1/,
+    /uses: tempoxyz\/gh-actions\/actions\/socket-firewall@c060676d48ef800777a97e06a66f3c7fe2da7c0a/,
   );
   assert.doesNotMatch(manifest, /actions\/setup-node/);
 });

@@ -63,6 +63,6 @@ runs:
 
     - name: Install Socket Firewall
       if: inputs.disable-enforcement != 'true'
-      uses: tempoxyz/gh-actions/actions/socket-firewall@cefa6d17d2fa9ac6be298344311765a6935a22c1 # Linux lifecycle
+      uses: tempoxyz/gh-actions/actions/socket-firewall@c060676d48ef800777a97e06a66f3c7fe2da7c0a # Linux lifecycle
       with:
         dev: ${{ inputs.dev }}
