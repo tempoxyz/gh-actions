@@ -40,7 +40,10 @@ async function main() {
   } finally {
     if (process.env.STATE_upload_aegis_report === "true") {
       try {
-        await uploadAegisReport({ action: process.env.STATE_action || "socket-sts" });
+        await retry(
+          () => uploadAegisReport({ action: process.env.STATE_action || "socket-sts" }),
+          { retryHttpResponses: false },
+        );
       } catch (error) {
         console.log(`::warning title=Aegis audit-log upload failed::${error.message}`);
       }

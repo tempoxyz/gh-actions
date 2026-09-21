@@ -34,14 +34,7 @@ export function copyAegisReport(source, destination, platform = process.platform
 
 export async function uploadAegisReport({ action, env = process.env } = {}) {
   const source = aegisReportPath(process.platform, env);
-  // The Linux log directory is root-owned and may not be traversable by Node.
-  const present = process.platform === "linux"
-    ? (() => {
-      try { execFileSync("sudo", ["-n", "test", "-f", source]); return true; }
-      catch (error) { if (error.status === 1) return false; throw error; }
-    })()
-    : existsSync(source) && statSync(source).isFile();
-  if (!present) {
+  if (!existsSync(source) || !statSync(source).isFile()) {
     throw new Error(`Aegis audit log was not found at ${source}`);
   }
   const destination = join(env.RUNNER_TEMP || dirname(source), "aegis-service.jsonl");

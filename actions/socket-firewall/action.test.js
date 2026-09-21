@@ -5,23 +5,26 @@ const os = require("node:os");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
-const { assetName, expectedDigest } = require("./download.cjs");
+const { GH_API_TIMEOUT_MS, assetName, expectedDigest, runGh } = require("./download.cjs");
 const { PACKAGES, npmCLI } = require("./npm-install.cjs");
 const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.cjs");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
 test("uses both STS exchanges and the aegis download policy", () => {
-  assert.match(manifest, /actions\/socket-sts@0a60d757d0f4725a34f22f7b9ebf7b91b4b00bcf/);
+  assert.match(manifest, /actions\/socket-sts@05ad21abb2ba30be5b2af3f190b398de68537cce/);
   assert.match(manifest, /upload-aegis-report: "false"/);
-  assert.match(manifest, /actions\/aegis-report@21e88b736c809c417e6af02c88f01afac29de4b0/);
+  assert.match(manifest, /actions\/aegis-report@6fa83af0bb7d796cc9686a73457c3caa78ad97d1/);
+  const lifecycle = manifest.indexOf("actions/aegis-report@");
+  const linuxInstall = manifest.indexOf("- name: Install Aegis package on Linux");
+  assert.ok(linuxInstall !== -1, "the Linux installation step must exist");
   assert.ok(
-    manifest.indexOf("actions/aegis-report@") < manifest.indexOf("sudo apt-get install"),
+    lifecycle < linuxInstall,
     "the lifecycle handler must retire the incumbent before upgrading and register post cleanup before installation",
   );
-  assert.ok(manifest.indexOf("actions/socket-sts@") < manifest.indexOf("actions/aegis-report@"));
+  assert.ok(manifest.indexOf("actions/socket-sts@") < lifecycle);
   assert.match(manifest, /linux-installation-config:.*runner\.os == 'Linux'.*steps\.config\.outputs\.path/);
-  assert.match(manifest, /actions\/github-sts@0a60d757d0f4725a34f22f7b9ebf7b91b4b00bcf/);
+  assert.match(manifest, /actions\/github-sts@05ad21abb2ba30be5b2af3f190b398de68537cce/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);
   assert.match(manifest, /dev: \$\{\{ inputs\.dev \}\}/);
@@ -40,6 +43,46 @@ test("downloads the latest stable release and verifies its checksums and provena
   assert.match(downloader, /tempoxyz\/aegis\/\.github\/workflows\/release\.yml/);
   assert.match(downloader, /"--source-ref", "refs\/heads\/main"/);
   assert.match(downloader, /--deny-self-hosted-runners/);
+  assert.match(downloader, /DOWNLOAD_ATTEMPTS = 3/);
+  assert.match(downloader, /--clobber/);
+  assert.match(downloader, /GH_API_TIMEOUT_MS = 10 \* 1000/);
+  assert.match(downloader, /Aegis provenance verification/);
+});
+
+test("bounds connection waits and retries every Socket Firewall outbound command", () => {
+  const bootstrap = fs.readFileSync(
+    path.join(__dirname, "..", "setup-foundry", "ensure-gh.sh"),
+    "utf8",
+  );
+  assert.match(bootstrap, /curl -fsSL --connect-timeout 10 --retry 3 --retry-all-errors/);
+  assert.match(manifest, /retry bash "\$GITHUB_ACTION_PATH\/\.\.\/setup-foundry\/ensure-gh\.sh"/);
+  assert.match(manifest, /Acquire::http::Timeout=10/);
+  assert.match(manifest, /Acquire::https::Timeout=10/);
+  assert.match(manifest, /retry \/usr\/bin\/aegis install/);
+  assert.match(manifest, /retry \/usr\/local\/bin\/aegis install/);
+  assert.match(manifest, /function Invoke-WithRetry/);
+});
+
+test("retries every GitHub CLI failure with exponential backoff", () => {
+  let attempts = 0;
+  const delays = [];
+  const output = runGh(
+    ["api", "repos/tempoxyz/aegis/releases/latest"],
+    "GitHub latest-release request",
+    {
+      execute: () => {
+        attempts += 1;
+        if (attempts < 3) throw new Error("connection reset");
+        return "{\"tag_name\":\"v1.2.3\"}";
+      },
+      execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS },
+      sleep: (delay) => delays.push(delay),
+    },
+  );
+
+  assert.equal(output, "{\"tag_name\":\"v1.2.3\"}");
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [1_000, 2_000]);
 });
 
 test("selects the exact latest-release artifact for every supported OS and architecture", () => {
@@ -119,6 +162,14 @@ case "$1 $2" in
   'api repos/tempoxyz/aegis/git/ref/tags/v1.2.3')
     printf '%s\\n' '${"a".repeat(40)}' ;;
   'release download')
+    attempts_file=$TEST_DOWNLOAD_ATTEMPTS
+    attempts=0
+    if [ -f "$attempts_file" ]; then IFS= read -r attempts < "$attempts_file"; fi
+    attempts=$((attempts + 1))
+    printf '%s\n' "$attempts" > "$attempts_file"
+    if [ "$attempts" -le "$TEST_DOWNLOAD_FAILURES" ]; then
+      exit 1
+    fi
     shift 2
     while [ "$#" -gt 0 ]; do
       if [ "$1" = --dir ]; then target=$2; fi
@@ -134,9 +185,10 @@ case "$1 $2" in
 esac
 `, { mode: 0o700 });
     const command = manifest.match(/run: '([^'\n]*\/download\.cjs[^'\n]*)'/)[1];
-    for (const scenario of ["success", "checksum", "provenance"]) {
+    for (const scenario of ["success", "retry", "download", "checksum", "provenance"]) {
       const output = path.join(directory, `${scenario}.output`);
       const args = path.join(directory, `${scenario}.args`);
+      const attempts = path.join(directory, `${scenario}.attempts`);
       const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", command], {
         encoding: "utf8",
         env: {
@@ -151,10 +203,13 @@ esac
           TEST_DIGEST: scenario === "checksum" ? "0".repeat(64) : digest,
           TEST_ATTESTATION_ARGS: args,
           TEST_ATTESTATION_STATUS: scenario === "provenance" ? "1" : "0",
+          TEST_DOWNLOAD_ATTEMPTS: attempts,
+          TEST_DOWNLOAD_FAILURES: scenario === "retry" ? "1" : scenario === "download" ? "3" : "0",
         },
       });
-      if (scenario === "success") {
+      if (scenario === "success" || scenario === "retry") {
         assert.equal(result.status, 0, result.stderr);
+        if (scenario === "retry") assert.equal(fs.readFileSync(attempts, "utf8").trim(), "2");
         assert.match(fs.readFileSync(output, "utf8"), /package=.*aegis-1\.2\.3-linux-amd64\.deb/);
         const verification = fs.readFileSync(args, "utf8");
         assert.ok(verification.includes("--source-digest\n" + "a".repeat(40)));
@@ -164,6 +219,7 @@ esac
       } else {
         assert.notEqual(result.status, 0, scenario);
         assert.equal(fs.existsSync(output), false, `${scenario} must not publish an artifact`);
+        if (scenario === "download") assert.equal(fs.readFileSync(attempts, "utf8").trim(), "3");
       }
       if (scenario === "checksum") assert.equal(fs.existsSync(args), false);
     }

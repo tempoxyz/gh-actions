@@ -44,7 +44,7 @@ runs:
     - name: Exchange GitHub OIDC token for a Socket token
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-sts@0a60d757d0f4725a34f22f7b9ebf7b91b4b00bcf # main
+      uses: tempoxyz/gh-actions/actions/socket-sts@05ad21abb2ba30be5b2af3f190b398de68537cce # main
       with:
         dev: ${{ inputs.dev }}
         upload-aegis-report: "false"
@@ -52,7 +52,7 @@ runs:
     - name: Exchange GitHub OIDC token for Aegis release access
       if: steps.oidc.outputs.available == 'true'
       id: release-token
-      uses: tempoxyz/gh-actions/actions/github-sts@0a60d757d0f4725a34f22f7b9ebf7b91b4b00bcf # main
+      uses: tempoxyz/gh-actions/actions/github-sts@05ad21abb2ba30be5b2af3f190b398de68537cce # main
       with:
         scope: tempoxyz/aegis
         policy: download-releases
@@ -64,7 +64,19 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ steps.release-token.outputs.token }}
-      run: bash "$GITHUB_ACTION_PATH/../setup-foundry/ensure-gh.sh"
+      run: |
+        set -euo pipefail
+        retry() {
+          local attempt=1
+          until "$@"; do
+            if [ "$attempt" -ge 3 ]; then return 1; fi
+            local delay=$((2 ** (attempt - 1)))
+            echo "$1 failed (attempt $attempt/3); retrying in ${delay}s."
+            sleep "$delay"
+            attempt=$((attempt + 1))
+          done
+        }
+        retry bash "$GITHUB_ACTION_PATH/../setup-foundry/ensure-gh.sh"
 
     # Socket STS runs on the runner's bundled Node, even when PATH has no node.
     # Reuse that exact executable without installing a runtime or changing PATH.
@@ -93,9 +105,9 @@ runs:
 
     # Register after STS (so post runs before credential revocation), but before
     # installation (so failures still upload logs and clean up owned state).
-    - name: Register Aegis lifecycle and audit-log upload
+    - name: Prepare Aegis lifecycle and register cleanup
       if: steps.oidc.outputs.available == 'true'
-      uses: tempoxyz/gh-actions/actions/aegis-report@21e88b736c809c417e6af02c88f01afac29de4b0 # Linux lifecycle
+      uses: tempoxyz/gh-actions/actions/aegis-report@6fa83af0bb7d796cc9686a73457c3caa78ad97d1 # Linux lifecycle
       with:
         linux-installation-config: ${{ runner.os == 'Linux' && steps.config.outputs.path || '' }}
 
@@ -108,8 +120,18 @@ runs:
         AEGIS_CONFIG: ${{ steps.config.outputs.path }}
       run: |
         set -euo pipefail
-        sudo apt-get install -y "$AEGIS_PACKAGE"
-        /usr/bin/aegis install --config "$AEGIS_CONFIG"
+        retry() {
+          local attempt=1
+          until "$@"; do
+            if [ "$attempt" -ge 3 ]; then return 1; fi
+            local delay=$((2 ** (attempt - 1)))
+            echo "$1 failed (attempt $attempt/3); retrying in ${delay}s."
+            sleep "$delay"
+            attempt=$((attempt + 1))
+          done
+        }
+        retry sudo apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 install -y "$AEGIS_PACKAGE"
+        retry /usr/bin/aegis install --config "$AEGIS_CONFIG"
         echo "path=/usr/bin/aegis" >> "$GITHUB_OUTPUT"
         echo "report=/var/log/aegis/service.jsonl" >> "$GITHUB_OUTPUT"
 
@@ -122,11 +144,21 @@ runs:
         AEGIS_CONFIG: ${{ steps.config.outputs.path }}
       run: |
         set -euo pipefail
+        retry() {
+          local attempt=1
+          until "$@"; do
+            if [ "$attempt" -ge 3 ]; then return 1; fi
+            local delay=$((2 ** (attempt - 1)))
+            echo "$1 failed (attempt $attempt/3); retrying in ${delay}s."
+            sleep "$delay"
+            attempt=$((attempt + 1))
+          done
+        }
         extract="$RUNNER_TEMP/aegis-extracted"
         mkdir -p "$extract"
         tar -xzf "$AEGIS_PACKAGE" -C "$extract"
         sudo install -m 0755 "$extract/aegis" /usr/local/bin/aegis
-        /usr/local/bin/aegis install --config "$AEGIS_CONFIG"
+        retry /usr/local/bin/aegis install --config "$AEGIS_CONFIG"
         echo "path=/usr/local/bin/aegis" >> "$GITHUB_OUTPUT"
         echo "report=/Library/Application Support/Aegis/service.jsonl" >> "$GITHUB_OUTPUT"
 
@@ -139,11 +171,22 @@ runs:
         AEGIS_CONFIG: ${{ steps.config.outputs.path }}
       run: |
         $ErrorActionPreference = 'Stop'
+        function Invoke-WithRetry([scriptblock] $Operation, [string] $Description) {
+          for ($attempt = 1; $attempt -le 3; $attempt += 1) {
+            try {
+              & $Operation
+              if ($LASTEXITCODE -eq 0) { return }
+            } catch {}
+            if ($attempt -eq 3) { throw "$Description failed after $attempt attempts" }
+            $delay = [math]::Pow(2, $attempt - 1)
+            Write-Host "$Description failed (attempt $attempt/3); retrying in ${delay}s."
+            Start-Sleep -Seconds $delay
+          }
+        }
         $directory = Join-Path $env:ProgramFiles 'Aegis'
         New-Item -ItemType Directory -Force $directory | Out-Null
         Expand-Archive -LiteralPath $env:AEGIS_PACKAGE -DestinationPath $directory -Force
         $binary = Join-Path $directory 'aegis.exe'
-        & $binary install --config $env:AEGIS_CONFIG
-        if ($LASTEXITCODE -ne 0) { throw "aegis install failed" }
+        Invoke-WithRetry { & $binary install --config $env:AEGIS_CONFIG } 'aegis install'
         "path=$binary" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "report=$(Join-Path $env:ProgramData 'Aegis\service.jsonl')" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
