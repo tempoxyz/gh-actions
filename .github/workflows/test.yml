@@ -231,6 +231,9 @@ jobs:
       - name: Test PR audit comment authorization
         run: node --test actions/pr-audit-comment/pr_audit_comment.test.js
 
+      - name: Test SITF organization audit
+        run: node --test actions/sitf-org-audit/sitf_org_audit.test.mjs
+
       # Guard: the reusable workflow and composite action must use the same
       # self-referential vendored tool, since they duplicate the zizmor + actionlint steps.
       - name: Assert reusable/composite self-references match

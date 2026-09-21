@@ -1,0 +1,55 @@
+name: "SITF organization audit"
+description: "Audit GitHub organizations and repositories against observable SITF risks"
+
+inputs:
+  targets:
+    description: "Comma or newline-separated GitHub organizations and owner/repository targets"
+    required: true
+  token:
+    description: "GitHub token with read access to every target and organization/repository settings"
+    required: true
+  output-directory:
+    description: "Directory for sitf-audit.md and sitf-audit.json"
+    required: false
+    default: "sitf-audit"
+  include-archived:
+    description: "Include archived repositories"
+    required: false
+    default: "true"
+  include-forks:
+    description: "Include forked repositories"
+    required: false
+    default: "true"
+  fail-on:
+    description: "Fail when findings at this severity or higher exist: none, critical, high, medium, or low"
+    required: false
+    default: "none"
+
+outputs:
+  markdown:
+    description: "Path to the Markdown report"
+    value: ${{ steps.audit.outputs.markdown }}
+  json:
+    description: "Path to the machine-readable JSON report"
+    value: ${{ steps.audit.outputs.json }}
+  findings:
+    description: "Total number of findings"
+    value: ${{ steps.audit.outputs.findings }}
+  failed-repositories:
+    description: "Number of repositories that could not be scanned"
+    value: ${{ steps.audit.outputs.failed-repositories }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Audit SDLC infrastructure
+      id: audit
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        SITF_TARGETS: ${{ inputs.targets }}
+        SITF_OUTPUT_DIRECTORY: ${{ inputs.output-directory }}
+        SITF_INCLUDE_ARCHIVED: ${{ inputs.include-archived }}
+        SITF_INCLUDE_FORKS: ${{ inputs.include-forks }}
+        SITF_FAIL_ON: ${{ inputs.fail-on }}
+      run: node "$GITHUB_ACTION_PATH/sitf_org_audit.mjs"

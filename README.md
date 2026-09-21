@@ -28,6 +28,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-terraform`](actions/setup-terraform) | Install Terraform verified against HashiCorp's signed checksums
 | [`setup-helm`](actions/setup-helm) | Install Helm verified against the maintainers' GPG signatures
 | [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
+| [`sitf-org-audit`](actions/sitf-org-audit) | Organization and repository SDLC audit mapped to Wiz SITF
 
 ### Installer verification
 
