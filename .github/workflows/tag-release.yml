@@ -1,4 +1,8 @@
-name: Tag Main Timestamp
+# Tagging each commit ensures when we reference commits in other repos that
+# we can always include a tag which prevents referencing phantom commits from
+# fork PRs.
+
+name: Tag Release
 
 on:
   push:
@@ -9,7 +13,7 @@ permissions:
 
 jobs:
   tag:
-    name: Tag main revision
+    name: Tag release
     runs-on: ubuntu-latest
     permissions:
       contents: write
