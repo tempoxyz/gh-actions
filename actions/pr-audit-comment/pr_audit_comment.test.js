@@ -18,6 +18,17 @@ test("super-fast selects the five-minute config and one iteration", () => {
   assert.equal(defaults.iterations, "1");
 });
 
+test("super-fast accepts the unhyphenated alias", () => {
+  const { defaults, errors } = handle.parseArgs(
+    "cyclops audit superfast",
+    "^cyclops\\s+audit\\b",
+  );
+
+  assert.deepEqual(errors, []);
+  assert.equal(defaults.config, "pr-review-super-fast.yaml");
+  assert.equal(defaults.iterations, "1");
+});
+
 test("private composes with fast and note arguments", () => {
   const { defaults, errors } = handle.parseArgs(
     "cyclops private audit fast note='focus on authorization'",
