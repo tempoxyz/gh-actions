@@ -17,13 +17,17 @@ import {
   ErrorPolicy,
 } from "./dist/workflow-parser.cjs";
 
-export const DEFAULT_ACTIONS = ["tempoxyz/gh-actions/actions/secure-runner"];
+export const DEFAULT_ACTIONS = ["tempoxyz/gh-actions/actions/secure-runner", "$/actions/secure-runner"];
 export const DEFAULT_WORKFLOWS = [".github/workflows"];
 
 // The job that runs this check does not itself need secure-runner: it only checks out the
 // repository and reads workflow files. To keep that from becoming a loophole, the exemption
 // applies only when every step of the job is one of these actions.
-export const SELF_ACTIONS = ["tempoxyz/gh-actions/actions/ensure-secure-runner", "./actions/ensure-secure-runner"];
+export const SELF_ACTIONS = [
+  "tempoxyz/gh-actions/actions/ensure-secure-runner",
+  "$/actions/ensure-secure-runner",
+  "./actions/ensure-secure-runner",
+];
 export const CHECKOUT_ACTIONS = ["actions/checkout"];
 
 // Every status a finding can have. Only the PASSING ones do not fail the check.
@@ -110,7 +114,7 @@ function describeStep(step) {
 // gap in coverage is visible.
 function normalizeLocalRef(ref) {
   const path = ref.replace(/@.*$/, "");
-  return path.startsWith("./") ? path.slice(2) : null;
+  return path.startsWith("./") || path.startsWith("$/") ? path.slice(2) : null;
 }
 
 // A job consisting solely of checkout step(s) and the ensure-secure-runner action.

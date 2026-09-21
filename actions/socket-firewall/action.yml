@@ -44,7 +44,7 @@ runs:
     - name: Exchange GitHub OIDC token for a Socket token
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
-      uses: tempoxyz/gh-actions/actions/socket-sts@20b3588276a44d5c812980d5bbe92f2342362121 # refresh pending assertions
+      uses: $/actions/socket-sts # refresh pending assertions
       with:
         dev: ${{ inputs.dev }}
         upload-aegis-report: "false"
@@ -52,7 +52,7 @@ runs:
     - name: Exchange GitHub OIDC token for Aegis release access
       if: steps.oidc.outputs.available == 'true'
       id: release-token
-      uses: tempoxyz/gh-actions/actions/github-sts@05ad21abb2ba30be5b2af3f190b398de68537cce # main
+      uses: $/actions/github-sts
       with:
         scope: tempoxyz/aegis
         policy: download-releases
@@ -107,7 +107,7 @@ runs:
     # installation (so failures still upload logs and clean up owned state).
     - name: Prepare Aegis lifecycle and register cleanup
       if: steps.oidc.outputs.available == 'true'
-      uses: tempoxyz/gh-actions/actions/aegis-report@850c4bf7e27cf2a2132916aa8e737bb47c34614b # Linux lifecycle
+      uses: $/actions/aegis-report # Linux lifecycle
       with:
         linux-installation-config: ${{ runner.os == 'Linux' && steps.config.outputs.path || '' }}
 

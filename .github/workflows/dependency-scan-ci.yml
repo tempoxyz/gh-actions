@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    uses: ./.github/workflows/dependency-scan.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
+    uses: $/.github/workflows/dependency-scan.yml
     with:
       runs-on: ${{ matrix.os }}
       artifact-name: dependency-scan-${{ matrix.os }}

@@ -65,7 +65,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@05ad21abb2ba30be5b2af3f190b398de68537cce # main
+        uses: $/actions/secure-runner
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,7 +73,9 @@ jobs:
           persist-credentials: false
 
       - name: Ensure every job starts with secure-runner
-        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@05ad21abb2ba30be5b2af3f190b398de68537cce
+        uses: $/actions/ensure-secure-runner
+        with:
+          actions: $/actions/secure-runner
 
       - name: Resolve pinact config
         if: ${{ inputs.pinact }}
@@ -185,7 +187,7 @@ jobs:
 
       - name: Scan GitHub Actions
         if: ${{ !cancelled() }}
-        uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@05ad21abb2ba30be5b2af3f190b398de68537cce
+        uses: $/vendor/zizmorcore/zizmor-action
         with:
           inputs: ${{ inputs.paths }}
           persona: regular
@@ -216,4 +218,8 @@ jobs:
           echo "$INSTALL_DIR" >> "$GITHUB_PATH"
       - name: Lint GitHub Actions
         if: ${{ !cancelled() && inputs.actionlint }}
-        run: actionlint -color
+        # actionlint 1.7.12 predates GitHub's $/ self-repository syntax.
+        run: >-
+          actionlint -color
+          -ignore 'specifying action "\$\/.*" in invalid format'
+          -ignore 'reusable workflow call "\$\/.*" at "uses" is not following'

@@ -13,7 +13,7 @@ permissions: {}
 jobs:
   scan:
     name: Scan GitHub Actions
-    uses: ./.github/workflows/scan-github-actions.yml # zizmor: ignore[self-repository] actionlint 1.7.12 does not support $/ references yet.
+    uses: $/.github/workflows/scan-github-actions.yml
     permissions:
       actions: read
       contents: read
