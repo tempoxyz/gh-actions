@@ -74,8 +74,6 @@ jobs:
 
       - name: Ensure every job starts with secure-runner
         uses: $/actions/ensure-secure-runner
-        with:
-          actions: $/actions/secure-runner
 
       - name: Resolve pinact config
         if: ${{ inputs.pinact }}
