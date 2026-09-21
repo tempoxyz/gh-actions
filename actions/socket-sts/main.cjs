@@ -30,7 +30,7 @@ async function exchangeWithFreshAssertion(getAssertion, exchange) {
         throw error;
       }
       console.log(
-        "Socket STS exchange remained in progress; retrying with a fresh GitHub OIDC assertion",
+        "Socket STS exchange is in progress; retrying with a fresh GitHub OIDC assertion",
       );
     }
   }

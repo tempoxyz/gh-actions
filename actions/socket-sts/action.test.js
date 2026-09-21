@@ -91,26 +91,21 @@ test("times out an unresponsive request after ten seconds", async () => {
   assert.deepEqual(timeouts, [REQUEST_TIMEOUT_MS]);
 });
 
-test("waits for an in-progress idempotent exchange to complete", async () => {
+test("immediately marks an in-progress exchange for assertion refresh", async () => {
   let attempts = 0;
-  const delays = [];
-  const response = await retryExchangeInProgress(
-    async () => {
+  await assert.rejects(
+    retryExchangeInProgress(async () => {
       attempts += 1;
-      return attempts < 3
-        ? {
-            status: 503,
-            headers: attempts === 1 ? { "retry-after": "2" } : {},
-            body: '{"message":"exchange is already in progress"}',
-          }
-        : { status: 200, headers: {}, body: "recovered" };
-    },
-    { now: () => 0, sleep: async (delay) => delays.push(delay) },
+      return {
+        status: 503,
+        headers: { "retry-after": "120" },
+        body: '{"message":"exchange is already in progress"}',
+      };
+    }),
+    (error) => error.code === "ESTS_EXCHANGE_IN_PROGRESS",
   );
 
-  assert.equal(response.status, 200);
-  assert.equal(attempts, 3);
-  assert.deepEqual(delays, [2_000, 2_000]);
+  assert.equal(attempts, 1);
   assert.equal(
     isExchangeInProgress({
       status: 503,
@@ -119,20 +114,6 @@ test("waits for an in-progress idempotent exchange to complete", async () => {
     true,
   );
   assert.equal(isExchangeInProgress({ status: 503, body: "{}" }), false);
-});
-
-test("marks an assertion that remains reserved for refresh", async () => {
-  await assert.rejects(
-    retryExchangeInProgress(
-      async () => ({
-        status: 503,
-        headers: {},
-        body: '{"message":"exchange is already in progress"}',
-      }),
-      { now: () => 0, maxDelay: 0, sleep: async () => {} },
-    ),
-    (error) => error.code === "ESTS_EXCHANGE_IN_PROGRESS",
-  );
 });
 
 test("retries a stuck exchange once with a fresh OIDC assertion", async () => {
