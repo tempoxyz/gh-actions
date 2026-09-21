@@ -1,11 +1,11 @@
 const fs = require("node:fs");
 const {
   host,
-  isExchangeInProgress,
   request,
   retry,
   retryExchangeInProgress,
   retryRateLimited,
+  requiresFreshAssertion,
 } = require("./http.cjs");
 
 const ASSERTION_ATTEMPTS = 2;
@@ -24,13 +24,13 @@ async function exchangeWithFreshAssertion(getAssertion, exchange) {
     } catch (error) {
       lastError = error;
       if (
-        error?.code !== "ESTS_EXCHANGE_IN_PROGRESS" ||
+        !["ESTS_FRESH_ASSERTION_REQUIRED", "ETIMEDOUT"].includes(error?.code) ||
         attempt === ASSERTION_ATTEMPTS - 1
       ) {
         throw error;
       }
       console.log(
-        "Socket STS exchange is in progress; retrying with a fresh GitHub OIDC assertion",
+        "Socket STS exchange needs a fresh assertion; retrying with a fresh GitHub OIDC assertion",
       );
     }
   }
@@ -107,9 +107,11 @@ async function main() {
               }),
             {
               // Let the outer handlers own 429 and the service's idempotent
-              // in-progress response so their retries are properly paced.
+              // in-progress response. A transport timeout or a definite
+              // upstream mint timeout needs a fresh OIDC assertion instead.
               shouldRetryResponse: (response) =>
-                response.status !== 429 && !isExchangeInProgress(response),
+                response.status !== 429 && !requiresFreshAssertion(response),
+              shouldRetryError: (error) => error?.code !== "ETIMEDOUT",
             },
           ),
         ),

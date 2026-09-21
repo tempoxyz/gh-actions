@@ -10,6 +10,7 @@ const {
   isExchangeInProgress,
   rateLimitDelay,
   request,
+  requiresFreshAssertion,
   retry,
   retryExchangeInProgress,
   retryRateLimited,
@@ -59,6 +60,23 @@ test("retries transport failures with exponential backoff", async () => {
   assert.deepEqual(delays, [1_000, 2_000]);
 });
 
+test("does not repeat a transport failure that needs a fresh assertion", async () => {
+  let attempts = 0;
+  const error = new Error("request timed out");
+  error.code = "ETIMEDOUT";
+  await assert.rejects(
+    retry(
+      async () => {
+        attempts += 1;
+        throw error;
+      },
+      { shouldRetryError: (caught) => caught?.code !== "ETIMEDOUT" },
+    ),
+    { code: "ETIMEDOUT" },
+  );
+  assert.equal(attempts, 1);
+});
+
 test("times out an unresponsive request after ten seconds", async () => {
   const https = require("node:https");
   const { EventEmitter } = require("node:events");
@@ -102,7 +120,7 @@ test("immediately marks an in-progress exchange for assertion refresh", async ()
         body: '{"message":"exchange is already in progress"}',
       };
     }),
-    (error) => error.code === "ESTS_EXCHANGE_IN_PROGRESS",
+    (error) => error.code === "ESTS_FRESH_ASSERTION_REQUIRED",
   );
 
   assert.equal(attempts, 1);
@@ -114,6 +132,13 @@ test("immediately marks an in-progress exchange for assertion refresh", async ()
     true,
   );
   assert.equal(isExchangeInProgress({ status: 503, body: "{}" }), false);
+  assert.equal(
+    requiresFreshAssertion({
+      status: 502,
+      body: '{"message":"Socket API token creation timed out"}',
+    }),
+    true,
+  );
 });
 
 test("retries a stuck exchange once with a fresh OIDC assertion", async () => {
@@ -129,7 +154,7 @@ test("retries a stuck exchange once with a fresh OIDC assertion", async () => {
       exchanges.push(assertion);
       if (exchanges.length === 1) {
         const error = new Error("still in progress");
-        error.code = "ESTS_EXCHANGE_IN_PROGRESS";
+        error.code = "ESTS_FRESH_ASSERTION_REQUIRED";
         throw error;
       }
       return "token";
@@ -140,6 +165,28 @@ test("retries a stuck exchange once with a fresh OIDC assertion", async () => {
   assert.equal(result, "token");
   assert.deepEqual(assertions, ["assertion-1", "assertion-2"]);
   assert.deepEqual(exchanges, ["assertion-1", "assertion-2"]);
+});
+
+test("retries a transport timeout once with a fresh OIDC assertion", async () => {
+  const assertions = [];
+  const result = await exchangeWithFreshAssertion(
+    async () => {
+      const assertion = `assertion-${assertions.length + 1}`;
+      assertions.push(assertion);
+      return assertion;
+    },
+    async () => {
+      if (assertions.length === 1) {
+        const error = new Error("request timed out");
+        error.code = "ETIMEDOUT";
+        throw error;
+      }
+      return "token";
+    },
+  );
+
+  assert.equal(result, "token");
+  assert.deepEqual(assertions, ["assertion-1", "assertion-2"]);
 });
 
 test("honors Socket STS rate-limit metadata before retrying", async () => {
