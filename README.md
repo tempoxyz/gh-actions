@@ -165,13 +165,13 @@ passed only to the vendored Harden Runner process and is revoked during post-job
 
 ## Versioning
 
-Examples in this repo use `@main` for brevity. **For production, pin to a full commit SHA** — branch refs like `@main` are mutable, and the bundled `scan-github-actions` workflow flags unpinned uses. Add a trailing reference comment; the optional pinact policy check requires one for bare SHA pins, and it also improves readability:
+Examples in this repo use `@main` for brevity. **For production, pin to a full commit SHA** — branch refs like `@main` are mutable, and the bundled `scan-github-actions` workflow flags unpinned uses. Every commit merged to `main` receives an annotated timestamp tag. Use that tag in the trailing comment; Pinact requires it and verifies that it resolves to the pinned SHA:
 
 ```yaml
-uses: tempoxyz/gh-actions/actions/setup-rust-build@<commit-sha> # main
+uses: tempoxyz/gh-actions/actions/setup-rust-build@<commit-sha> # 2026-09-21T18-36-40Z
 ```
 
-This repo does not yet publish version tags; SHA pinning is the recommended stable reference.
+The SHA is the immutable reference; the timestamp comment records the reviewed, tagged release.
 
 ## Reusable Workflows
 
@@ -366,7 +366,7 @@ The dedicated `scan-github-actions-ci.yml` caller runs on pull requests and push
 
 Security scan and lint for GitHub Actions workflows: [zizmor](https://github.com/zizmorcore/zizmor) for security and [actionlint](https://github.com/rhysd/actionlint) (with shellcheck/pyflakes) for workflow syntax and `run:` script correctness. Findings appear as GitHub workflow annotations and in the workflow log. The lint pass can be turned off with `actionlint: false`.
 
-Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits and adds optional version-comment verification without editing files or adding a second reusable-workflow job. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold, so repository configuration remains review-sensitive. Existing callers remain unchanged because the pinact check is opt-in.
+Set `pinact: true` to also run [pinact](https://github.com/suzuki-shunsuke/pinact) in check-only mode. This enforces a default seven-day minimum age for pinned action commits, requires a trailing tag comment, and verifies that the tag resolves to the pinned SHA. Caller-local Pinact configuration is merged on top of the trusted default source and can override its threshold; callers that need an exception can set `verify-pin-comments: false`. Existing callers remain unchanged because the pinact check is opt-in.
 
 zizmor, actionlint, and the optional pinact policy run together in a single **Scan GitHub Actions** check. The reusable workflow is read-only against repository and Actions data and never requests `security-events: write`. To upload SARIF to GitHub code scanning, use the [composite action](actions/scan-github-actions) with `advanced-security: true` in a job you control (see its README).
 
@@ -401,12 +401,12 @@ By default zizmor scans the whole repo, so first-party workflows and actions any
 Optional inputs:
 
 - `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
-- `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides. When empty and the repository has no zizmor config of its own, the scan uses a default that disables zizmor's `ref-version-mismatch` audit: this repository publishes no version tags, so a version comment on a pin to it can never match and every such pin would otherwise be a medium-severity finding that fails the scan. Comment correctness for third-party pins is covered by pinact's `verify-pin-comments`. Add a `.github/zizmor.yml` to a repo to take back full control.
+- `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides. When empty, zizmor discovers a repository configuration when present.
 - `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
 - `pinact` (default: `false`) — run pinact policy checks alongside zizmor and actionlint
 - `pin-config` (default: `.pinact.yaml`) — path to the caller repo's pinact configuration file; the default is optional when absent
 - `pin-no-api` (default: `false`) — perform offline pin validation without API-based comment or minimum-age verification
-- `verify-pin-comments` (default: `false`) — verify that semver version comments resolve to the pinned SHA
+- `verify-pin-comments` (default: `true`) — require a tag comment and verify that it resolves to the pinned SHA; set `false` for a repository-specific exception
 - `verify-pin-min-age` (default: `true`) — verify current pins against configured minimum-age rules
 - `pin-min-age` (default: `7`) — default minimum age in days for pinned action commits; caller-local Pinact configuration can override it
 

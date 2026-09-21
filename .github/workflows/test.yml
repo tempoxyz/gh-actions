@@ -273,14 +273,17 @@ jobs:
           set -euo pipefail
           workflow=.github/workflows/scan-github-actions.yml
           input=$(sed -n '/^      pin-min-age:/,/^$/p' "$workflow")
+          comments=$(sed -n '/^      verify-pin-comments:/,/^      verify-pin-min-age:/p' "$workflow")
           resolver=$(sed -n '/- name: Resolve pinact config/,/- name: Check action pin policy/p' "$workflow")
           action=$(sed -n '/- name: Check action pin policy/,/- name: Scan GitHub Actions/p' "$workflow")
 
           grep -q 'type: number' <<< "$input"
           grep -q 'default: 7' <<< "$input"
+          grep -q 'default: true' <<< "$comments"
           grep -q 'MIN_AGE:.*inputs.pin-min-age' <<< "$resolver"
           grep -q "printf 'version: 3.*min_age:.*value: %s" <<< "$resolver"
           grep -q 'PINACT_GLOBAL_CONFIG:.*steps.pinact-config.outputs.global-config' <<< "$action"
+          grep -q 'VERIFY:.*inputs.verify-pin-comments' <<< "$action"
 
       # Guard: the reusable workflow installs pinact inline (see the comment there) and
       # actions/setup-pinact installs it for everyone else; both must pin the same release.
@@ -385,6 +388,12 @@ jobs:
           echo "policy=$policy" >> "$GITHUB_OUTPUT"
       - name: Install pinact
         uses: $/actions/setup-pinact
+      - name: Verify timestamp tag comment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP"
+          pinact run -fix=false --verify "$GITHUB_WORKSPACE/testdata/fixtures/timestamp-tag-pin.yml"
       - name: Check recent pin without minimum-age policy
         id: recent-pin-no-policy
         continue-on-error: true

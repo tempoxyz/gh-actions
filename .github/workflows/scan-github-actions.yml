@@ -9,7 +9,7 @@ on:
         type: string
         default: "."
       config:
-        description: "Path to a zizmor configuration file for overrides. When empty and the repository has no zizmor config of its own, a default that disables the ref-version-mismatch audit is used (pins to tempoxyz/gh-actions cannot carry a matching version comment)."
+        description: "Path to a zizmor configuration file for overrides. When empty, zizmor discovers a repository configuration when present."
         required: false
         type: string
         default: ""
@@ -34,10 +34,10 @@ on:
         type: boolean
         default: false
       verify-pin-comments:
-        description: Use the GitHub API to verify that semver version comments resolve to the pinned SHA.
+        description: Use the GitHub API to require tag comments and verify that they resolve to the pinned SHA.
         required: false
         type: boolean
-        default: false
+        default: true
       verify-pin-min-age:
         description: Verify current pins against the configured minimum age.
         required: false
@@ -156,35 +156,6 @@ jobs:
           [[ "$VERIFY_MIN_AGE" == "true" ]] && args+=(--verify-min-age)
           pinact run "${args[@]}"
 
-      # Default zizmor policy when the caller ships no zizmor config. Pins to this repository
-      # can never carry a version comment that matches a tag (gh-actions publishes none), so
-      # zizmor's ref-version-mismatch audit reports every commented pin as mismatched, a
-      # medium-severity finding that fails the scan. Comment correctness for third-party pins is
-      # pinact's job (`verify-pin-comments`). A repo that wants the audit back adds its own
-      # .github/zizmor.yml or passes `config`.
-      - name: Resolve zizmor config
-        id: zizmor-config
-        env:
-          CONFIG: ${{ inputs.config }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$CONFIG" ]]; then
-            echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          for f in .github/zizmor.yml .github/zizmor.yaml zizmor.yml zizmor.yaml; do
-            if [[ -f "$f" ]]; then
-              echo "using the repository's own $f"
-              echo "config=" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-          # zizmor-action runs zizmor in a container that mounts only the workspace (read-only,
-          # at /workspace), so the file has to live inside the checkout and be passed relatively.
-          cfg=".zizmor-default.yml"
-          printf 'rules:\n  ref-version-mismatch:\n    disable: true\n' > "$GITHUB_WORKSPACE/$cfg"
-          echo "config=$cfg" >> "$GITHUB_OUTPUT"
-
       - name: Scan GitHub Actions
         if: ${{ !cancelled() }}
         uses: $/vendor/zizmorcore/zizmor-action
@@ -194,7 +165,7 @@ jobs:
           online-audits: true
           advanced-security: false
           annotations: true
-          config: ${{ steps.zizmor-config.outputs.config }}
+          config: ${{ inputs.config }}
           token: ${{ github.token }}
 
       - name: Install actionlint
