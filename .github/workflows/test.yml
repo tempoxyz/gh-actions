@@ -93,6 +93,26 @@ jobs:
           fi
           node actions/socket-firewall/verify-log.cjs "$copy"
 
+      - name: Record the installed Linux credential provider
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo sha256sum /etc/aegis/config.json | cut -d ' ' -f 1 > "$RUNNER_TEMP/aegis-config-before.sha256"
+
+      - name: Reinstall Aegis on the same Linux runner
+        if: runner.os == 'Linux'
+        uses: ./actions/socket-firewall
+
+      - name: Verify fresh credentials and active service after reinstall
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          before=$(cat "$RUNNER_TEMP/aegis-config-before.sha256")
+          after=$(sudo sha256sum /etc/aegis/config.json | cut -d ' ' -f 1)
+          test "$before" != "$after"
+          sudo systemctl is-active --quiet aegis.service
+          node actions/socket-firewall/npm-install.cjs allow
+
   setup-foundry-bootstrap:
     name: setup-foundry with ${{ matrix.cli }} GitHub CLI
     runs-on: ubuntu-latest
