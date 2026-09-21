@@ -5,7 +5,13 @@ const fs = require("node:fs");
 const https = require("node:https");
 const path = require("node:path");
 const test = require("node:test");
-const { buildExchangeUrl, exchangeRequestOptions, main } = require("./main.js");
+const {
+  REQUEST_TIMEOUT_MS,
+  buildExchangeUrl,
+  exchangeRequestOptions,
+  main,
+  request,
+} = require("./main.js");
 const {
   revocationRequestOptions,
   revokeToken,
@@ -31,6 +37,27 @@ test("exchange request uses POST with the OIDC bearer token", () => {
   assert.equal(options.headers.Accept, "application/json");
   assert.equal(options.headers.Authorization, "Bearer test-oidc");
   assert.equal(options.headers["User-Agent"], "tempoxyz-gh-actions-github-sts");
+});
+
+test("times out a stalled request so the retry wrapper can recover", async (t) => {
+  const timeouts = [];
+  t.mock.method(https, "request", () => {
+    const call = new EventEmitter();
+    call.end = () => {};
+    call.destroy = (error) => process.nextTick(() => call.emit("error", error));
+    return call;
+  });
+  t.mock.method(global, "setTimeout", (callback, delay) => {
+    timeouts.push(delay);
+    process.nextTick(callback);
+    return {};
+  });
+
+  await assert.rejects(request("https://example.test"), {
+    code: "ETIMEDOUT",
+    message: `request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+  });
+  assert.deepEqual(timeouts, [REQUEST_TIMEOUT_MS]);
 });
 
 test("main entrypoint executes as CommonJS", () => {
