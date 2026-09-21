@@ -54,7 +54,7 @@ jobs:
       id-token: write
 ```
 
-The reusable workflow can also run Pinact policy checks by setting `pinact: true`. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive.
+The reusable workflow can also run Pinact policy checks by setting `pinact: true`. It requires a trailing tag comment on every SHA pin and verifies that the tag resolves to that SHA; set `verify-pin-comments: false` only for a repository-specific exception. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive.
 
 ### Required status checks
 
@@ -123,7 +123,7 @@ steps:
 | `pinact` | Run Pinact policy checks alongside zizmor and actionlint | `false` | reusable only |
 | `pin-config` | Path to the caller repository's Pinact configuration; the default path is optional when absent | `.pinact.yaml` | reusable only |
 | `pin-no-api` | Perform offline pin validation without API-based comment or minimum-age verification | `false` | reusable only |
-| `verify-pin-comments` | Verify that semver version comments resolve to the pinned SHA | `false` | reusable only |
+| `verify-pin-comments` | Require tag comments and verify that they resolve to the pinned SHA; set `false` for a repository-specific exception | `true` | reusable only |
 | `verify-pin-min-age` | Verify current pins against configured minimum-age rules | `true` | reusable only |
 | `pin-min-age` | Overrideable default minimum age in days for pinned action commits | `7` | reusable only |
 | `advanced-security` | Upload SARIF to GitHub code scanning and disable workflow annotations. Requires a public repo, or a private/internal repo with GitHub Advanced Security, plus `security-events: write` on the calling job | `false` | composite only |

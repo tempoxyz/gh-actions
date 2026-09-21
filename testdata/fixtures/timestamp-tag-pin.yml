@@ -1,0 +1,12 @@
+# Exercises timestamp-style tags, which are published for every main commit.
+name: timestamp tag pin fixture
+
+on: push
+
+permissions: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: tempoxyz/gh-actions/actions/setup-pinact@4b946b7fbd139d07ed6b7889dc0c6296b5777e5b # 2026-09-21T18-36-40Z

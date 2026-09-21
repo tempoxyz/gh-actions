@@ -23,3 +23,4 @@ jobs:
       # not linted to this repo's standards.
       paths: ".github actions"
       pinact: true
+      verify-pin-comments: true
