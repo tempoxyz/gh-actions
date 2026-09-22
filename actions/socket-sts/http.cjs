@@ -196,11 +196,18 @@ function host(dev) {
   throw new Error("dev must be either true or false");
 }
 
+// Transport host migration does not change the authorization service's audience.
+function exchangeHost(dev) {
+  const audience = host(dev);
+  return audience === "socket-sts.tehq.net" ? "socket-sts.tempoxyz.net" : audience;
+}
+
 module.exports = {
   MAX_RATE_LIMIT_DELAY_MS,
   REQUEST_TIMEOUT_MS,
   RETRY_ATTEMPTS,
   host,
+  exchangeHost,
   isExchangeInProgress,
   requiresFreshAssertion,
   rateLimitDelay,
@@ -209,3 +216,4 @@ module.exports = {
   retryExchangeInProgress,
   retryRateLimited,
 };
+

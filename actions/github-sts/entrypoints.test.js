@@ -159,7 +159,7 @@ for (const status of [200, 403]) {
     assert.equal(calls.length, 2);
     assert.equal(calls[0].url.searchParams.get("audience"), "gh-sts.tehq.net");
     assert.equal(calls[0].options.headers.Authorization, "Bearer test-request-token");
-    assert.equal(calls[1].url.href, "https://gh-sts.tehq.net/sts/exchange?scope=tempoxyz%2Faegis&identity=download-releases&ttl=15m");
+    assert.equal(calls[1].url.href, "https://gh-sts.tempoxyz.net/sts/exchange?scope=tempoxyz%2Faegis&identity=download-releases&ttl=15m");
     assert.equal(calls[1].options.method, "POST");
     assert.equal(calls[1].options.headers.Authorization, "Bearer test-oidc");
   });
@@ -221,9 +221,9 @@ test("workflow cleanup falls back to GitHub and then reconciles the STS ledger",
   });
 
   assert.deepEqual(calls, [
-    "https://gh-sts.tehq.net/sts/exchange",
+    "https://gh-sts.tempoxyz.net/sts/exchange",
     "https://api.github.com/installation/token",
-    "https://gh-sts.tehq.net/sts/exchange",
+    "https://gh-sts.tempoxyz.net/sts/exchange",
   ]);
 });
 

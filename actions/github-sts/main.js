@@ -40,7 +40,9 @@ function output(name, value) {
 }
 
 function buildExchangeUrl(host, scope, policy, ttl) {
-  const url = new URL(`https://${host}/sts/exchange`);
+  // Keep the OIDC audience stable while using the public machine endpoint.
+  const transportHost = host === "gh-sts.tehq.net" ? "gh-sts.tempoxyz.net" : host;
+  const url = new URL(`https://${transportHost}/sts/exchange`);
   url.searchParams.set("scope", scope);
   url.searchParams.set("identity", policy);
   if (ttl) url.searchParams.set("ttl", ttl);

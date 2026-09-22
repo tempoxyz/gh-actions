@@ -21,7 +21,12 @@ function endpoint(value) {
   ) {
     throw new Error("Step Security STS URL is invalid");
   }
-  return { audience: url.hostname, origin: url.origin };
+  // The public transport moved; the authorization service retains its audience.
+  const production = ["ss-sts.tehq.net", "ss-sts.tempoxyz.net"].includes(url.hostname);
+  return {
+    audience: production ? "ss-sts.tehq.net" : url.hostname,
+    origin: production ? "https://ss-sts.tempoxyz.net" : url.origin,
+  };
 }
 
 function request(url, options = {}, body) {

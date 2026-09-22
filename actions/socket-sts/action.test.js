@@ -7,6 +7,7 @@ const test = require("node:test");
 const {
   REQUEST_TIMEOUT_MS,
   host,
+  exchangeHost,
   isExchangeInProgress,
   rateLimitDelay,
   request,
@@ -323,4 +324,16 @@ test("post is a no-op when no token was minted", () => {
   } finally {
     fs.rmSync(withoutNode, { force: true, recursive: true });
   }
+});
+
+test("uses public transport for exchange and revocation without changing audience", () => {
+  for (const [dev, audience, transport] of [
+    ["true", "socket-sts.tehq.dev", "socket-sts.tehq.dev"],
+    ["false", "socket-sts.tehq.net", "socket-sts.tempoxyz.net"],
+  ]) {
+    assert.equal(host(dev), audience);
+    assert.equal(exchangeHost(dev), transport);
+    assert.equal(buildRevokeRequest("token", dev).url, `https://${transport}/sts/exchange`);
+  }
+  assert.throws(() => exchangeHost("yes"), /dev must be either true or false/);
 });

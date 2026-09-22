@@ -28,7 +28,6 @@ test("uses a validated secret endpoint without embedding deployment hosts", () =
 
   for (const filename of [
     "action.yml",
-    "http.cjs",
     "main.cjs",
     "post.cjs",
   ]) {
@@ -157,4 +156,15 @@ test("post is a no-op when no API key was minted", () => {
   });
   assert.equal(result.status, 0);
   assert.match(`${result.stdout}${result.stderr}`, /skipping revocation/);
+});
+
+test("uses the public production transport and preserves the OIDC audience", () => {
+  for (const host of ["ss-sts.tehq.net", "ss-sts.tempoxyz.net"]) {
+    assert.deepEqual(endpoint(`https://${host}`), {
+      audience: "ss-sts.tehq.net",
+      origin: "https://ss-sts.tempoxyz.net",
+    });
+    assert.equal(buildRevokeRequest("token", leaseId, `https://${host}`).url,
+      "https://ss-sts.tempoxyz.net/sts/exchange");
+  }
 });

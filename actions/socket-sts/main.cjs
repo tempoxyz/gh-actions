@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const {
   host,
+  exchangeHost,
   request,
   retry,
   retryExchangeInProgress,
@@ -97,7 +98,7 @@ async function main() {
         retryExchangeInProgress(() =>
           retry(
             () =>
-              request(`https://${endpoint}/sts/exchange`, {
+              request(`https://${exchangeHost(process.env.INPUT_DEV || "false")}/sts/exchange`, {
                 method: "POST",
                 headers: {
                   authorization: `Bearer ${oidc}`,

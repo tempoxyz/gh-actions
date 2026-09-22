@@ -1,10 +1,10 @@
-const { host, request, retry } = require("./http.cjs");
+const { exchangeHost, request, retry } = require("./http.cjs");
 const { uploadAegisReport } = require("./dist/artifact-upload.cjs");
 
 function buildRevokeRequest(token, dev) {
   const body = JSON.stringify({ token });
   return {
-    url: `https://${host(dev)}/sts/exchange`,
+    url: `https://${exchangeHost(dev)}/sts/exchange`,
     options: {
       method: "DELETE",
       headers: {

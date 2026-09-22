@@ -40,7 +40,8 @@ async function revokeToken(token, stsHost, dependencies = {}) {
   const withRetry = dependencies.retry || retry;
   const log = dependencies.console || console;
   const knownStsHost = stsHost === "gh-sts.tehq.dev" || stsHost === "gh-sts.tehq.net";
-  const stsUrl = knownStsHost ? `https://${stsHost}/sts/exchange` : null;
+  const transportHost = stsHost === "gh-sts.tehq.net" ? "gh-sts.tempoxyz.net" : stsHost;
+  const stsUrl = knownStsHost ? `https://${transportHost}/sts/exchange` : null;
   let stsStatus = null;
 
   if (stsUrl) {
