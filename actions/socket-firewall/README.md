@@ -94,3 +94,36 @@ steps:
   # Supported package-manager downloads are now routed through Aegis.
   - run: pnpm install --frozen-lockfile
 ```
+
+## GitHub runner identity
+
+The installed Aegis service does not inherit the workflow environment. Setup
+therefore passes the GitHub OIDC request URL and request bearer to the detached
+provider through private IPC, alongside the Socket token. These credentials are
+not written to install JSON, command arguments, child environment variables, or
+logs. The provider continues to use a random route bound to `127.0.0.1`.
+
+Legacy empty POST requests return `{"token":"<Socket token>"}` immediately.
+Clients supporting the identity extension can POST
+`{"github_oidc_audience":"https://aegis.tempoxyz.dev"}` to the same route. On
+successful GitHub OIDC acquisition, the response additionally includes
+`"github_oidc_jwt":"<raw JWT>"`. The client is responsible for base64 encoding
+that JWT into its `X-Aegis-GitHub-OIDC-JWT` header; the provider does not encode it.
+No other audience is supported.
+
+OIDC acquisition is on demand, capped at 1.5 seconds, and never follows redirects.
+Concurrent requests share acquisition. Tokens stay in memory, refresh near
+expiry, and are never served after expiry; failed acquisition is throttled for
+one minute. Missing credentials, permission errors, or outages omit the optional
+JWT but still return the Socket token. Legacy clients do not trigger OIDC calls.
+
+Rollout requires an Aegis release containing the client support from
+[Aegis PR #102](https://github.com/tempoxyz/aegis/pull/102). Older releases remain
+compatible but will not request runner identity. Identity consumers must verify
+the JWT signature, issuer, audience, and lifetime before trusting its claims;
+the provider's claim parsing only manages freshness and audience selection.
+
+Run `node --test actions/socket-firewall/*.test.js` for local coverage. Trusted
+CI additionally enables `AEGIS_LIVE_GITHUB_OIDC=true` for the provider test to
+exercise real runner acquisition through the detached process and HTTP handoff
+without printing credentials or claims.

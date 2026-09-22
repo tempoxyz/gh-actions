@@ -59,6 +59,7 @@ jobs:
       - name: Run action test
         env:
           TEST_FILE: ${{ matrix.test }}
+          AEGIS_LIVE_GITHUB_OIDC: ${{ matrix.test == 'actions/socket-firewall/github-oidc.test.js' && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'true' || 'false' }}
         run: node --test "$TEST_FILE"
 
   tests-passed:
