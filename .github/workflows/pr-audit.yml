@@ -69,11 +69,14 @@ jobs:
           TARGET_PR_NUMBER: ${{ inputs.pr-number }}
         run: |
           set -euo pipefail
+          set_output() {
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             labels="${REQUIRED_LABELS:-$REQUIRED_LABEL}"
             if [[ "$EVENT_ACTION" != "labeled" ]]; then
-              echo "publish=false" >> "$GITHUB_OUTPUT"
+              set_output publish false
               exit 0
             fi
 
@@ -97,12 +100,12 @@ jobs:
             fi
 
             if [[ "$matched" != "true" ]]; then
-              echo "publish=false" >> "$GITHUB_OUTPUT"
+              set_output publish false
               exit 0
             fi
-            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
-            echo "channels=$channels" >> "$GITHUB_OUTPUT"
+            set_output pr_number "$PR_NUMBER"
+            set_output sha "$PR_HEAD_SHA"
+            set_output channels "$channels"
 
           elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             PERM=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq '.permission')
@@ -113,22 +116,22 @@ jobs:
 
             if [[ -n "$TARGET_PR_NUMBER" && "$TARGET_PR_NUMBER" != "0" ]]; then
               SHA=$(gh api "repos/$REPO/pulls/$TARGET_PR_NUMBER" --jq '.head.sha')
-              echo "pr_number=$TARGET_PR_NUMBER" >> "$GITHUB_OUTPUT"
-              echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+              set_output pr_number "$TARGET_PR_NUMBER"
+              set_output sha "$SHA"
             elif [[ -n "$BRANCH" ]]; then
               SHA=$(gh api "repos/$REPO/commits/$BRANCH" --jq '.sha')
-              echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+              set_output sha "$SHA"
             else
               echo "::error::Either branch or pr-number must be provided"
               exit 1
             fi
-            echo "channels=legacy" >> "$GITHUB_OUTPUT"
+            set_output channels legacy
           else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
+            set_output publish false
             exit 0
           fi
 
-          echo "publish=true" >> "$GITHUB_OUTPUT"
+          set_output publish true
 
       - name: Publish event
         if: steps.target.outputs.publish == 'true'
