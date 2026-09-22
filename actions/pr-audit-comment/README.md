@@ -73,6 +73,7 @@ Supported arguments:
 - `config=PATH`
 - `models=...`
 - `run-label=LABEL`
+- `runner=v1|v2` (defaults to `v1`; use `v2` for a canary run)
 - `dry-run`
 - `private` (also accepted before `audit`; publishes findings only to Linear and links them from Slack)
 - `perf`
