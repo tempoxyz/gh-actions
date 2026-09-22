@@ -58,7 +58,7 @@ jobs:
       vulnerabilities-found: ${{ steps.report.outputs.vulnerabilities-found }}
     steps:
       - name: Secure runner
-        uses: $/actions/secure-runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2
 
       - name: Resolve revisions and prepare isolated results directory
         id: prepare
@@ -95,7 +95,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan existing dependencies
-        uses: $/actions/osv-scanner-action
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -109,7 +109,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan proposed dependencies
-        uses: $/actions/osv-scanner-action
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -117,7 +117,7 @@ jobs:
 
       - name: Report newly introduced vulnerabilities
         id: report
-        uses: $/actions/osv-scanner-action
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2
         with:
           mode: report
           results-directory: ${{ steps.prepare.outputs.results }}

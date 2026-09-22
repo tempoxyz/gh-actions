@@ -45,7 +45,6 @@ test("usesMatches ignores the ref unless the accepted entry pins one", () => {
   assert.equal(usesMatches(SECURE, [SECURE]), true);
   assert.equal(usesMatches("tempoxyz/gh-actions/actions/secure-runner@main", [SECURE]), false);
   assert.equal(usesMatches("", DEFAULT_ACTIONS), false);
-  assert.equal(usesMatches("$/actions/secure-runner", DEFAULT_ACTIONS), true);
 });
 
 test("a job whose first step is secure-runner passes", async () => {
@@ -89,14 +88,14 @@ test("a conditional secure-runner step is a violation, an explicit success() is 
 });
 
 test("reusable workflow calls are ok when resolved in the same scan and otherwise reported as reusable", async () => {
-  const remote = workflow("  lint:\n    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@main\n");
+  const remote = workflow("  lint:\n    uses: other-org/other-repo/.github/workflows/rust-lint.yml@main\n");
   const report = await checkWorkflows([{ name: "w.yml", content: remote }]);
   assert.equal(report.ok, true);
   assert.equal(report.findings[0].status, "reusable");
   assert.match(report.findings[0].detail, /checked in the repository that defines that workflow/);
   assert.match(formatSummary(report), /### Reusable workflow calls not checked here/);
 
-  const caller = workflow("  lint:\n    uses: $/.github/workflows/lint.yml\n");
+  const caller = workflow("  lint:\n    uses: ./.github/workflows/lint.yml\n");
   const callee = workflow(job("clippy", [`uses: ${SECURE}`]));
   const both = await checkWorkflows([
     { name: ".github/workflows/ci.yml", content: caller },
@@ -279,13 +278,13 @@ test("action.yml wires the inputs main.mjs reads and the outputs it writes", () 
   for (const output of ["count", "jobs", "workflows", "violations"]) {
     assert.ok(action.includes(`\${{ steps.check.outputs.${output} }}`), `action.yml should expose output ${output}`);
   }
-  assert.match(action, /default: "tempoxyz\/gh-actions\/actions\/secure-runner \$\/actions\/secure-runner"/);
+  assert.match(action, /default: "tempoxyz\/gh-actions\/actions\/secure-runner"/);
 });
 
-test("the reusable scanner relies on the dual-form accepted-action default", () => {
+test("the reusable scanner relies on the accepted-action default", () => {
   const scanner = readFileSync(join(repoRoot, ".github", "workflows", "scan-github-actions.yml"), "utf8");
   const checker = scanner.match(/- name: Ensure every job starts with secure-runner\n([\s\S]*?)(?=\n      - name:)/)?.[1] ?? "";
-  assert.match(checker, /uses: \$\/actions\/ensure-secure-runner/);
+  assert.match(checker, /uses: tempoxyz\/gh-actions\/actions\/ensure-secure-runner@[0-9a-f]{40}/);
   assert.doesNotMatch(checker, /^\s+with:/m, "the reusable scanner must not narrow accepted action references");
 });
 

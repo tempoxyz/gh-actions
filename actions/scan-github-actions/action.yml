@@ -23,7 +23,7 @@ runs:
   using: "composite"
   steps:
     - name: Scan GitHub Actions
-      uses: $/vendor/zizmorcore/zizmor-action
+      uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2
       with:
         inputs: ${{ inputs.paths }}
         persona: regular
@@ -57,8 +57,4 @@ runs:
     - name: Lint GitHub Actions
       if: ${{ !cancelled() && inputs.actionlint == 'true' }}
       shell: bash
-      # actionlint 1.7.12 predates GitHub's $/ self-repository syntax.
-      run: >-
-        actionlint -color
-        -ignore 'specifying action "\$\/.*" in invalid format'
-        -ignore 'reusable workflow call "\$\/.*" at "uses" is not following'
+      run: actionlint -color

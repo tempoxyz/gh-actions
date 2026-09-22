@@ -10,7 +10,7 @@ inputs:
   actions:
     description: "Accepted `uses:` targets for the hardening step, without `@ref` to allow any ref or with one to require it (comma, space or newline separated)"
     required: false
-    default: "tempoxyz/gh-actions/actions/secure-runner $/actions/secure-runner"
+    default: "tempoxyz/gh-actions/actions/secure-runner"
   fail-on-violation:
     description: "Fail the step on any violation. Set to false to only annotate and report through outputs."
     required: false
