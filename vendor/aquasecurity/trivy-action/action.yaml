@@ -126,7 +126,7 @@ runs:
       # "allowing select actions" feature can be used to whitelist the dependent action by a hash.
       # This is needed since some organizations have a policy to only allow pinned 3rd party actions to 
       # be used.
-      uses: tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2
+      uses: tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
       with:
         version: ${{ inputs.version }}
         cache: ${{ inputs.cache }}

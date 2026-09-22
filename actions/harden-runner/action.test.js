@@ -12,7 +12,7 @@ const { main: postMain } = require("./post.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
 const wrapperPattern =
-  /uses:\s+\$\/actions\/secure-runner/;
+  /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@[0-9a-f]{40}/;
 
 function usesSecureRunner(filename, visited = new Set()) {
   if (visited.has(filename)) return false;
@@ -22,7 +22,7 @@ function usesSecureRunner(filename, visited = new Set()) {
     "utf8",
   );
   if (wrapperPattern.test(workflow)) return true;
-  return [...workflow.matchAll(/uses:\s+(?:\.\/|\$\/)\.github\/workflows\/([^\s]+)/g)].some(
+  return [...workflow.matchAll(/uses:\s+tempoxyz\/gh-actions\/\.github\/workflows\/([^\s@#]+)@[0-9a-f]{40}/g)].some(
     (match) => usesSecureRunner(match[1], visited),
   );
 }
@@ -33,8 +33,8 @@ function isEnsureSecureRunnerJob(jobBlock) {
   const uses = [...steps.matchAll(/^\s+(?:- )?uses:\s+(\S+)/gm)].map((m) => m[1]);
   return (
     uses.length > 0 &&
-    uses.includes("$/actions/ensure-secure-runner") &&
-    uses.every((u) => u === "$/actions/ensure-secure-runner" || u.startsWith("actions/checkout@"))
+    uses.some((u) => /^tempoxyz\/gh-actions\/actions\/ensure-secure-runner@[0-9a-f]{40}$/.test(u)) &&
+    uses.every((u) => /^tempoxyz\/gh-actions\/actions\/ensure-secure-runner@[0-9a-f]{40}$/.test(u) || u.startsWith("actions/checkout@"))
   );
 }
 
@@ -45,7 +45,7 @@ for (const check of ["fmt", "clippy"]) {
       "utf8",
     );
     assert.match(workflow, /^permissions: \{\}$/m);
-    assert.match(workflow, /uses: \$\/\.github\/workflows\/rust-lint\.yml/);
+    assert.match(workflow, /uses: tempoxyz\/gh-actions\/\.github\/workflows\/rust-lint\.yml@[0-9a-f]{40}/);
     assert.doesNotMatch(workflow, /\n    (?:steps|runs-on):/);
     for (const candidate of ["clippy", "fmt", "typos", "deny"]) {
       assert.match(
@@ -359,7 +359,7 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
 
     assert.doesNotMatch(
       workflow,
-      /uses:\s+(?:step-security\/harden-runner|tempoxyz\/gh-actions\/actions\/(?:harden-runner|socket-firewall)@|\$\/actions\/harden-runner)/,
+      /uses:\s+(?:step-security\/harden-runner|tempoxyz\/gh-actions\/actions\/harden-runner@)/,
       `${filename} must use the Secure Runner wrapper`,
     );
     assert.doesNotMatch(workflow, /STEP_SECURITY_STS_(?:DEV|PRD)_URL/);
@@ -368,7 +368,7 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
     for (const jobBlock of jobBlocks) {
       const runsOnRunner = /^    runs-on:/m.test(jobBlock);
       const reusableWorkflow = jobBlock.match(
-        /uses:\s+\.\/\.github\/workflows\/([^\s]+)/,
+        /uses:\s+tempoxyz\/gh-actions\/\.github\/workflows\/([^\s@#]+)@[0-9a-f]{40}/,
       );
       const usesProtectedWorkflow =
         reusableWorkflow &&
@@ -395,7 +395,7 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
         assert.match(
           steps,
           new RegExp(
-            "^(?:\\s*#[^\\n]*\\n)*\\s*- (?:name:[^\\n]+\\n\\s+)?uses:\\s+\\$/actions/secure-runner[^\\n]*",
+            "^(?:\\s*#[^\\n]*\\n)*\\s*- (?:name:[^\\n]+\\n\\s+)?uses:\\s+tempoxyz/gh-actions/actions/secure-runner@[0-9a-f]{40}[^\\n]*",
           ),
           `${filename} must use the Secure Runner wrapper as the first step of every runnable job`,
         );

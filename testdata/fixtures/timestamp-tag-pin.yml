@@ -9,4 +9,4 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: tempoxyz/gh-actions/actions/setup-pinact@4b946b7fbd139d07ed6b7889dc0c6296b5777e5b # 2026-09-21T18-36-40Z
+      - uses: tempoxyz/gh-actions/actions/setup-pinact@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
