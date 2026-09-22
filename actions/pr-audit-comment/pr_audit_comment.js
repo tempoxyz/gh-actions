@@ -6,7 +6,7 @@ const { spawnSync } = require("child_process");
 const usage = [
   '**Usage:** `cyclops [private] audit [super-fast] [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
   '[models="anthropic/claude-opus-4-7,openai/gpt-5.5"] [run-label=LABEL] ',
-  '[dry-run] [note="per-run audit guidance"]`',
+  '[runner=production|staging|ab] [dry-run] [note="per-run audit guidance"]`',
 ].join("");
 
 // `super-fast` is the documented spelling; `superfast` is the variant people
@@ -31,6 +31,7 @@ function parseArgs(body, commandRegex) {
     private: "false",
     perf: "false",
     note: "",
+    runner: "",
   };
   const intArgs = new Set(["iterations", "hours"]);
   const stringArgs = new Set(["config", "models", "run-label", "note"]);
@@ -82,6 +83,12 @@ function parseArgs(body, commandRegex) {
         defaults[key] = value;
       } else {
         invalid.push(`\`${key}=${value}\` (must be true or false)`);
+      }
+    } else if (key === "runner") {
+      if (value === "staging" || value === "production" || value === "ab") {
+        defaults.runner = value;
+      } else {
+        invalid.push(`\`runner=${value}\` (must be production, staging, or ab)`);
       }
     } else if (stringArgs.has(key)) {
       if (!value) {
@@ -168,29 +175,40 @@ async function checkPermission({ github, context, core, getOctokit }) {
   return pr;
 }
 
-function buildPayload(context, pr, defaults) {
-  const data = {
-    pr_number: context.issue.number,
-    sha: pr.head.sha,
-    source: "comment",
-    actor: context.payload.comment.user.login,
-    comment_id: context.payload.comment.id,
-    dry_run: defaults["dry-run"] === "true",
-    private: defaults.private === "true",
-  };
-  if (defaults.config) data.config = defaults.config;
-  if (defaults.iterations) data.max_iterations = Number(defaults.iterations);
-  if (defaults.hours) data.max_hours = Number(defaults.hours);
-  if (defaults.models) data.models = defaults.models;
-  if (defaults["run-label"]) data.run_label = defaults["run-label"];
-  if (defaults.note) data.audit_note_b64 = Buffer.from(defaults.note, "utf8").toString("base64");
-  if (defaults.perf === "true") data.perf = true;
+function buildPayloads(context, pr, defaults) {
+  const channels = defaults.runner === "ab"
+    ? ["production", "staging"]
+    : [defaults.runner || ""];
+  const baseRunLabel = defaults["run-label"] || `pr-${context.issue.number}-comment-${context.payload.comment.id}`;
 
-  return {
-    repository: `${context.repo.owner}/${context.repo.repo}`,
-    event: "pr_audit",
-    data,
-  };
+  return channels.map((channel) => {
+    const data = {
+      pr_number: context.issue.number,
+      sha: pr.head.sha,
+      source: "comment",
+      actor: context.payload.comment.user.login,
+      comment_id: context.payload.comment.id,
+      dry_run: defaults["dry-run"] === "true",
+      private: defaults.private === "true",
+    };
+    if (defaults.config) data.config = defaults.config;
+    if (defaults.iterations) data.max_iterations = Number(defaults.iterations);
+    if (defaults.hours) data.max_hours = Number(defaults.hours);
+    if (defaults.models) data.models = defaults.models;
+    if (channel) {
+      data.runner_channel = channel;
+      data.run_label = `${baseRunLabel}-${channel}`;
+    } else if (defaults["run-label"]) {
+      data.run_label = defaults["run-label"];
+    }
+    if (defaults.note) data.audit_note_b64 = Buffer.from(defaults.note, "utf8").toString("base64");
+    if (defaults.perf === "true") data.perf = true;
+    return {
+      repository: `${context.repo.owner}/${context.repo.repo}`,
+      event: "pr_audit",
+      data,
+    };
+  });
 }
 
 function buildSummary(defaults) {
@@ -204,6 +222,7 @@ function buildSummary(defaults) {
   if (defaults["dry-run"] === "true") summaryParts.push("dry-run: `true`");
   if (defaults.private === "true") summaryParts.push("private: `true`");
   if (defaults.perf === "true") summaryParts.push("perf: `true`");
+  if (defaults.runner) summaryParts.push(`runner: \`${defaults.runner}\``);
   if (defaults.note) {
     const note = defaults.note.replace(/`/g, "'").slice(0, 160);
     summaryParts.push(`note: \`${note}${defaults.note.length > 160 ? "..." : ""}\``);
@@ -332,12 +351,26 @@ module.exports = async ({ github, context, core, getOctokit }) => {
     }
   }
 
+  const publishFailures = [];
+  for (const payload of buildPayloads(context, pr, defaults)) {
+    try {
+      publishEvent(payload);
+    } catch (error) {
+      publishFailures.push({
+        channel: payload.data.runner_channel || "legacy",
+        message: error.message,
+      });
+    }
+  }
+
   let publishError;
-  try {
-    publishEvent(buildPayload(context, pr, defaults));
-  } catch (error) {
-    publishError = error;
-    core.setFailed(error.message);
+  if (publishFailures.length > 0) {
+    publishError = new Error(
+      `Failed to publish channel(s): ${publishFailures
+        .map(({ channel, message }) => `${channel} (${message})`)
+        .join(", ")}`,
+    );
+    core.setFailed(publishError.message);
   }
 
   if (!commentId) return;
@@ -357,3 +390,4 @@ module.exports = async ({ github, context, core, getOctokit }) => {
 };
 
 module.exports.parseArgs = parseArgs;
+module.exports.buildPayloads = buildPayloads;

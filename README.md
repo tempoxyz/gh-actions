@@ -199,6 +199,11 @@ Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>
 
 Publishes a `pr_audit` event when a pull request receives a configured label. This reusable workflow is **read-only** against repository contents. Comment-driven audit commands are handled separately by the [`pr-audit-comment`](actions/pr-audit-comment) composite action in a caller-owned job (see below).
 
+The trusted `cyclops-staging` label selects the staging runner channel. The
+`cyclops-ab` label publishes independent production and staging events with
+distinct run labels. Ordinary configured labels preserve the legacy production
+payload.
+
 #### Label audits (read-only)
 
 ```yaml

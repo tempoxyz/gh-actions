@@ -9,7 +9,7 @@ on:
         type: string
         default: cyclops
       required-labels:
-        description: Comma or newline-separated labels that trigger audit event publishing.
+        description: Comma or newline-separated production labels. cyclops-staging and cyclops-ab are trusted built-in controls.
         required: false
         type: string
       branch:
@@ -77,15 +77,24 @@ jobs:
               exit 0
             fi
 
+            channels=legacy
             matched=false
-            while IFS= read -r label; do
-              label="${label#"${label%%[![:space:]]*}"}"
-              label="${label%"${label##*[![:space:]]}"}"
-              if [[ -n "$label" && "$LABEL_NAME" == "$label" ]]; then
-                matched=true
-                break
-              fi
-            done < <(printf '%s\n' "$labels" | tr ',' '\n')
+            if [[ "$LABEL_NAME" == "cyclops-staging" ]]; then
+              channels=staging
+              matched=true
+            elif [[ "$LABEL_NAME" == "cyclops-ab" ]]; then
+              channels="production staging"
+              matched=true
+            else
+              while IFS= read -r label; do
+                label="${label#"${label%%[![:space:]]*}"}"
+                label="${label%"${label##*[![:space:]]}"}"
+                if [[ -n "$label" && "$LABEL_NAME" == "$label" ]]; then
+                  matched=true
+                  break
+                fi
+              done < <(printf '%s\n' "$labels" | tr ',' '\n')
+            fi
 
             if [[ "$matched" != "true" ]]; then
               echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -93,6 +102,7 @@ jobs:
             fi
             echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
             echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "channels=$channels" >> "$GITHUB_OUTPUT"
 
           elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             PERM=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq '.permission')
@@ -112,6 +122,7 @@ jobs:
               echo "::error::Either branch or pr-number must be provided"
               exit 1
             fi
+            echo "channels=legacy" >> "$GITHUB_OUTPUT"
           else
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -128,6 +139,7 @@ jobs:
           REPO: ${{ github.repository }}
           TARGET_PR_NUMBER: ${{ steps.target.outputs.pr_number }}
           TARGET_SHA: ${{ steps.target.outputs.sha }}
+          RUNNER_CHANNELS: ${{ steps.target.outputs.channels }}
         run: |
           set -euo pipefail
 
@@ -157,30 +169,48 @@ jobs:
             http_proxy https_proxy no_proxy all_proxy \
             SSL_CERT_FILE SSL_CERT_DIR CURL_CA_BUNDLE
           do
-            if [[ -v "$name" ]]; then
+            if [[ -n "${!name:-}" ]]; then
               child_env+=("$name=${!name}")
             fi
           done
 
-          # The single-quoted program contains jq variables, not shell expansions.
-          # shellcheck disable=SC2016
-          env -i PATH="$PATH" jq -n \
-            --arg repo "$REPO" \
-            --arg sha "$TARGET_SHA" \
-            --arg pr "$TARGET_PR_NUMBER" \
-            '{
-              repository: $repo,
-              event: "pr_audit",
-              data: (
-                {sha: $sha}
-                + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
-              )
-            }' \
-          | env -i "${child_env[@]}" curl -sf -o /dev/null -X POST "${events_args[@]}" \
-              -H "Content-Type: application/json" \
-              --key "$RUNNER_TEMP/key" \
-              --cert "$RUNNER_TEMP/cert" \
-              -d @-
+          publish_failures=()
+          for runner_channel in ${RUNNER_CHANNELS:-legacy}; do
+            run_label=""
+            if [[ "$runner_channel" != "legacy" ]]; then
+              run_label="pr-${TARGET_PR_NUMBER}-${TARGET_SHA:0:12}-${runner_channel}"
+            fi
+
+            # The single-quoted program contains jq variables, not shell expansions.
+            # shellcheck disable=SC2016
+            if ! env -i PATH="$PATH" jq -n \
+              --arg repo "$REPO" \
+              --arg sha "$TARGET_SHA" \
+              --arg pr "$TARGET_PR_NUMBER" \
+              --arg runner_channel "$runner_channel" \
+              --arg run_label "$run_label" \
+              '{
+                repository: $repo,
+                event: "pr_audit",
+                data: (
+                  {sha: $sha}
+                  + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
+                  + (if $runner_channel != "legacy" then {runner_channel: $runner_channel, run_label: $run_label} else {} end)
+                )
+              }' \
+            | env -i "${child_env[@]}" curl -sf -o /dev/null -X POST "${events_args[@]}" \
+                -H "Content-Type: application/json" \
+                --key "$RUNNER_TEMP/key" \
+                --cert "$RUNNER_TEMP/cert" \
+                -d @-; then
+              publish_failures+=("$runner_channel")
+            fi
+          done
+
+          if (( ${#publish_failures[@]} > 0 )); then
+            printf '::error::Failed to publish pr_audit event for channel(s): %s\n' "${publish_failures[*]}"
+            exit 1
+          fi
 
   require-completed-audit:
     if: >-
