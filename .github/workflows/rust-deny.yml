@@ -29,7 +29,7 @@ permissions: {}
 jobs:
   deny:
     # Call the reusable workflow at the published, pinned commit.
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@676db9412d6e0ce0a00cbb101a85dcff90f17823 # pr-256-sts-transport-workflows
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@676db9412d6e0ce0a00cbb101a85dcff90f17823 # 2026-09-22T16-32-51Z-676db941
     permissions:
       contents: read
       id-token: write

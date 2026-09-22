@@ -33,7 +33,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # pr-256-sts-transport-runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # 2026-09-22T16-32-12Z-3499d815
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,7 +101,7 @@ jobs:
 
       - name: Reinstall Aegis on the same Linux runner
         if: runner.os == 'Linux'
-        uses: tempoxyz/gh-actions/actions/socket-firewall@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # pr-256-sts-transport-runner
+        uses: tempoxyz/gh-actions/actions/socket-firewall@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # 2026-09-22T16-32-12Z-3499d815
 
       - name: Verify fresh credentials and active service after reinstall
         if: runner.os == 'Linux'
@@ -125,7 +125,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # pr-256-sts-transport-runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # 2026-09-22T16-32-12Z-3499d815
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -171,7 +171,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # pr-256-sts-transport-runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # 2026-09-22T16-32-12Z-3499d815
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -184,7 +184,7 @@ jobs:
 
   rust-lint-disabled:
     name: Rust lint with all checks disabled
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@70385c1498b84428d55291dc53c7352e98b6e6ee # pr-256-sts-transport-rust-workflows
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@70385c1498b84428d55291dc53c7352e98b6e6ee # 2026-09-22T16-34-02Z-70385c14
     permissions:
       id-token: write
       contents: read
@@ -196,7 +196,7 @@ jobs:
 
   rust-fmt-wrapper:
     name: Rust fmt wrapper
-    uses: tempoxyz/gh-actions/.github/workflows/rust-fmt.yml@70385c1498b84428d55291dc53c7352e98b6e6ee # pr-256-sts-transport-rust-workflows
+    uses: tempoxyz/gh-actions/.github/workflows/rust-fmt.yml@70385c1498b84428d55291dc53c7352e98b6e6ee # 2026-09-22T16-34-02Z-70385c14
     permissions:
       id-token: write
       contents: read
@@ -205,7 +205,7 @@ jobs:
 
   rust-clippy-wrapper:
     name: Rust clippy wrapper
-    uses: tempoxyz/gh-actions/.github/workflows/rust-clippy.yml@70385c1498b84428d55291dc53c7352e98b6e6ee # pr-256-sts-transport-rust-workflows
+    uses: tempoxyz/gh-actions/.github/workflows/rust-clippy.yml@70385c1498b84428d55291dc53c7352e98b6e6ee # 2026-09-22T16-34-02Z-70385c14
     permissions:
       id-token: write
       contents: read
@@ -221,7 +221,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # pr-256-sts-transport-runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # 2026-09-22T16-32-12Z-3499d815
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -678,7 +678,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # pr-256-sts-transport-runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # 2026-09-22T16-32-12Z-3499d815
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

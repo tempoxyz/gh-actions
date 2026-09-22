@@ -13,7 +13,7 @@ permissions: {}
 jobs:
   scan:
     name: Scan GitHub Actions
-    uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@70385c1498b84428d55291dc53c7352e98b6e6ee # pr-256-sts-transport-rust-workflows
+    uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@70385c1498b84428d55291dc53c7352e98b6e6ee # 2026-09-22T16-34-02Z-70385c14
     permissions:
       actions: read
       contents: read
