@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { runnerOIDCEnvironment } = require("./github-oidc.cjs");
 
 const MANAGERS = [
   "npm", "pnpm", "yarn", "yarn-berry", "bun", "cargo", "go",
@@ -21,7 +22,7 @@ function childEnvironment() {
   );
 }
 
-async function startProvider(token) {
+async function startProvider(token, oidc = runnerOIDCEnvironment()) {
   if (!/^\S{20,4096}$/.test(token)) throw new Error("Socket token is invalid");
   const child = spawn(process.execPath, [path.join(__dirname, "token-server.cjs")], {
     detached: true,
@@ -45,7 +46,9 @@ async function startProvider(token) {
       else resolve(message.url);
     });
   });
-  child.send({ token });
+  // The detached service cannot inherit the job environment. Pass only the
+  // required credentials over IPC; never put them in argv, env, or config.
+  child.send({ token, oidc });
   const url = await ready;
   child.disconnect();
   child.unref();
