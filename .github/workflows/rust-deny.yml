@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       rust-toolchain:
-        description: Rust toolchain installed on the runner and used inside the cargo-deny container.
+        description: Rust toolchain used by the shared deny workflow.
         required: false
         type: string
         default: stable

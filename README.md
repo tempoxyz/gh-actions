@@ -692,7 +692,7 @@ Optional inputs:
 
 - `run-clippy`, `run-fmt`, `run-typos`, `run-deny` (default: `true`) — enable each check independently
 - `rust-toolchain` (default: `nightly`) — used for clippy and fmt
-- `deny-rust-toolchain` (default: `stable`) — installed on the deny runner and used inside the cargo-deny container
+- `deny-rust-toolchain` (default: `stable`) — used by the shared deny workflow
 - `clippy-flags` (default: `--all-targets --all-features --locked`)
 - `fmt-flags` (default: `--all --check`)
 - `deny-flags` (default: `--all-features`)
@@ -702,10 +702,13 @@ Optional inputs:
 For individual checks, use [`rust-deny`](#rust-deny),
 [`rust-fmt`, or `rust-clippy`](#rust-fmt-and-rust-clippy).
 
-The deny action runs in Docker and manages its own Rust toolchain;
-`deny-rust-toolchain` is forwarded to its `rust-version` input. Callers grant `contents: read`
-for checkout and `id-token: write` for Harden Runner OIDC/STS authentication.
+The deny job delegates to `tempoxyz/ci/.github/workflows/deny.yml`, which installs
+a pinned, checksum-verified cargo-deny binary and runs it on the Secure Runner host.
+The toolchain, flags, runner, and timeout are forwarded to that shared workflow.
+Callers grant `contents: read` for checkout and `id-token: write` for OIDC/STS authentication.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
+Delegating adds a level to the displayed deny check name; review any branch
+protection rules that require the deny check directly. The `lint success` gate is unchanged.
 
 The `lint success` gate accepts explicitly disabled checks and fails on failures,
 cancellations, or unexpected skips. If all four checks are disabled, only the
@@ -714,8 +717,9 @@ gate runs and succeeds.
 ### `rust-deny`
 
 Runs `cargo deny check all` through `rust-lint.yml` at the same commit, with clippy,
-fmt, and typos disabled internally. It shares the existing Harden Runner setup,
-checkout, Rust installation, cargo-deny container, and `lint success` gate.
+fmt, and typos disabled internally. The deny job uses the canonical
+`tempoxyz/ci/.github/workflows/deny.yml` implementation and retains the
+`lint success` gate.
 
 ```yaml
 jobs:
@@ -730,7 +734,7 @@ jobs:
 
 Optional inputs:
 
-- `rust-toolchain` (default: `stable`) — installed on the runner and used inside the cargo-deny container
+- `rust-toolchain` (default: `stable`) — used by the shared deny workflow
 - `flags` (default: `--all-features`) — additional flags passed to `cargo deny check all`
 - `runner` (default: `ubuntu-latest`)
 - `timeout-minutes` (default: `30`) — timeout for each job, including the success gate

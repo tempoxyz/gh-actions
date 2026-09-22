@@ -59,7 +59,7 @@ on:
         type: string
         default: nightly
       deny-rust-toolchain:
-        description: Rust toolchain installed on the deny runner and used inside the cargo-deny container.
+        description: Rust toolchain used by the shared deny workflow.
         required: false
         type: string
         default: stable
@@ -225,29 +225,15 @@ jobs:
   deny:
     name: cargo deny check
     if: ${{ inputs.run-deny }}
-    runs-on: ${{ inputs.deny-runner }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    uses: tempoxyz/ci/.github/workflows/deny.yml@3aa35a1b7871cfb8efbfb3ba82a9efa891de9961
     permissions:
       id-token: write
       contents: read
-    steps:
-      - name: Secure runner
-        uses: $/actions/secure-runner
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install Rust toolchain
-        env:
-          RUST_TOOLCHAIN: ${{ inputs.deny-rust-toolchain }}
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
-          rustup default "$RUST_TOOLCHAIN"
-      - uses: $/vendor/EmbarkStudios/cargo-deny-action
-        with:
-          rust-version: ${{ inputs.deny-rust-toolchain }}
-          command: check all
-          arguments: ${{ inputs.deny-flags }}
+    with:
+      rust-toolchain: ${{ inputs.deny-rust-toolchain }}
+      deny-flags: ${{ inputs.deny-flags }}
+      runner: ${{ inputs.deny-runner }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
 
   lint-success:
     name: lint success

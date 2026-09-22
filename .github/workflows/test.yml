@@ -212,6 +212,16 @@ jobs:
     with:
       flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all-targets --all-features --locked
 
+  rust-deny-wrapper:
+    name: Rust deny wrapper
+    uses: $/.github/workflows/rust-deny.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all-features --locked
+      timeout-minutes: 10
+
   integration:
     name: integration
     runs-on: ubuntu-latest
