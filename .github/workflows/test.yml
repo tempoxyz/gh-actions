@@ -220,7 +220,6 @@ jobs:
       contents: read
     with:
       flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all-features --locked
-      timeout-minutes: 10
 
   integration:
     name: integration

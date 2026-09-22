@@ -38,13 +38,8 @@ on:
         required: false
         type: string
         default: depot-ubuntu-latest
-      deny-runner:
-        description: Runner used for cargo deny.
-        required: false
-        type: string
-        default: ubuntu-latest
       timeout-minutes:
-        description: Timeout for each lint job.
+        description: Timeout for clippy, fmt, typos, and the lint-success gate.
         required: false
         type: number
         default: 30
@@ -225,15 +220,13 @@ jobs:
   deny:
     name: cargo deny check
     if: ${{ inputs.run-deny }}
-    uses: tempoxyz/ci/.github/workflows/deny.yml@3aa35a1b7871cfb8efbfb3ba82a9efa891de9961
+    uses: tempoxyz/ci/.github/workflows/deny.yml@921d47ce30160fb82a5181c840b41fbbac77c18f
     permissions:
       id-token: write
       contents: read
     with:
       rust-toolchain: ${{ inputs.deny-rust-toolchain }}
       deny-flags: ${{ inputs.deny-flags }}
-      runner: ${{ inputs.deny-runner }}
-      timeout-minutes: ${{ inputs.timeout-minutes }}
 
   lint-success:
     name: lint success

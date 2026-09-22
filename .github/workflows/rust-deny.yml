@@ -13,16 +13,6 @@ on:
         required: false
         type: string
         default: --all-features
-      runner:
-        description: Runner used for cargo deny.
-        required: false
-        type: string
-        default: ubuntu-latest
-      timeout-minutes:
-        description: Timeout for each job.
-        required: false
-        type: number
-        default: 30
 
 permissions: {}
 
@@ -40,5 +30,3 @@ jobs:
       run-deny: true
       deny-rust-toolchain: ${{ inputs.rust-toolchain }}
       deny-flags: ${{ inputs.flags }}
-      deny-runner: ${{ inputs.runner }}
-      timeout-minutes: ${{ inputs.timeout-minutes }}

@@ -697,14 +697,16 @@ Optional inputs:
 - `fmt-flags` (default: `--all --check`)
 - `deny-flags` (default: `--all-features`)
 - `checkout-submodules` (default: `false`) — passed to clippy checkout only
-- `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
+- `clippy-runner`, `fmt-runner`, `typos-runner`
+- `timeout-minutes` (default: `30`) — applies to clippy, fmt, typos, and the success gate
 
 For individual checks, use [`rust-deny`](#rust-deny),
 [`rust-fmt`, or `rust-clippy`](#rust-fmt-and-rust-clippy).
 
-The deny job delegates to `tempoxyz/ci/.github/workflows/deny.yml`, which installs
-a pinned, checksum-verified cargo-deny binary and runs it on the Secure Runner host.
-The toolchain, flags, runner, and timeout are forwarded to that shared workflow.
+The deny job delegates to the existing `tempoxyz/ci/.github/workflows/deny.yml`,
+which configures Secure Runner and uses the vendored cargo-deny action.
+Only the toolchain and flags are forwarded; the shared workflow owns its runner
+and timeout settings. The `deny-runner` input is no longer supported.
 Callers grant `contents: read` for checkout and `id-token: write` for OIDC/STS authentication.
 Pin production callers to a commit SHA (see [Versioning](#versioning)).
 Delegating adds a level to the displayed deny check name; review any branch
@@ -736,8 +738,9 @@ Optional inputs:
 
 - `rust-toolchain` (default: `stable`) — used by the shared deny workflow
 - `flags` (default: `--all-features`) — additional flags passed to `cargo deny check all`
-- `runner` (default: `ubuntu-latest`)
-- `timeout-minutes` (default: `30`) — timeout for each job, including the success gate
+
+The shared deny workflow owns its runner and timeout settings; this wrapper no
+longer accepts `runner` or `timeout-minutes` inputs.
 
 The example explicitly selects nightly; omitting `with` uses stable. Callers must
 grant both permissions shown above; no persistent StepSecurity API key is required.
