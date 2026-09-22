@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
 const test = require("node:test");
-const { AUDIENCE, TIMEOUT_MS, runnerOIDCEnvironment, createGitHubOIDC } = require("./github-oidc.cjs");
+const { AUDIENCE, LEGACY_AUDIENCE, TIMEOUT_MS, runnerOIDCEnvironment, createGitHubOIDC } = require("./github-oidc.cjs");
 const { createTokenServer } = require("./token-server.cjs");
 const { startProvider, childEnvironment } = require("./token-provider.cjs");
 
@@ -47,6 +47,22 @@ test("acquires the fixed audience, caches concurrent requests and refreshes befo
   failed = false;
   assert.notEqual(await get(AUDIENCE), "");
   assert.equal(calls, 4);
+});
+
+test("supports the legacy audience with an independent cache during migration", async () => {
+  const calls = [];
+  const get = createGitHubOIDC(SOURCE, {
+    fetcher: async (url) => {
+      const audience = url.searchParams.get("audience");
+      calls.push(audience);
+      return result(jwt(Date.now() + 300_000, audience));
+    },
+  });
+  assert.notEqual(await get(AUDIENCE), "");
+  assert.notEqual(await get(LEGACY_AUDIENCE), "");
+  assert.notEqual(await get(AUDIENCE), "");
+  assert.notEqual(await get(LEGACY_AUDIENCE), "");
+  assert.deepEqual(calls, [AUDIENCE, LEGACY_AUDIENCE]);
 });
 
 test("ignores absent or unsupported audience requests and unsafe sources", async () => {

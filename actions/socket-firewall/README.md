@@ -105,11 +105,13 @@ logs. The provider continues to use a random route bound to `127.0.0.1`.
 
 Legacy empty POST requests return `{"token":"<Socket token>"}` immediately.
 Clients supporting the identity extension can POST
-`{"github_oidc_audience":"https://aegis.tempoxyz.dev"}` to the same route. On
+`{"github_oidc_audience":"https://aegis.tempoxyz.net"}` to the same route. On
 successful GitHub OIDC acquisition, the response additionally includes
 `"github_oidc_jwt":"<raw JWT>"`. The client is responsible for base64 encoding
 that JWT into its `X-Aegis-GitHub-OIDC-JWT` header; the provider does not encode it.
-No other audience is supported.
+The legacy `https://aegis.tempoxyz.dev` audience remains supported during the
+client migration. No other audience is supported, and tokens for the two
+audiences are acquired and cached independently.
 
 OIDC acquisition is on demand, capped at 1.5 seconds, and never follows redirects.
 Concurrent requests share acquisition. Tokens stay in memory, refresh near

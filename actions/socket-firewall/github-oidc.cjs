@@ -1,4 +1,6 @@
-const AUDIENCE = "https://aegis.tempoxyz.dev";
+const AUDIENCE = "https://aegis.tempoxyz.net";
+const LEGACY_AUDIENCE = "https://aegis.tempoxyz.dev";
+const AUDIENCES = new Set([AUDIENCE, LEGACY_AUDIENCE]);
 const TIMEOUT_MS = 1_500; // Leave room within the client's two-second deadline.
 const MAX_RESPONSE_BYTES = 64 * 1024;
 
@@ -11,12 +13,12 @@ function runnerOIDCEnvironment(env = process.env) {
 
 // Parsing is for freshness/audience only, not signature verification. Identity
 // consumers must cryptographically verify the JWT before trusting its claims.
-function expiry(jwt) {
+function expiry(jwt, audience) {
   if (typeof jwt !== "string" || jwt.length > 16_384 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(jwt)) return 0;
   try {
     const claims = JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString("utf8"));
     const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-    if (!Number.isSafeInteger(claims.exp) || claims.exp <= 0 || !audiences.every((value) => typeof value === "string") || !audiences.includes(AUDIENCE)) return 0;
+    if (!Number.isSafeInteger(claims.exp) || claims.exp <= 0 || !audiences.every((value) => typeof value === "string") || !audiences.includes(audience)) return 0;
     const milliseconds = claims.exp * 1000;
     return Number.isSafeInteger(milliseconds) ? milliseconds : 0;
   } catch {
@@ -25,19 +27,16 @@ function expiry(jwt) {
 }
 
 function createGitHubOIDC({ requestURL, requestToken } = {}, { fetcher = fetch, now = Date.now } = {}) {
-  let token = "";
-  let expires = 0;
-  let retryAt = 0;
-  let loading;
+  const states = new Map();
 
-  async function acquire() {
+  async function acquire(audience, state) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
       if (typeof requestURL !== "string" || typeof requestToken !== "string" || !requestToken || /\s/.test(requestToken)) return;
       const url = new URL(requestURL);
       if (url.protocol !== "https:" || url.username || url.password || url.hash) return;
-      url.searchParams.set("audience", AUDIENCE);
+      url.searchParams.set("audience", audience);
       const response = await fetcher(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${requestToken}`, Accept: "application/json" },
@@ -53,10 +52,10 @@ function createGitHubOIDC({ requestURL, requestToken } = {}, { fetcher = fetch, 
         chunks.push(Buffer.from(chunk));
       }
       const candidate = JSON.parse(Buffer.concat(chunks).toString("utf8")).value;
-      const candidateExpiry = expiry(candidate);
+      const candidateExpiry = expiry(candidate, audience);
       if (candidateExpiry > now()) {
-        token = candidate;
-        expires = candidateExpiry;
+        state.token = candidate;
+        state.expires = candidateExpiry;
       }
     } catch {
       // Never log request credentials, endpoint URLs, response bodies, or JWTs.
@@ -64,19 +63,24 @@ function createGitHubOIDC({ requestURL, requestToken } = {}, { fetcher = fetch, 
     } finally {
       controller.abort();
       clearTimeout(timer);
-      retryAt = now() + 60_000;
+      state.retryAt = now() + 60_000;
     }
   }
 
   return async function getToken(audience) {
     // The loopback provider is not a general-purpose OIDC minting endpoint.
-    if (audience !== AUDIENCE) return "";
-    if (now() >= expires - 30_000 && now() >= retryAt) {
-      if (!loading) loading = acquire().finally(() => { loading = undefined; });
-      await loading;
+    if (!AUDIENCES.has(audience)) return "";
+    let state = states.get(audience);
+    if (!state) {
+      state = { token: "", expires: 0, retryAt: 0, loading: undefined };
+      states.set(audience, state);
     }
-    return now() < expires ? token : "";
+    if (now() >= state.expires - 30_000 && now() >= state.retryAt) {
+      if (!state.loading) state.loading = acquire(audience, state).finally(() => { state.loading = undefined; });
+      await state.loading;
+    }
+    return now() < state.expires ? state.token : "";
   };
 }
 
-module.exports = { AUDIENCE, TIMEOUT_MS, runnerOIDCEnvironment, createGitHubOIDC };
+module.exports = { AUDIENCE, LEGACY_AUDIENCE, TIMEOUT_MS, runnerOIDCEnvironment, createGitHubOIDC };
