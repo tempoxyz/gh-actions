@@ -5,7 +5,7 @@ const { spawnSync } = require("child_process");
 
 const usage = [
   '**Usage:** `cyclops [private] audit [super-fast] [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
-  '[models="anthropic/claude-opus-4-7,openai/gpt-5.5"] [run-label=LABEL] ',
+  '[models="anthropic/claude-opus-4-7,openai/gpt-5.5"] [run-label=LABEL] [runner=v1|v2] ',
   '[dry-run] [note="per-run audit guidance"]`',
 ].join("");
 
@@ -27,6 +27,7 @@ function parseArgs(body, commandRegex) {
     hours: "",
     models: "",
     "run-label": "",
+    runner: "v1",
     "dry-run": "false",
     private: "false",
     perf: "false",
@@ -82,6 +83,12 @@ function parseArgs(body, commandRegex) {
         defaults[key] = value;
       } else {
         invalid.push(`\`${key}=${value}\` (must be true or false)`);
+      }
+    } else if (key === "runner") {
+      if (value === "v1" || value === "v2") {
+        defaults.runner = value;
+      } else {
+        invalid.push(`\`runner=${value}\` (must be v1 or v2)`);
       }
     } else if (stringArgs.has(key)) {
       if (!value) {
@@ -177,6 +184,7 @@ function buildPayload(context, pr, defaults) {
     comment_id: context.payload.comment.id,
     dry_run: defaults["dry-run"] === "true",
     private: defaults.private === "true",
+    runner_version: defaults.runner,
   };
   if (defaults.config) data.config = defaults.config;
   if (defaults.iterations) data.max_iterations = Number(defaults.iterations);
@@ -198,6 +206,7 @@ function buildSummary(defaults) {
     defaults.config ? `config: \`${defaults.config}\`` : "config: `default`",
     defaults.iterations ? `iterations: \`${defaults.iterations}\`` : "iterations: `default`",
     defaults.hours ? `hours: \`${defaults.hours}\`` : "hours: `default`",
+    `runner: \`${defaults.runner}\``,
   ];
   if (defaults.models) summaryParts.push(`models: \`${defaults.models}\``);
   if (defaults["run-label"]) summaryParts.push(`run-label: \`${defaults["run-label"]}\``);

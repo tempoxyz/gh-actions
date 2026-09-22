@@ -41,6 +41,15 @@ test("private composes with fast and note arguments", () => {
   assert.equal(defaults.note, "focus on authorization");
 });
 
+test("runner selects an explicit canary and rejects unknown versions", () => {
+  const selected = handle.parseArgs("cyclops audit runner=v2", "^cyclops\\s+audit\\b");
+  assert.deepEqual(selected.errors, []);
+  assert.equal(selected.defaults.runner, "v2");
+
+  const rejected = handle.parseArgs("cyclops audit runner=v3", "^cyclops\\s+audit\\b");
+  assert.match(rejected.errors[0], /must be v1 or v2/);
+});
+
 function makePr({
   authorAssociation = "MEMBER",
   authorId = 2,
@@ -552,7 +561,7 @@ test("comment publisher preserves quoted arguments and isolates parser and curl"
     process.chdir(hostile);
     const result = await runScenario({
       mode: "association",
-      body: "cyclops audit perf note='quoted guidance'",
+      body: "cyclops audit perf runner=v2 note='quoted guidance'",
       permissionToken: "permission-token-canary",
     });
 
@@ -561,6 +570,7 @@ test("comment publisher preserves quoted arguments and isolates parser and curl"
     assert.match(result.primary.calls.commentUpdates[0].body, /event published/);
     assert.match(result.primary.calls.commentUpdates[0].body, /perf: `true`/);
     assert.equal(JSON.parse(fs.readFileSync(harness.files.payload)).data.perf, true);
+    assert.equal(JSON.parse(fs.readFileSync(harness.files.payload)).data.runner_version, "v2");
     assert.deepEqual(readLines(harness.files.pythonArgs).slice(0, 2), ["-I", "-c"]);
     assert.deepEqual(readLines(harness.files.curlArgs).slice(5, 9), [
       "--url",
