@@ -283,6 +283,7 @@ jobs:
           grep -q 'default: true' <<< "$pinact"
           grep -q 'default: true' <<< "$comments"
           grep -q 'MIN_AGE:.*inputs.pin-min-age' <<< "$resolver"
+          grep -Fq 'ActionName matches "^tempoxyz/gh-actions(/|$)"' <<< "$resolver"
           grep -q "printf 'version: 3.*min_age:.*value: %s" <<< "$resolver"
           grep -q 'PINACT_GLOBAL_CONFIG:.*steps.pinact-config.outputs.global-config' <<< "$action"
           grep -q 'VERIFY:.*inputs.verify-pin-comments' <<< "$action"
@@ -411,16 +412,32 @@ jobs:
           PINACT_GLOBAL_CONFIG: ${{ steps.recent-pin.outputs.policy }}
           INCLUDE: ${{ steps.recent-pin.outputs.include }}
         run: pinact run -fix=false --verify-min-age -i "$INCLUDE"
+      - name: Check recent first-party pin with age exemption
+        id: recent-pin-exempt
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PINACT_GLOBAL_CONFIG: ${{ steps.recent-pin.outputs.policy }}
+          INCLUDE: ${{ steps.recent-pin.outputs.include }}
+        run: |
+          set -euo pipefail
+          printf 'rules:\n  - min_age: 0\n    conditions:\n      - expr: ActionName matches "^tempoxyz/gh-actions(/|$)"\n' >> "$PINACT_GLOBAL_CONFIG"
+          pinact run -fix=false --verify-min-age -i "$INCLUDE"
       - name: Assert default minimum-age policy
         env:
           WITHOUT_POLICY: ${{ steps.recent-pin-no-policy.outcome }}
           WITH_POLICY: ${{ steps.recent-pin-with-policy.outcome }}
+          WITH_EXEMPTION: ${{ steps.recent-pin-exempt.outcome }}
         run: |
           set -euo pipefail
           mv "$RUNNER_TEMP/caller-pinact.yaml" .pinact.yaml
           rm .github/workflows/zz-recent-pin.yml
           if [[ "$WITHOUT_POLICY" != "success" ]]; then
             echo "::error::recent pin should pass without a minimum-age policy (outcome=$WITHOUT_POLICY)"
+            exit 1
+          fi
+          if [[ "$WITH_EXEMPTION" != "success" ]]; then
+            echo "::error::first-party pin should pass with the age exemption (outcome=$WITH_EXEMPTION)"
             exit 1
           fi
           if [[ "$WITH_POLICY" != "failure" ]]; then

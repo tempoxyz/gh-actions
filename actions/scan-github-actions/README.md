@@ -54,7 +54,7 @@ jobs:
       id-token: write
 ```
 
-The reusable workflow runs Pinact policy checks by default. Set `pinact: false` only for a repository-specific exception. It requires a trailing tag comment on every SHA pin and verifies that the tag resolves to that SHA; set `verify-pin-comments: false` only for a repository-specific exception. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive.
+The reusable workflow runs Pinact policy checks by default. Set `pinact: false` only for a repository-specific exception. It requires a trailing tag comment on every SHA pin and verifies that the tag resolves to that SHA; set `verify-pin-comments: false` only for a repository-specific exception. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive. Pins from `tempoxyz/gh-actions` (including nested actions and reusable workflows) are exempt from minimum-age checks; their SHA pins and tag comments are still verified.
 
 ### Required status checks
 

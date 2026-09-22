@@ -86,6 +86,7 @@ jobs:
 
           policy="$RUNNER_TEMP/pinact-policy.yaml"
           printf 'version: 3\nmin_age:\n  value: %s\n' "$MIN_AGE" > "$policy"
+          printf 'rules:\n  - min_age: 0\n    conditions:\n      - expr: ActionName matches "^tempoxyz/gh-actions(/|$)"\n' >> "$policy"
           echo "global-config=$policy" >> "$GITHUB_OUTPUT"
 
           if [[ -z "$CONFIG" ]]; then
