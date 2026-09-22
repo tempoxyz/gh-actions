@@ -11,6 +11,12 @@ min_age:
   value: 7
   always: true
 rules:
+  # The canonical deny workflow has no release tags; require its immutable SHA.
+  - ignore: true
+    conditions:
+      - expr: >-
+          ActionName == "tempoxyz/ci/.github/workflows/deny.yml" &&
+          ActionVersion matches "^[0-9a-f]{40}$"
   # The shim-capable Socket action revision is not tagged yet. Keep its
   # immutable pin while exempting only this action from comment/min-age checks.
   - ignore: true
