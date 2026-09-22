@@ -184,7 +184,7 @@ jobs:
 
   rust-lint-disabled:
     name: Rust lint with all checks disabled
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@70385c1498b84428d55291dc53c7352e98b6e6ee
     permissions:
       id-token: write
       contents: read
@@ -196,7 +196,7 @@ jobs:
 
   rust-fmt-wrapper:
     name: Rust fmt wrapper
-    uses: tempoxyz/gh-actions/.github/workflows/rust-fmt.yml@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
+    uses: tempoxyz/gh-actions/.github/workflows/rust-fmt.yml@70385c1498b84428d55291dc53c7352e98b6e6ee
     permissions:
       id-token: write
       contents: read
@@ -205,7 +205,7 @@ jobs:
 
   rust-clippy-wrapper:
     name: Rust clippy wrapper
-    uses: tempoxyz/gh-actions/.github/workflows/rust-clippy.yml@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
+    uses: tempoxyz/gh-actions/.github/workflows/rust-clippy.yml@70385c1498b84428d55291dc53c7352e98b6e6ee
     permissions:
       id-token: write
       contents: read
