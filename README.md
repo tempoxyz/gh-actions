@@ -13,6 +13,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems
+| [`cloudflare-sts`](actions/cloudflare-sts) | Exchange GitHub OIDC tokens for short-lived Cloudflare API tokens with automatic cleanup
 | [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
 | [`secure-runner`](actions/secure-runner) | Start Harden Runner and install Socket Firewall with short-lived credentials
 | [`ensure-secure-runner`](actions/ensure-secure-runner) | Fail unless every workflow job starts with the `secure-runner` action
