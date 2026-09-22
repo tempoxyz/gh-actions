@@ -46,7 +46,7 @@ jobs:
       id-token: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # 3499d815
+        uses: tempoxyz/gh-actions/actions/secure-runner@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # pr-256-sts-transport-runner
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -87,7 +87,7 @@ jobs:
       - name: Fetch GitHub token via STS
         if: steps.changes.outputs.changed == 'true'
         id: sts
-        uses: tempoxyz/gh-actions/actions/github-sts@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # 3499d815
+        uses: tempoxyz/gh-actions/actions/github-sts@3499d81586f8aaefadf9cec66be701ca5cb7abe3 # pr-256-sts-transport-runner
         with:
           policy: cargo-update-pr
 

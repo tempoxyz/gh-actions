@@ -48,7 +48,7 @@ runs:
   using: "composite"
   steps:
     - name: Harden the runner with the StepSecurity policy store
-      uses: tempoxyz/gh-actions/actions/harden-runner@fb2c6690333fb13c3c3245fe439b711203d566a6 # fb2c6690
+      uses: tempoxyz/gh-actions/actions/harden-runner@fb2c6690333fb13c3c3245fe439b711203d566a6 # pr-256-sts-transport-clients
       with:
         dev: ${{ inputs.dev }}
         egress-policy: ${{ inputs.egress-policy }}
@@ -64,6 +64,6 @@ runs:
     - name: Install Socket Firewall
       if: inputs.disable-enforcement != 'true'
       # refresh pending assertions
-      uses: tempoxyz/gh-actions/actions/socket-firewall@b5e45bee9e6dacc30a77351289366bdf8f4584e3 # b5e45bee
+      uses: tempoxyz/gh-actions/actions/socket-firewall@b5e45bee9e6dacc30a77351289366bdf8f4584e3 # pr-256-sts-transport-composites
       with:
         dev: ${{ inputs.dev }}
