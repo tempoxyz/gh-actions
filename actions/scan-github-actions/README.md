@@ -54,7 +54,7 @@ jobs:
       id-token: write
 ```
 
-The reusable workflow can also run Pinact policy checks by setting `pinact: true`. It requires a trailing tag comment on every SHA pin and verifies that the tag resolves to that SHA; set `verify-pin-comments: false` only for a repository-specific exception. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive.
+The reusable workflow runs Pinact policy checks by default. Set `pinact: false` only for a repository-specific exception. It requires a trailing tag comment on every SHA pin and verifies that the tag resolves to that SHA; set `verify-pin-comments: false` only for a repository-specific exception. Pinact uses its own file discovery rather than the zizmor `paths` input; set `files` in the caller's Pinact configuration when its action manifests are outside Pinact's defaults. The global minimum age is an overrideable default, so caller-local configuration remains review-sensitive.
 
 ### Required status checks
 
@@ -120,7 +120,7 @@ steps:
 | `paths` | Whitespace-separated paths for zizmor to scan. Defaults to the whole repo, covering first-party workflows and actions anywhere (e.g. across a monorepo). Narrow it (e.g. to `.github/`) to exclude vendored or third-party trees | `.` | reusable + composite |
 | `config` | Path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides | `""` | reusable + composite |
 | `actionlint` | Run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan | `true` | reusable + composite |
-| `pinact` | Run Pinact policy checks alongside zizmor and actionlint | `false` | reusable only |
+| `pinact` | Run Pinact policy checks alongside zizmor and actionlint | `true` | reusable only |
 | `pin-config` | Path to the caller repository's Pinact configuration; the default path is optional when absent | `.pinact.yaml` | reusable only |
 | `pin-no-api` | Perform offline pin validation without API-based comment or minimum-age verification | `false` | reusable only |
 | `verify-pin-comments` | Require tag comments and verify that they resolve to the pinned SHA; set `false` for a repository-specific exception | `true` | reusable only |

@@ -22,7 +22,7 @@ on:
         description: "Run pinact policy checks in addition to the zizmor security scan."
         required: false
         type: boolean
-        default: false
+        default: true
       pin-config:
         description: Path to a pinact configuration file.
         required: false
@@ -52,7 +52,7 @@ permissions:
   id-token: write
 
 jobs:
-  # zizmor annotations, actionlint, and optional pinact checks are read-only. This
+  # zizmor annotations, actionlint, and pinact checks are read-only. This
   # workflow never requests security-events: write.
   # SARIF upload to code scanning is available via the composite action instead
   # (see actions/scan-github-actions), which runs in a job you control.
