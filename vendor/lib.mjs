@@ -46,6 +46,9 @@ export function loadManifest(path = MANIFEST_PATH) {
   m.default_exclude ??= [];
   m.allowed_upstreams ??= [];
   m.actions ??= [];
+  if (!/^[0-9a-f]{40}$/.test(m.self_sha ?? "") || !m.self_tag) {
+    throw new VendorError(`${path}: self_sha and self_tag must identify a published commit`);
+  }
   for (const a of m.actions) {
     if (!/^[\w.-]+\/[\w.-]+$/.test(a.name ?? "")) throw new VendorError(`manifest entry with bad name: ${JSON.stringify(a.name)}`);
     if (!/^[0-9a-f]{40}$/.test(a.sha ?? "")) throw new VendorError(`${a.name}: sha must be a full 40-hex commit`);
@@ -201,10 +204,10 @@ export function applyPackageTransforms(dest, entry) {
 
 // ---------- nested `uses:` rewriting ----------
 const USES_RE = /^(\s*-?\s*uses:\s*)(["']?)([^\s"'#]+)\2(\s*(?:#.*)?)$/gm;
-export function rewriteUsesText(text, { org, allowedUpstreams, vendored, pinNested }) {
+export function rewriteUsesText(text, { org, allowedUpstreams, vendored, pinNested, selfSha, selfTag }) {
   const missing = new Set(), unpinned = new Set(), changes = [];
   const out = text.replace(USES_RE, (m, lead, q, target, tail) => {
-    if (/^(\.\/|\$\/|docker:\/\/)/.test(target) || target.startsWith(`${org}/`)) return m;
+    if (/^(\.\/|docker:\/\/)/.test(target) || target.startsWith(`${org}/`)) return m;
     const at = target.indexOf("@");
     const path = at === -1 ? target : target.slice(0, at), ref = at === -1 ? "" : target.slice(at + 1);
     if (allowedUpstreams.some((p) => path.startsWith(p))) {
@@ -216,8 +219,9 @@ export function rewriteUsesText(text, { org, allowedUpstreams, vendored, pinNest
     }
     const repo = path.split("/").slice(0, 2).join("/");
     if (!vendored.has(repo)) { missing.add(target); return m; }
-    changes.push(`${target} -> $/vendor/${path}`);
-    return `${lead}$/vendor/${path} # vendored ${target}`;
+    const pinned = `${org}/vendor/${path}@${selfSha}`;
+    changes.push(`${target} -> ${pinned}`);
+    return `${lead}${pinned} # ${selfTag}`;
   });
   return { text: out, missing: [...missing], unpinned: [...unpinned], changes };
 }
@@ -226,7 +230,7 @@ export function rewriteUsesInTree(dest, entry, manifest) {
   const all = { missing: [], unpinned: [], changes: [] };
   for (const rel of walk(dest).filter((p) => /(^|\/)action\.ya?ml$/.test(p))) {
     const file = join(dest, rel);
-    const r = rewriteUsesText(readFileSync(file, "utf8"), { org: manifest.org, allowedUpstreams: manifest.allowed_upstreams, vendored, pinNested: entry.pin_nested });
+    const r = rewriteUsesText(readFileSync(file, "utf8"), { org: manifest.org, allowedUpstreams: manifest.allowed_upstreams, vendored, pinNested: entry.pin_nested, selfSha: manifest.self_sha, selfTag: manifest.self_tag });
     if (r.changes.length) writeFileSync(file, r.text);
     all.missing.push(...r.missing.map((t) => `${rel}: ${t}`)); all.unpinned.push(...r.unpinned.map((t) => `${rel}: ${t}`)); all.changes.push(...r.changes);
   }

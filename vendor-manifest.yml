@@ -13,8 +13,10 @@
 org: tempoxyz/gh-actions
 vendor_dir: vendor
 # Nested `uses:` lines pointing at these owners are left in place; the org policy allows them.
-# Every other nested third-party reference is rewritten to $/vendor/<owner>/<repo>, which
-# resolves to this repository at the commit the caller pinned (runner 2.336.0 or newer).
+# Every other nested third-party reference is rewritten to a pinned reference into this
+# repository. Keep self_sha and self_tag in sync with the latest published tag.
+self_sha: e8f9d5c23ab43d0645c6d50fb73e98b362cdec02
+self_tag: 2026-09-22T08-14-13Z-e8f9d5c2
 allowed_upstreams:
   - actions/
   - github/

@@ -71,7 +71,7 @@ gap is visible. Run this action in the repository that defines the workflow to c
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
 | `workflows` | Workflow files or directories to check (comma, space or newline separated). Directories are not recursed, matching GitHub's discovery. Action manifests found among the paths are skipped. | No | `.github/workflows` |
-| `actions` | Accepted `uses:` targets for the hardening step. An entry without `@ref` accepts any ref; an entry with one requires exactly that ref. | No | `tempoxyz/gh-actions/actions/secure-runner`, `$/actions/secure-runner` |
+| `actions` | Accepted `uses:` targets for the hardening step. An entry without `@ref` accepts any ref; an entry with one requires exactly that ref. | No | `tempoxyz/gh-actions/actions/secure-runner` |
 | `fail-on-violation` | Fail the step on any violation. `false` only annotates and reports through outputs. | No | `true` |
 
 ## Outputs

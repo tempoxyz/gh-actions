@@ -27,7 +27,7 @@ test("glob patterns are anchored at the tree root and match whole directories", 
   assert.equal(matchesAny("dist/index.js", ["src/", "**/*.map"]), null);
 });
 
-test("nested uses: third-party refs become $/vendor paths, GitHub-authored refs stay or get pinned", () => {
+test("nested uses: third-party refs get repository pins, GitHub-authored refs stay or get pinned", () => {
   const text = [
     "runs:",
     "  using: composite",
@@ -37,15 +37,14 @@ test("nested uses: third-party refs become $/vendor paths, GitHub-authored refs 
     "    - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1",
     "    - uses: 'docker/login-action@v3'",
     "    - uses: ./local",
-    "    - uses: $/vendor/x/y",
     "    - uses: docker://alpine:3",
     "    - uses: tempoxyz/gh-actions/actions/github-sts@abc",
   ].join("\n");
-  const ctx = { org: "tempoxyz/gh-actions", allowedUpstreams: ["actions/", "github/"], vendored: new Set(["peter-evans/create-pull-request"]), pinNested: { "actions/cache@v4": "0123456789012345678901234567890123456789" } };
+  const ctx = { org: "tempoxyz/gh-actions", allowedUpstreams: ["actions/", "github/"], vendored: new Set(["peter-evans/create-pull-request"]), pinNested: { "actions/cache@v4": "0123456789012345678901234567890123456789" }, selfSha: "e8f9d5c23ab43d0645c6d50fb73e98b362cdec02", selfTag: "2026-09-22T08-14-13Z-e8f9d5c2" };
   const r = rewriteUsesText(text, ctx);
   assert.deepEqual(r.missing, ["docker/login-action@v3"]);
   assert.deepEqual(r.unpinned, []);
-  assert.match(r.text, /uses: \$\/vendor\/peter-evans\/create-pull-request # vendored peter-evans\/create-pull-request@5f6978/);
+  assert.match(r.text, /uses: tempoxyz\/gh-actions\/vendor\/peter-evans\/create-pull-request@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2/);
   assert.match(r.text, /uses: actions\/cache@0123456789012345678901234567890123456789 # actions\/cache@v4/);
   assert.match(r.text, /uses: actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1/);
   assert.match(r.text, /uses: \.\/local/);

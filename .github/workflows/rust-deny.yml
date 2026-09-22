@@ -29,7 +29,7 @@ permissions: {}
 jobs:
   deny:
     # A relative reusable-workflow reference uses the same commit as this wrapper.
-    uses: $/.github/workflows/rust-lint.yml
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2
     permissions:
       contents: read
       id-token: write
