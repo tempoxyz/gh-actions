@@ -45,7 +45,7 @@ runs:
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
       # refresh pending assertions
-      uses: tempoxyz/gh-actions/actions/socket-sts@fb2c6690333fb13c3c3245fe439b711203d566a6
+      uses: tempoxyz/gh-actions/actions/socket-sts@fb2c6690333fb13c3c3245fe439b711203d566a6 # fb2c6690
       with:
         dev: ${{ inputs.dev }}
         upload-aegis-report: "false"
@@ -53,7 +53,7 @@ runs:
     - name: Exchange GitHub OIDC token for Aegis release access
       if: steps.oidc.outputs.available == 'true'
       id: release-token
-      uses: tempoxyz/gh-actions/actions/github-sts@fb2c6690333fb13c3c3245fe439b711203d566a6
+      uses: tempoxyz/gh-actions/actions/github-sts@fb2c6690333fb13c3c3245fe439b711203d566a6 # fb2c6690
       with:
         scope: tempoxyz/aegis
         policy: download-releases
