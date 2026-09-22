@@ -40,11 +40,11 @@ test("nested uses: third-party refs get repository pins, GitHub-authored refs st
     "    - uses: docker://alpine:3",
     "    - uses: tempoxyz/gh-actions/actions/github-sts@abc",
   ].join("\n");
-  const ctx = { org: "tempoxyz/gh-actions", allowedUpstreams: ["actions/", "github/"], vendored: new Set(["peter-evans/create-pull-request"]), pinNested: { "actions/cache@v4": "0123456789012345678901234567890123456789" }, selfSha: "e8f9d5c23ab43d0645c6d50fb73e98b362cdec02", selfTag: "2026-09-22T08-14-13Z-e8f9d5c2" };
+  const ctx = { org: "tempoxyz/gh-actions", allowedUpstreams: ["actions/", "github/"], vendored: new Set(["peter-evans/create-pull-request"]), pinNested: { "actions/cache@v4": "0123456789012345678901234567890123456789" }, selfSha: "7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b", selfTag: "2026-09-22T22-21-59Z-7e2ea6e1" };
   const r = rewriteUsesText(text, ctx);
   assert.deepEqual(r.missing, ["docker/login-action@v3"]);
   assert.deepEqual(r.unpinned, []);
-  assert.match(r.text, /uses: tempoxyz\/gh-actions\/vendor\/peter-evans\/create-pull-request@e8f9d5c23ab43d0645c6d50fb73e98b362cdec02 # 2026-09-22T08-14-13Z-e8f9d5c2/);
+  assert.match(r.text, /uses: tempoxyz\/gh-actions\/vendor\/peter-evans\/create-pull-request@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1/);
   assert.match(r.text, /uses: actions\/cache@0123456789012345678901234567890123456789 # actions\/cache@v4/);
   assert.match(r.text, /uses: actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1/);
   assert.match(r.text, /uses: \.\/local/);
