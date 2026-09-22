@@ -29,7 +29,7 @@ permissions: {}
 jobs:
   fmt:
     # Call the reusable workflow at the published, pinned commit.
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@676db9412d6e0ce0a00cbb101a85dcff90f17823
     permissions:
       contents: read
       id-token: write
