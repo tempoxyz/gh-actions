@@ -1,0 +1,32 @@
+---
+name: Cloudflare STS
+description: Exchange a GitHub OIDC token for a short-lived Cloudflare API token
+
+inputs:
+  account:
+    description: Cloudflare account alias (dev, prd, or infra)
+    required: true
+  policy:
+    description: Trust policy name
+    required: true
+  ttl:
+    description: Token lifetime (for example 45s, 5m, or 1h; maximum 1h)
+    required: false
+    default: 15m
+  host:
+    description: STS hostname used for HTTPS requests and the GitHub OIDC audience
+    required: false
+    default: cf-sts.tempoxyz.net
+
+outputs:
+  token:
+    description: Short-lived Cloudflare API token
+  expires-at:
+    description: Token expiration timestamp
+  account-id:
+    description: Cloudflare account ID for the selected environment
+
+runs:
+  using: node24
+  main: main.cjs
+  post: post.cjs
