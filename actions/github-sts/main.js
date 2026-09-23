@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const https = require("node:https");
+const { host } = require("./host.js");
 const { isTransientStatus, retry } = require("./retry.js");
 
 const REQUEST_TIMEOUT_MS = 10 * 1000;
@@ -59,9 +60,7 @@ function exchangeRequestOptions(oidc) {
 }
 
 async function main() {
-  const dev = input("dev");
-  const host = dev === "true" ? "gh-sts.tehq.dev" : dev === "false" ? "gh-sts.tehq.net" : null;
-  if (!host) throw new Error("dev must be either true or false");
+  const stsHost = host(input("host") || "gh-sts.tempoxyz.net");
 
   const oidcRequestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   const oidcRequestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
@@ -69,7 +68,7 @@ async function main() {
   if (!oidcRequestUrl) throw new Error("GitHub OIDC request URL is unavailable");
 
   const oidcUrl = new URL(oidcRequestUrl);
-  oidcUrl.searchParams.set("audience", host);
+  oidcUrl.searchParams.set("audience", stsHost);
   const oidcResponse = await retry(
     () => request(oidcUrl, {
       headers: { Authorization: `Bearer ${oidcRequestToken}` },
@@ -84,7 +83,7 @@ async function main() {
   const scope = input("scope") || process.env.GITHUB_REPOSITORY;
   // TTL parsing and bounds enforcement are deliberately server-side so a
   // modified or older action cannot bypass policy constraints.
-  const exchangeUrl = buildExchangeUrl(host, scope, input("policy"), input("ttl"));
+  const exchangeUrl = buildExchangeUrl(stsHost, scope, input("policy"), input("ttl"));
   const exchangeResponse = await retry(
     () => request(exchangeUrl, exchangeRequestOptions(oidc)),
     { label: "STS worker exchange", isTransient: (response) => isTransientStatus(response.status) },
@@ -110,7 +109,7 @@ async function main() {
   console.log(`::add-mask::${token}`);
   output("token", token);
   output("expires-at", expiresAt);
-  fs.appendFileSync(process.env.GITHUB_STATE, `token=${token}\nsts_host=${host}\n`);
+  fs.appendFileSync(process.env.GITHUB_STATE, `token=${token}\nsts_host=${stsHost}\n`);
 }
 
 if (require.main === module) {

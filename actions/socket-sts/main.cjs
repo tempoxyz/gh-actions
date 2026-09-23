@@ -66,7 +66,7 @@ async function main() {
   if (uploadAegisReport !== "true" && uploadAegisReport !== "false") {
     throw new Error("upload-aegis-report must be either true or false");
   }
-  const endpoint = host(process.env.INPUT_DEV || "false");
+  const endpoint = host(process.env.INPUT_HOST || "socket-sts.tempoxyz.net");
   const oidcRequestToken = required("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
   const rawOidcUrl = required("ACTIONS_ID_TOKEN_REQUEST_URL");
   const oidcUrl = new URL(rawOidcUrl);
@@ -139,7 +139,7 @@ async function main() {
     throw new Error("Socket STS response is invalid");
   }
   publishToken(result.token, result.expires_at);
-  append(required("GITHUB_STATE"), "dev", process.env.INPUT_DEV || "false");
+  append(required("GITHUB_STATE"), "host", endpoint);
   append(required("GITHUB_STATE"), "upload_aegis_report", uploadAegisReport);
   append(required("GITHUB_STATE"), "action", process.env.GITHUB_ACTION || "socket-sts");
 }

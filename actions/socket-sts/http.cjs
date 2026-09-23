@@ -190,10 +190,11 @@ async function retry(operation, options = {}) {
   return last;
 }
 
-function host(dev) {
-  if (dev === "true") return "socket-sts.tehq.dev";
-  if (dev === "false") return "socket-sts.tehq.net";
-  throw new Error("dev must be either true or false");
+function host(value) {
+  if (["socket-sts.tempoxyz.net", "socket-sts.tehq.dev"].includes(value)) {
+    return value;
+  }
+  throw new Error("host must be socket-sts.tempoxyz.net or socket-sts.tehq.dev");
 }
 
 module.exports = {

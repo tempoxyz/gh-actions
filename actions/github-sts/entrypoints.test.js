@@ -21,12 +21,12 @@ const {
 const actionDirectory = __dirname;
 
 test("exchange request forwards ttl only when specified", () => {
-  const withTtl = buildExchangeUrl("gh-sts.tehq.net", "tempoxyz/example", "deploy", "30s");
+  const withTtl = buildExchangeUrl("gh-sts.tempoxyz.net", "tempoxyz/example", "deploy", "30s");
   assert.equal(withTtl.searchParams.get("scope"), "tempoxyz/example");
   assert.equal(withTtl.searchParams.get("identity"), "deploy");
   assert.equal(withTtl.searchParams.get("ttl"), "30s");
 
-  const defaultTtl = buildExchangeUrl("gh-sts.tehq.net", "tempoxyz/example", "deploy", "");
+  const defaultTtl = buildExchangeUrl("gh-sts.tempoxyz.net", "tempoxyz/example", "deploy", "");
   assert.equal(defaultTtl.searchParams.has("ttl"), false);
 });
 
@@ -66,7 +66,7 @@ test("main entrypoint executes as CommonJS", () => {
     env: {
       ...process.env,
       GITHUB_REPOSITORY_OWNER: "tempoxyz",
-      INPUT_DEV: "false",
+      INPUT_HOST: "gh-sts.tempoxyz.net",
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
       ACTIONS_ID_TOKEN_REQUEST_URL: "",
     },
@@ -85,7 +85,7 @@ for (const owner of ["paradigmxyz", "newly-onboarded-org", ""]) {
       env: {
         ...process.env,
         GITHUB_REPOSITORY_OWNER: owner,
-        INPUT_DEV: "invalid",
+        INPUT_HOST: "invalid",
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
         ACTIONS_ID_TOKEN_REQUEST_URL: "",
       },
@@ -93,7 +93,7 @@ for (const owner of ["paradigmxyz", "newly-onboarded-org", ""]) {
     const output = `${result.stdout}${result.stderr}`;
 
     assert.equal(result.status, 1);
-    assert.match(output, /dev must be either true or false/);
+    assert.match(output, /host must be gh-sts\.tempoxyz\.net or gh-sts\.tehq\.dev/);
     assert.doesNotMatch(output, /only supports repositories owned/);
   });
 }
@@ -103,7 +103,7 @@ for (const status of [200, 403]) {
     const env = {
       GITHUB_REPOSITORY_OWNER: "newly-onboarded-org",
       GITHUB_REPOSITORY: "newly-onboarded-org/example",
-      INPUT_DEV: "false",
+      INPUT_HOST: "gh-sts.tempoxyz.net",
       INPUT_SCOPE: "tempoxyz/aegis",
       INPUT_POLICY: "download-releases",
       INPUT_TTL: "15m",
@@ -146,7 +146,7 @@ for (const status of [200, 403]) {
       assert.deepEqual(writes.mock.calls.map(({ arguments: args }) => args), [
         ["test-output", "token=test-installation-token\n"],
         ["test-output", "expires-at=2030-01-01T00:00:00Z\n"],
-        ["test-state", "token=test-installation-token\nsts_host=gh-sts.tehq.net\n"],
+        ["test-state", "token=test-installation-token\nsts_host=gh-sts.tempoxyz.net\n"],
       ]);
       assert.deepEqual(logs.mock.calls.map(({ arguments: args }) => args), [
         ["::add-mask::test-installation-token"],
@@ -157,9 +157,9 @@ for (const status of [200, 403]) {
       assert.equal(logs.mock.callCount(), 0);
     }
     assert.equal(calls.length, 2);
-    assert.equal(calls[0].url.searchParams.get("audience"), "gh-sts.tehq.net");
+    assert.equal(calls[0].url.searchParams.get("audience"), "gh-sts.tempoxyz.net");
     assert.equal(calls[0].options.headers.Authorization, "Bearer test-request-token");
-    assert.equal(calls[1].url.href, "https://gh-sts.tehq.net/sts/exchange?scope=tempoxyz%2Faegis&identity=download-releases&ttl=15m");
+    assert.equal(calls[1].url.href, "https://gh-sts.tempoxyz.net/sts/exchange?scope=tempoxyz%2Faegis&identity=download-releases&ttl=15m");
     assert.equal(calls[1].options.method, "POST");
     assert.equal(calls[1].options.headers.Authorization, "Bearer test-oidc");
   });
@@ -211,7 +211,7 @@ test("workflow cleanup revokes through STS without calling GitHub directly", asy
 test("workflow cleanup falls back to GitHub and then reconciles the STS ledger", async () => {
   const calls = [];
   const statuses = [404, 204, 204];
-  await revokeToken("test-token", "gh-sts.tehq.net", {
+  await revokeToken("test-token", "gh-sts.tempoxyz.net", {
     request: async (url) => {
       calls.push(url);
       return statuses.shift();
@@ -221,9 +221,9 @@ test("workflow cleanup falls back to GitHub and then reconciles the STS ledger",
   });
 
   assert.deepEqual(calls, [
-    "https://gh-sts.tehq.net/sts/exchange",
+    "https://gh-sts.tempoxyz.net/sts/exchange",
     "https://api.github.com/installation/token",
-    "https://gh-sts.tehq.net/sts/exchange",
+    "https://gh-sts.tempoxyz.net/sts/exchange",
   ]);
 });
 

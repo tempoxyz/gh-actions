@@ -1,4 +1,5 @@
 const https = require("node:https");
+const { host } = require("./host.js");
 const { isTransientStatus, retry } = require("./retry.js");
 
 function request(url, options = {}) {
@@ -39,8 +40,13 @@ async function revokeToken(token, stsHost, dependencies = {}) {
   const send = dependencies.request || request;
   const withRetry = dependencies.retry || retry;
   const log = dependencies.console || console;
-  const knownStsHost = stsHost === "gh-sts.tehq.dev" || stsHost === "gh-sts.tehq.net";
-  const stsUrl = knownStsHost ? `https://${stsHost}/sts/exchange` : null;
+  const stsUrl = (() => {
+    try {
+      return `https://${host(stsHost)}/sts/exchange`;
+    } catch {
+      return null;
+    }
+  })();
   let stsStatus = null;
 
   if (stsUrl) {

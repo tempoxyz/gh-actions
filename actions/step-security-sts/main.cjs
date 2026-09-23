@@ -40,9 +40,8 @@ function retryExchange(operation, options = {}) {
   );
 }
 
-async function exchangeToken(rawEndpoint = required("INPUT_STS-URL")) {
-  maskSecret(rawEndpoint);
-  const sts = endpoint(rawEndpoint);
+async function exchangeToken(rawHost = required("INPUT_HOST")) {
+  const sts = endpoint(rawHost);
   const oidcRequestToken = required("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
   const rawOidcUrl = required("ACTIONS_ID_TOKEN_REQUEST_URL");
   const oidcUrl = new URL(rawOidcUrl);
@@ -104,14 +103,14 @@ async function exchangeToken(rawEndpoint = required("INPUT_STS-URL")) {
     token: result.token,
     expiresAt: result.expires_at,
     leaseId: result.lease_id,
-    rawEndpoint,
+    rawHost,
   };
 }
 
 async function main() {
   const result = await exchangeToken();
   publishToken(result.token, result.expiresAt, result.leaseId);
-  append(required("GITHUB_STATE"), "sts_url", result.rawEndpoint);
+  append(required("GITHUB_STATE"), "sts_host", result.rawHost);
 }
 
 if (require.main === module) {

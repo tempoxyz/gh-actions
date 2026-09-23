@@ -2,10 +2,10 @@ name: "Socket STS"
 description: "Exchange a GitHub Actions OIDC token for a short-lived Socket API token"
 
 inputs:
-  dev:
-    description: "Use the development Socket STS endpoint"
+  host:
+    description: "Socket STS hostname used for HTTPS requests and the GitHub OIDC audience"
     required: false
-    default: "false"
+    default: "socket-sts.tempoxyz.net"
   upload-aegis-report:
     description: "Upload the final Aegis audit log as a job artifact"
     required: false

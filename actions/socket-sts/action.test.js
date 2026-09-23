@@ -19,10 +19,10 @@ const { ASSERTION_ATTEMPTS, exchangeWithFreshAssertion, publishToken } = require
 const { buildRevokeRequest } = require("./post.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
-test("selects the fixed development and production endpoints", () => {
-  assert.equal(host("true"), "socket-sts.tehq.dev");
-  assert.equal(host("false"), "socket-sts.tehq.net");
-  assert.throws(() => host("yes"), /dev must be either true or false/);
+test("accepts the supported development and production hosts", () => {
+  assert.equal(host("socket-sts.tempoxyz.net"), "socket-sts.tempoxyz.net");
+  assert.equal(host("socket-sts.tehq.dev"), "socket-sts.tehq.dev");
+  assert.throws(() => host("socket-sts.tehq.net"), /host must be/);
 });
 
 test("retries failed HTTP responses with exponential backoff", async () => {
@@ -230,7 +230,7 @@ test("main fails closed without GitHub id-token permission", () => {
     encoding: "utf8",
     env: {
       ...process.env,
-      INPUT_DEV: "false",
+      INPUT_HOST: "socket-sts.tempoxyz.net",
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
       ACTIONS_ID_TOKEN_REQUEST_URL: "",
     },
@@ -283,7 +283,7 @@ test("masks the token before publishing it as output or state", () => {
 
 test("revokes tokens by deleting the exchange resource", () => {
   const token = "sktsec_test_short_lived_token_api";
-  const revoke = buildRevokeRequest(token, "true");
+  const revoke = buildRevokeRequest(token, "socket-sts.tehq.dev");
 
   assert.equal(revoke.url, "https://socket-sts.tehq.dev/sts/exchange");
   assert.equal(revoke.options.method, "DELETE");

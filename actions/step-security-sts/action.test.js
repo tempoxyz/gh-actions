@@ -7,33 +7,25 @@ const { endpoint, rateLimitDelay, retry, retryRateLimited } = require("./http.cj
 const { publishToken, retryExchange } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 
-const secretUrl = "https://sts.example.test";
+const stsHost = "ss-sts.tempoxyz.net";
 const leaseId = "11111111-1111-4111-8111-111111111111";
 
-test("uses a validated secret endpoint without embedding deployment hosts", () => {
-  assert.deepEqual(endpoint(secretUrl), {
-    audience: "sts.example.test",
-    origin: secretUrl,
+test("accepts the supported development and production hosts", () => {
+  assert.deepEqual(endpoint(stsHost), {
+    audience: stsHost,
+    origin: `https://${stsHost}`,
   });
-  for (const value of [
-    "http://sts.example.test",
-    "https://user@sts.example.test",
-    "https://sts.example.test:8443",
-    "https://sts.example.test/path",
-    "https://sts.example.test?query=1",
-    "https://sts.example.test/#fragment",
-  ]) {
-    assert.throws(() => endpoint(value), /STS URL is invalid/);
+  assert.deepEqual(endpoint("ss-sts.tehq.dev"), {
+    audience: "ss-sts.tehq.dev",
+    origin: "https://ss-sts.tehq.dev",
+  });
+  for (const value of ["ss-sts.tehq.net", "https://ss-sts.tempoxyz.net", "sts.example.test"]) {
+    assert.throws(() => endpoint(value), /host must be/);
   }
 
-  for (const filename of [
-    "action.yml",
-    "http.cjs",
-    "main.cjs",
-    "post.cjs",
-  ]) {
+  for (const filename of ["action.yml", "http.cjs", "main.cjs", "post.cjs"]) {
     const source = fs.readFileSync(path.join(__dirname, filename), "utf8");
-    assert.doesNotMatch(source, /tehq\.|workers\.dev/);
+    assert.doesNotMatch(source, /tehq\.net|workers\.dev/);
   }
 });
 
@@ -130,12 +122,12 @@ test("fails instead of waiting more than two minutes for an STS rate limit", asy
   );
 });
 
-test("main fails closed without the secret STS URL", () => {
+test("main fails closed without an STS host", () => {
   const result = spawnSync(process.execPath, [path.join(__dirname, "main.cjs")], {
     encoding: "utf8",
     env: {
       ...process.env,
-      "INPUT_STS-URL": "",
+      INPUT_HOST: "",
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
       ACTIONS_ID_TOKEN_REQUEST_URL: "",
     },
@@ -143,7 +135,7 @@ test("main fails closed without the secret STS URL", () => {
   assert.equal(result.status, 1);
   assert.match(
     `${result.stdout}${result.stderr}`,
-    /INPUT_STS-URL is missing/,
+    /INPUT_HOST is missing/,
   );
 });
 
@@ -182,11 +174,11 @@ test("masks the token before publishing it as output or state", () => {
   ]);
 });
 
-test("closes STS leases through the secret endpoint", () => {
+test("closes STS leases through the selected host", () => {
   const token = "step_test_short_lived_api_key";
-  const revoke = buildRevokeRequest(token, leaseId, secretUrl);
+  const revoke = buildRevokeRequest(token, leaseId, stsHost);
 
-  assert.equal(revoke.url, `${secretUrl}/sts/exchange`);
+  assert.equal(revoke.url, `https://${stsHost}/sts/exchange`);
   assert.equal(revoke.options.method, "DELETE");
   assert.equal(revoke.options.headers["content-type"], "application/json");
   assert.deepEqual(JSON.parse(revoke.body), { token, lease_id: leaseId });

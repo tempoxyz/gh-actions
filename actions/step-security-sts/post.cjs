@@ -1,9 +1,9 @@
 const { endpoint, request, retry } = require("./http.cjs");
 
-function buildRevokeRequest(token, leaseId, rawEndpoint) {
+function buildRevokeRequest(token, leaseId, rawHost) {
   const body = JSON.stringify({ token, lease_id: leaseId });
   return {
-    url: `${endpoint(rawEndpoint).origin}/sts/exchange`,
+    url: `${endpoint(rawHost).origin}/sts/exchange`,
     options: {
       method: "DELETE",
       headers: {
@@ -34,7 +34,7 @@ async function main() {
   const revoke = buildRevokeRequest(
     token,
     leaseId,
-    process.env.STATE_sts_url || "",
+    process.env.STATE_sts_host || "",
   );
   const response = await retry(() =>
     request(revoke.url, revoke.options, revoke.body),

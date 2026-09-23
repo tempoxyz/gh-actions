@@ -2,9 +2,10 @@ name: "Step Security STS"
 description: "Exchange a GitHub Actions OIDC token for a short-lived Step Security API key"
 
 inputs:
-  sts-url:
-    description: "Secret URL of the Step Security STS endpoint"
-    required: true
+  host:
+    description: "Step Security STS hostname used for HTTPS requests and the GitHub OIDC audience"
+    required: false
+    default: "ss-sts.tempoxyz.net"
 
 outputs:
   token:
