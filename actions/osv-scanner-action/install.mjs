@@ -18,7 +18,37 @@ export function verifyChecksum(bytes, expected, name) {
   if (createHash('sha256').update(bytes).digest('hex') !== expected) throw new Error(`Checksum mismatch: ${name}`);
 }
 
-async function download(release, name, directory) {
+const DOWNLOAD_ATTEMPTS = 3;
+
+function exponentialDelay(attempt) {
+  return 1_000 * 2 ** attempt;
+}
+
+function retryAfterDelay(headers, now = Date.now()) {
+  const value = headers?.get?.('retry-after') ?? headers?.['retry-after'];
+  if (typeof value !== 'string') return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : null;
+}
+
+function retryableStatus(status) {
+  return status === 409 || status === 429 || (status >= 500 && status <= 599);
+}
+
+export function retryDelay(response, attempt, now = Date.now()) {
+  return response.status === 429
+    ? retryAfterDelay(response.headers, now) ?? exponentialDelay(attempt)
+    : exponentialDelay(attempt);
+}
+
+export async function download(
+  release,
+  name,
+  directory,
+  { fetch: request = fetch, sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay)) } = {},
+) {
   const path = join(directory, name);
   const expected = release.assets[name];
   if (!expected) throw new Error(`No pinned checksum for ${name}`);
@@ -28,17 +58,26 @@ async function download(release, name, directory) {
   }
   const url = `https://github.com/${release.repository}/releases/download/${release.version}/${name}`;
   let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < DOWNLOAD_ATTEMPTS; attempt++) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
-      if (!response.ok) throw new Error(`Download ${name}: HTTP ${response.status}`);
+      const response = await request(url, { signal: AbortSignal.timeout(120_000) });
+      if (!response.ok) {
+        lastError = new Error(`Download ${name}: HTTP ${response.status}`);
+        if (!retryableStatus(response.status) || attempt === DOWNLOAD_ATTEMPTS - 1) break;
+        await sleep(retryDelay(response, attempt));
+        continue;
+      }
       const bytes = Buffer.from(await response.arrayBuffer());
       verifyChecksum(bytes, expected, name);
       const temporary = `${path}.${process.pid}.tmp`;
       writeFileSync(temporary, bytes, { mode: 0o700 });
       renameSync(temporary, path);
       return path;
-    } catch (error) { lastError = error; }
+    } catch (error) {
+      lastError = error;
+      if (attempt === DOWNLOAD_ATTEMPTS - 1) break;
+      await sleep(exponentialDelay(attempt));
+    }
   }
   throw lastError;
 }
