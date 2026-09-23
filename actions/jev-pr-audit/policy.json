@@ -1,0 +1,19 @@
+{
+  "version": "tempo-jev-v1",
+  "repositories": ["tempoxyz/tempo-private-fork"],
+  "model": "typesafe/jev-1.13",
+  "endpoint": "https://openrouter.ai/api/alpha/decisions",
+  "status_context": "Cyclops / Jev audit",
+  "completion_bot_id": 258930814,
+  "decision_bot_id": 41898282,
+  "critical_threshold": 0.2,
+  "deep_threshold": 0.2,
+  "perf_threshold": 0.5,
+  "perf_uncertain_threshold": 0.2,
+  "profiles": {
+    "quick": {"iterations": 1, "budget_seconds": 600, "reserve_seconds": 300, "workers": [{"backend":"codex","provider":"openai","model":"gpt-6-sol","thinking":"medium"}]},
+    "standard": {"iterations": 1, "budget_seconds": 1800, "reserve_seconds": 600, "workers": [{"backend":"codex","provider":"openai","model":"gpt-6-sol","thinking":"high"},{"backend":"claude","provider":"anthropic","model":"claude-opus-5-5","thinking":"high"}]},
+    "deep": {"iterations": 2, "budget_seconds": 3600, "reserve_seconds": 900, "workers": [{"backend":"codex","provider":"openai","model":"gpt-6-sol","thinking":"max"},{"backend":"claude","provider":"anthropic","model":"claude-opus-5-5","thinking":"xhigh"},{"backend":"codex","provider":"openai","model":"gpt-6-astra","thinking":"high"}]},
+    "critical": {"iterations": 3, "budget_seconds": 7200, "reserve_seconds": 1800, "workers": [{"backend":"codex","provider":"openai","model":"gpt-6-sol","thinking":"max"},{"backend":"claude","provider":"anthropic","model":"claude-opus-5-5","thinking":"xhigh"},{"backend":"codex","provider":"openai","model":"gpt-6-astra","thinking":"max"}]}
+  }
+}

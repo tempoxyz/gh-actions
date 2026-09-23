@@ -1,0 +1,35 @@
+name: Jev PR audit routing
+description: Classify an allowed Tempo PR and gate merging on exact-revision Cyclops completion
+inputs:
+  github-token:
+    required: true
+    description: Repository-scoped token for PR metadata, comments and statuses
+  openrouter-api-key:
+    required: false
+    description: Jev API key; absence conservatively requires an audit
+  events-key:
+    required: false
+    description: Existing Cyclops event client key
+  events-cert:
+    required: false
+    description: Existing Cyclops event client certificate
+  events-args:
+    required: false
+    description: Existing trusted Cyclops HTTPS event endpoint arguments
+  worker-image:
+    required: false
+    description: Immutable pilot worker image with strict completion receipt support
+runs:
+  using: composite
+  steps:
+    - name: Route or reconcile audit
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
+        EVENTS_KEY: ${{ inputs.events-key }}
+        EVENTS_CERT: ${{ inputs.events-cert }}
+        EVENTS_ARGS: ${{ inputs.events-args }}
+        CYCLOPS_JEV_IMAGE: ${{ inputs.worker-image }}
+        ROUTER_PATH: ${{ github.action_path }}
+      run: python3 "$ROUTER_PATH/main.py"
