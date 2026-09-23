@@ -1,6 +1,10 @@
 name: Jev PR audit routing
 description: Classify an allowed Tempo PR and gate merging on exact-revision Cyclops completion
 inputs:
+  evaluation-prs:
+    required: false
+    default: ''
+    description: Read-only evaluation of 1-50 merged public Tempo PR numbers; no statuses, comments, or audit events
   classification-only:
     required: false
     default: 'false'
@@ -36,5 +40,11 @@ runs:
         EVENTS_ARGS: ${{ inputs.events-args }}
         CYCLOPS_JEV_IMAGE: ${{ inputs.worker-image }}
         JEV_CLASSIFICATION_ONLY: ${{ inputs.classification-only }}
+        JEV_EVALUATION_PRS: ${{ inputs.evaluation-prs }}
         ROUTER_PATH: ${{ github.action_path }}
-      run: python3 "$ROUTER_PATH/main.py"
+      run: |
+        if [[ -n "$JEV_EVALUATION_PRS" ]]; then
+          python3 "$ROUTER_PATH/evaluate.py"
+        else
+          python3 "$ROUTER_PATH/main.py"
+        fi

@@ -242,17 +242,7 @@ class Controller:
             'scope': 'At most four nearby source/module/config files. Not exhaustive caller discovery.',
             'tree_truncated': bool(tree.get('truncated'))})
 
-    def classify(self, retry=False):
-        if self.pull['state'] != 'open':
-            return
-        comment, previous = self.existing()
-        if previous and not retry:
-            self.reconcile(comment, previous)
-            return
-        self.status('pending', 'Jev: classifying this PR revision')
-        if self.pull['draft']:
-            self.status('pending', 'Jev: audit will start when ready for review')
-            return
+    def assess(self):
         files, units, complete = self.evidence()
         responses = []
         classifier_errors = []
@@ -304,6 +294,25 @@ class Controller:
                     attempt.update(outcome='context_pass_failed', error=type(error).__name__)
                     # Keep the first, uncertain decision; failed retrieval never permits skip.
         plan = route(files, responses, complete, POLICY)
+        return {'plan': plan, 'units': units, 'responses': responses,
+                'first_responses': first_responses, 'context_passes': context_passes,
+                'evidence_complete': complete, 'classifier_errors': classifier_errors}
+
+    def classify(self, retry=False):
+        if self.pull['state'] != 'open':
+            return
+        comment, previous = self.existing()
+        if previous and not retry:
+            self.reconcile(comment, previous)
+            return
+        self.status('pending', 'Jev: classifying this PR revision')
+        if self.pull['draft']:
+            self.status('pending', 'Jev: audit will start when ready for review')
+            return
+        assessment = self.assess()
+        plan = assessment['plan']
+        units = assessment.pop('units')
+        responses = assessment['responses']
         identity = {'repository': self.repo, 'pr': self.number, 'head': self.head, 'base': self.base,
                     'controller_hash': controller_hash(), 'evidence_hash': digest(units)}
         decision_id = digest(identity)
@@ -314,10 +323,8 @@ class Controller:
                         classification_only=classification_only,
                         created_at=now(), phase='skipped' if plan['mode'] == 'skip' else ('classified' if classification_only else 'dispatching'),
                         classifier_models=sorted(set(r.get('model', '') for r in responses)))
-        Path(os.environ.get('RUNNER_TEMP', '/tmp'), 'jev-decision.json').write_text(json.dumps(
-            {'decision': decision, 'responses': responses, 'first_responses': first_responses,
-             'context_passes': context_passes, 'evidence_complete': complete,
-             'classifier_errors': classifier_errors}, indent=2))
+        Path(os.environ.get('RUNNER_TEMP', '/tmp'), 'jev-decision.json').write_text(
+            json.dumps(dict(assessment, decision=decision), indent=2))
         if not self.current():
             return
         comment = self.write_decision(decision)
