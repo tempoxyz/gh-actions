@@ -1,5 +1,5 @@
 const fs = require("node:fs");
-const { endpoint, request, retry, retryRateLimited } = require("./http.cjs");
+const { endpoint, isTransientStatus, request, retry, retryRateLimited } = require("./http.cjs");
 
 function required(name, env = process.env) {
   const value = env[name] || "";
@@ -28,6 +28,18 @@ function publishToken(token, expiresAt, leaseId) {
   append(required("GITHUB_STATE"), "lease_id", leaseId);
 }
 
+function retryExchange(operation, options = {}) {
+  return retryRateLimited(
+    () => retry(operation, {
+      // The outer handler honors Retry-After for rate limits.
+      shouldRetryResponse: (response) =>
+        response.status !== 429 && isTransientStatus(response.status),
+      sleep: options.sleep,
+    }),
+    options,
+  );
+}
+
 async function exchangeToken(rawEndpoint = required("INPUT_STS-URL")) {
   maskSecret(rawEndpoint);
   const sts = endpoint(rawEndpoint);
@@ -53,19 +65,15 @@ async function exchangeToken(rawEndpoint = required("INPUT_STS-URL")) {
 
   // The STS makes exact OIDC assertion replays idempotent, so retrying a
   // transient response recovers the same lease instead of issuing another one.
-  const exchange = await retryRateLimited(() =>
-    retry(
-      () =>
-        request(`${sts.origin}/sts/exchange`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${oidc}`,
-            "content-length": "0",
-            "user-agent": "tempoxyz-step-security-sts-action",
-          },
-        }),
-      { retryHttpResponses: false },
-    ),
+  const exchange = await retryExchange(() =>
+    request(`${sts.origin}/sts/exchange`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${oidc}`,
+        "content-length": "0",
+        "user-agent": "tempoxyz-step-security-sts-action",
+      },
+    }),
   );
   let result = {};
   try {
@@ -120,4 +128,5 @@ module.exports = {
   maskSecret,
   publishToken,
   required,
+  retryExchange,
 };
