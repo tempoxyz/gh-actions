@@ -45,7 +45,7 @@ runs:
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
       # refresh pending assertions
-      uses: tempoxyz/gh-actions/actions/socket-sts@e85cd953db5d69bab527fdfba8c5d52374fd69a8 # zizmor: ignore[unpinned-uses] Commit is SHA-pinned; its release tag is created after merge.
+      uses: tempoxyz/gh-actions/actions/socket-sts@645c7bc579435697435a3990ee1d93aeeb0e65e7 # zizmor: ignore[unpinned-uses] Commit is SHA-pinned; its release tag is created after merge.
       with:
         host: ${{ inputs.socket-sts-host }}
         upload-aegis-report: "false"
@@ -53,7 +53,7 @@ runs:
     - name: Exchange GitHub OIDC token for Aegis release access
       if: steps.oidc.outputs.available == 'true'
       id: release-token
-      uses: tempoxyz/gh-actions/actions/github-sts@e85cd953db5d69bab527fdfba8c5d52374fd69a8 # zizmor: ignore[unpinned-uses] Commit is SHA-pinned; its release tag is created after merge.
+      uses: tempoxyz/gh-actions/actions/github-sts@645c7bc579435697435a3990ee1d93aeeb0e65e7 # zizmor: ignore[unpinned-uses] Commit is SHA-pinned; its release tag is created after merge.
       with:
         scope: tempoxyz/aegis
         policy: download-releases
