@@ -398,6 +398,21 @@ jobs:
 
 For required-check setup and recovery from missing scans, see [Required status checks](actions/scan-github-actions/README.md#required-status-checks). Callers grant `id-token: write` for secure-runner OIDC authentication; no STS URL secret is needed.
 
+The secure-runner checker includes a narrow default for reviewed status-only jobs. Add
+repository-specific exceptions with exact workflow paths/job IDs and review reasons:
+
+```yaml
+with:
+  secure-runner-exemptions: |
+    {
+      ".github/workflows/ci.yml:codeql": "Reviewed static analysis with build-mode none; no project dependency installation."
+    }
+```
+
+These add to the defaults; all other jobs remain enforced. Invalid or unused entries fail.
+Exceptions do not disable other scanners or remove secure-runner steps. See
+[exemption rules and limitations](actions/ensure-secure-runner/README.md#defaults-and-additional-exemptions).
+
 By default zizmor scans the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow zizmor's scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own. Pinact uses its own file discovery; monorepos with action manifests outside its defaults can set `files` in their Pinact configuration.
 
 Optional inputs:

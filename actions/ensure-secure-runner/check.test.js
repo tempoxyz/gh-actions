@@ -376,7 +376,9 @@ test("the reusable scanner relies on the accepted-action default", () => {
   const scanner = readFileSync(join(repoRoot, ".github", "workflows", "scan-github-actions.yml"), "utf8");
   const checker = scanner.match(/- name: Ensure every job starts with secure-runner\n([\s\S]*?)(?=\n      - name:)/)?.[1] ?? "";
   assert.match(checker, /uses: tempoxyz\/gh-actions\/actions\/ensure-secure-runner@[0-9a-f]{40}/);
-  assert.doesNotMatch(checker, /^\s+with:/m, "the reusable scanner must not narrow accepted action references");
+  assert.doesNotMatch(checker, /^\s+actions:/m, "the reusable scanner must not narrow accepted action references");
+  assert.ok(checker.includes("exemptions: ${{ inputs.secure-runner-exemptions }}"));
+  assert.match(scanner, /secure-runner-exemptions:\n[\s\S]*?type: string\n\s+default: "\{\}"/);
 });
 
 test("the committed parser bundle matches the version pinned in package.json", () => {

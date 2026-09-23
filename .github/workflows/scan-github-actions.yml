@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: ""
+      secure-runner-exemptions:
+        description: "JSON object mapping exact workflow-file:job-id keys to reviewed exemption reasons, in addition to shared status-only defaults. Invalid or unused entries fail."
+        required: false
+        type: string
+        default: "{}"
       actionlint:
         description: "Run actionlint (workflow syntax, expression, and shellcheck/pyflakes checks) in addition to the zizmor security scan."
         required: false
@@ -73,7 +78,9 @@ jobs:
           persist-credentials: false
 
       - name: Ensure every job starts with secure-runner
-        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@d39baa2b43f5eba5d261c047521a4fbd56101129 # 2026-09-23T04-31-11Z-d39baa2b
+        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@b034d5783752feff450078e0b807ad186a40d550
+        with:
+          exemptions: ${{ inputs.secure-runner-exemptions }}
 
       - name: Resolve pinact config
         if: ${{ inputs.pinact }}
