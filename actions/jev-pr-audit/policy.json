@@ -1,6 +1,6 @@
 {
   "version": "tempo-jev-v1",
-  "repositories": ["tempoxyz/tempo-private-fork"],
+  "repositories": ["tempoxyz/cyclops-canary"],
   "model": "typesafe/jev-1.13",
   "endpoint": "https://openrouter.ai/api/alpha/decisions",
   "status_context": "Cyclops / Jev audit",

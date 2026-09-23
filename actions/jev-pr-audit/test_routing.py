@@ -64,7 +64,7 @@ class RoutingTests(unittest.TestCase):
 
 class ReceiptTests(unittest.TestCase):
     def setUp(self):
-        self.d=dict(repository='tempoxyz/tempo-private-fork',pr=10,head='a'*40,base='b'*40,run_label='jev-123',decision_id='d',plan_hash='h',plan=route([file('tests/test.rs')],[answer('tests')],True,POLICY))
+        self.d=dict(repository='tempoxyz/cyclops-canary',pr=10,head='a'*40,base='b'*40,run_label='jev-123',decision_id='d',plan_hash='h',plan=route([file('tests/test.rs')],[answer('tests')],True,POLICY))
         self.r={k:self.d[k] for k in ('repository','pr','head','base','run_label','decision_id','plan_hash')}
         self.r.update(status='completed',perf=False,review_id=1,workers=[dict(id='pr-10-w1',engine='codex/gpt-6-sol',thinking='medium',passes=1)])
         self.review=dict(id=1,commit_id='a'*40,state='COMMENTED')
@@ -90,7 +90,7 @@ class ReceiptTests(unittest.TestCase):
         self.assertIsNone(main.unpack(main.DECISION+'invalid -->',main.DECISION))
     def test_non_bot_callback_ignored(self):
         event={'comment':{'user':{'id':1},'body':main.pack(self.r,main.RECEIPT)},'issue':{'number':10,'pull_request':{}}}
-        with patch.dict(main.os.environ, {'GITHUB_EVENT_PATH':'event','GITHUB_REPOSITORY':'tempoxyz/tempo-private-fork','GITHUB_EVENT_NAME':'issue_comment'}), patch.object(Path,'read_text',return_value=json.dumps(event)), patch.object(main,'Controller') as controller:
+        with patch.dict(main.os.environ, {'GITHUB_EVENT_PATH':'event','GITHUB_REPOSITORY':'tempoxyz/cyclops-canary','GITHUB_EVENT_NAME':'issue_comment'}), patch.object(Path,'read_text',return_value=json.dumps(event)), patch.object(main,'Controller') as controller:
             main.main(); controller.assert_not_called()
 
 if __name__ == '__main__': unittest.main()

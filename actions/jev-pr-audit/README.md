@@ -1,6 +1,6 @@
 # Jev PR audit pilot
 
-Enabled only for `tempoxyz/tempo-private-fork`. Uses Jev 1.13 through OpenRouter's
+Enabled only for `tempoxyz/cyclops-canary`. Uses Jev 1.13 through OpenRouter's
 Decisions API, a trusted path floor, and fixed worker profiles. Quick uses Sol
 medium; standard uses Sol/Opus high; deep and critical add Astra. No fourth worker.
 Performance-critical changes enable the existing four-pass `perf` mode.
