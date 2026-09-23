@@ -398,6 +398,20 @@ jobs:
 
 For required-check setup and recovery from missing scans, see [Required status checks](actions/scan-github-actions/README.md#required-status-checks). Callers grant `id-token: write` for secure-runner OIDC authentication; no STS URL secret is needed.
 
+The secure-runner presence check fails on violations by default. To keep its reports without
+blocking CI, set:
+
+```yaml
+with:
+  secure-runner-fail-on-violation: false
+```
+
+This only makes the presence check advisory: violation annotations and the summary remain,
+including the checker's existing error annotations and final warning. Existing Aegis and
+StepSecurity steps, zizmor, actionlint, and Pinact are unchanged. Missing secure-runner steps
+will no longer block CI, so newly unprotected jobs can pass. Checker setup failures (such as
+missing workflow paths) still fail.
+
 By default zizmor scans the whole repo, so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Repos that vendor third-party workflows/actions can narrow zizmor's scope with the `paths` input (e.g. to `.github/`) to avoid flagging code they don't own. Pinact uses its own file discovery; monorepos with action manifests outside its defaults can set `files` in their Pinact configuration.
 
 Optional inputs:
@@ -405,6 +419,7 @@ Optional inputs:
 - `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides. When empty, zizmor discovers a repository configuration when present.
 - `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
+- `secure-runner-fail-on-violation` (default: `true`) — set `false` to report missing/misplaced/conditional secure-runner steps without failing the check
 - `pinact` (default: `false`) — run pinact policy checks alongside zizmor and actionlint
 - `pin-config` (default: `.pinact.yaml`) — path to the caller repo's pinact configuration file; the default is optional when absent
 - `pin-no-api` (default: `false`) — perform offline pin validation without API-based comment or minimum-age verification

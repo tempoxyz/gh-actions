@@ -253,10 +253,18 @@ test("main.mjs fails on violations, emits annotations and outputs, and can be to
     const soft = runMain(dir, { FAIL_ON_VIOLATION: "false" });
     assert.equal(soft.status, 0, soft.stdout + soft.stderr);
     assert.match(soft.stdout, /::warning::ensure-secure-runner: 1 job\(s\)/);
+    assert.match(soft.stdout, /::error file=.*Job 'bad': missing:/);
+    assert.equal(soft.output, failed.output, "advisory mode must preserve violation outputs");
+    assert.equal(soft.summary, failed.summary, "advisory mode must preserve the report");
+
+    const strict = runMain(dir, { FAIL_ON_VIOLATION: "true" });
+    assert.equal(strict.status, 1, "explicit true must remain blocking");
 
     const missingDir = runMain(dir, { WORKFLOWS: "nope" });
     assert.equal(missingDir.status, 1);
     assert.match(missingDir.stderr, /workflow path not found: nope/);
+    const advisoryMissingDir = runMain(dir, { WORKFLOWS: "nope", FAIL_ON_VIOLATION: "false" });
+    assert.equal(advisoryMissingDir.status, 1, "advisory mode must not hide setup failures");
 
     writeFileSync(join(dir, ".github", "workflows", "ci.yml"), workflow(job("good", [`uses: ${SECURE}`])));
     const clean = runMain(dir, {});
@@ -285,7 +293,10 @@ test("the reusable scanner relies on the accepted-action default", () => {
   const scanner = readFileSync(join(repoRoot, ".github", "workflows", "scan-github-actions.yml"), "utf8");
   const checker = scanner.match(/- name: Ensure every job starts with secure-runner\n([\s\S]*?)(?=\n      - name:)/)?.[1] ?? "";
   assert.match(checker, /uses: tempoxyz\/gh-actions\/actions\/ensure-secure-runner@[0-9a-f]{40}/);
-  assert.doesNotMatch(checker, /^\s+with:/m, "the reusable scanner must not narrow accepted action references");
+  assert.doesNotMatch(checker, /^\s+actions:/m, "the reusable scanner must not narrow accepted action references");
+  assert.ok(checker.includes("fail-on-violation: ${{ inputs.secure-runner-fail-on-violation }}"));
+  assert.doesNotMatch(checker, /continue-on-error:/, "only violations, not checker setup failures, may be non-blocking");
+  assert.match(scanner, /secure-runner-fail-on-violation:\n[^\n]*\n\s+required: false\n\s+type: boolean\n\s+default: true/);
 });
 
 test("the committed parser bundle matches the version pinned in package.json", () => {
