@@ -1,6 +1,10 @@
 name: Jev PR audit routing
 description: Classify an allowed Tempo PR and gate merging on exact-revision Cyclops completion
 inputs:
+  classification-only:
+    required: false
+    default: 'false'
+    description: Publish the routing decision without dispatching a Cyclops audit
   github-token:
     required: true
     description: Repository-scoped token for PR metadata, comments and statuses
@@ -31,5 +35,6 @@ runs:
         EVENTS_CERT: ${{ inputs.events-cert }}
         EVENTS_ARGS: ${{ inputs.events-args }}
         CYCLOPS_JEV_IMAGE: ${{ inputs.worker-image }}
+        JEV_CLASSIFICATION_ONLY: ${{ inputs.classification-only }}
         ROUTER_PATH: ${{ github.action_path }}
       run: python3 "$ROUTER_PATH/main.py"

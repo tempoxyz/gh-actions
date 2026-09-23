@@ -117,7 +117,10 @@ class Controller:
         if plan['profile']:
             text += 'Workers: ' + ', '.join(f"{w['model']} ({w['thinking']}) ×{plan['profile']['iterations']}" for w in plan['profile']['workers']) + '.\n\n'
         text += 'State: **' + decision['phase'] + '**. '
-        text += 'This gate permits merging; other repository requirements still apply.' if plan['mode'] == 'skip' else 'Merge remains blocked until the required audit passes and publication complete.'
+        if decision.get('classification_only'):
+            text += 'Classification-only test: no audit was dispatched and no merge rule is enforced by this test.'
+        else:
+            text += 'This gate permits merging; other repository requirements still apply.' if plan['mode'] == 'skip' else 'This status stays pending until the required audit passes and publication complete.'
         body = pack(decision, DECISION) + '\n' + text
         if comment:
             return gh(f"{self.root}/issues/comments/{comment['id']}", 'PATCH', {'body': body})
@@ -126,6 +129,9 @@ class Controller:
     def reconcile(self, comment, decision):
         if decision['plan']['mode'] == 'skip':
             self.status('success', 'Jev: skip — policy criteria satisfied', comment['html_url'])
+            return
+        if decision.get('classification_only'):
+            self.status('pending', f"Jev: {decision['plan']['mode']} selected; classification-only test", comment['html_url'])
             return
         for c in reversed(self.comments()):
             if c.get('user', {}).get('id') != POLICY['completion_bot_id']:
@@ -222,8 +228,10 @@ class Controller:
         decision_id = digest(identity)
         suffix = re.sub('[^0-9]', '', os.environ.get('GITHUB_RUN_ID', '') + os.environ.get('GITHUB_RUN_ATTEMPT', ''))[-20:] if retry else ''
         run_label = 'jev-' + decision_id[:32] + ('-' + suffix if suffix else '')
+        classification_only = os.environ.get('JEV_CLASSIFICATION_ONLY') == 'true'
         decision = dict(identity, decision_id=decision_id, run_label=run_label, plan=plan, plan_hash=digest(plan),
-                        created_at=now(), phase='skipped' if plan['mode'] == 'skip' else 'dispatching',
+                        classification_only=classification_only,
+                        created_at=now(), phase='skipped' if plan['mode'] == 'skip' else ('classified' if classification_only else 'dispatching'),
                         classifier_models=sorted(set(r.get('model', '') for r in responses)))
         Path(os.environ.get('RUNNER_TEMP', '/tmp'), 'jev-decision.json').write_text(json.dumps(
             {'decision': decision, 'responses': responses, 'evidence_complete': complete,
@@ -233,6 +241,9 @@ class Controller:
         comment = self.write_decision(decision)
         if plan['mode'] == 'skip':
             self.status('success', 'Jev: skip — policy criteria satisfied', comment['html_url'])
+            return
+        if classification_only:
+            self.reconcile(comment, decision)
             return
         try:
             dispatch(decision)
@@ -246,7 +257,8 @@ class Controller:
         self.reconcile(comment, decision)
 
 def controller_hash():
-    return digest([Path(__file__).read_text(), Path(__file__).with_name('routing.py').read_text(), POLICY])
+    return digest([Path(__file__).read_text(), Path(__file__).with_name('routing.py').read_text(), POLICY,
+                   os.environ.get('JEV_CLASSIFICATION_ONLY') == 'true'])
 
 def dispatch(decision):
     mode, perf = decision['plan']['mode'], decision['plan']['perf']

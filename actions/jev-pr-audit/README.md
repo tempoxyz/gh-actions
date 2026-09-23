@@ -5,6 +5,11 @@ Decisions API, a trusted path floor, and fixed worker profiles. Quick uses Sol
 medium; standard uses Sol/Opus high; deep and critical add Astra. No fourth worker.
 Performance-critical changes enable the existing four-pass `perf` mode.
 
+Set `classification-only: 'true'` to test real Jev decisions without dispatching
+audits. Non-skip statuses remain pending and comments explicitly identify the
+test. Enabling dispatch changes decision identity so test results cannot be
+reused as completed audits.
+
 The independent required status is **Cyclops / Jev audit**. A skip decision passes;
 audit decisions stay pending until the configured Cyclops bot posts a validated
 completion receipt covering the exact head/base, decision, worker models/thinking,
