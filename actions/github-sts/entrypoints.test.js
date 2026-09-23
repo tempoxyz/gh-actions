@@ -24,7 +24,7 @@ const { host } = require("./host.js");
 const actionDirectory = __dirname;
 
 test("validates the total retry budget", () => {
-  assert.equal(retryTimeoutMs(), 300_000);
+  assert.equal(retryTimeoutMs(), 90_000);
   assert.equal(retryTimeoutMs("3600"), 3_600_000);
   for (const value of ["0", "-1", "1.5", "Infinity", "3601", "abc", "1e2"]) {
     assert.throws(() => retryTimeoutMs(value), /retry-timeout must be/);
@@ -181,7 +181,7 @@ for (const status of [200, 403, 429]) {
       INPUT_SCOPE: "tempoxyz/aegis",
       INPUT_POLICY: "download-releases",
       INPUT_TTL: "15m",
-      INPUT_RETRY_TIMEOUT: "300",
+      INPUT_RETRY_TIMEOUT: "90",
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: "test-request-token",
       ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token",
       GITHUB_OUTPUT: "test-output",

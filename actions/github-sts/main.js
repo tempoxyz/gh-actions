@@ -125,7 +125,7 @@ async function main() {
 }
 
 function retryTimeoutMs(value = "") {
-  const seconds = value === "" ? 300 : Number(value);
+  const seconds = value === "" ? 90 : Number(value);
   if ((value !== "" && !/^\d+$/.test(value)) || !Number.isInteger(seconds) || seconds < 1 || seconds > 3600) {
     throw new Error("retry-timeout must be an integer from 1 to 3600 seconds");
   }

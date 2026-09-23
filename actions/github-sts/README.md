@@ -17,7 +17,7 @@ versions that use `GET` remain compatible during the coordinated rollout.
 | `policy` | Trust policy name (fetches file in `.github/sts/<policy>.sts.yaml` within `scope` repo) | Yes | |
 | `ttl` | Requested maximum lifetime (`30s`, `5m`, or `1h`) | No | Service/policy maximum |
 | `host` | GitHub STS hostname, without a scheme, port, or path | No | `gh-sts.tempoxyz.net` |
-| `retry-timeout` | Total OIDC/exchange request and retry budget in seconds (1–3600) | No | `300` |
+| `retry-timeout` | Total OIDC/exchange request and retry budget in seconds (1–3600) | No | `90` |
 
 ## Outputs
 
