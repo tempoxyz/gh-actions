@@ -10,6 +10,21 @@ audits. Non-skip statuses remain pending and comments explicitly identify the
 test. Enabling dispatch changes decision identity so test results cannot be
 reused as completed audits.
 
+Policy v2 separates missing evidence from performance risk. Uncertainty can
+require a deeper audit but cannot itself set `perf`. Strictly validated,
+non-normative prose does not need a confident runtime-component scope; essential
+missing context still prevents skip. Domain questions have separate criteria.
+
+For up to five ambiguous units with complete initial evidence, the controller
+looks up at most four nearby source/module/config files at the classified base
+and head revisions. It makes one further Jev call only when new context was
+found. This is bounded local retrieval, not exhaustive caller discovery. The
+second pass can resolve uncertainty but retains previously detected domain risk.
+Failed or unhelpful retrieval leaves the conservative classification in place.
+Artifacts retain the first responses, retrieval attempts, raw second responses,
+and effective decisions for comparison. Classification-only mode remains the
+canary default while calibration is in progress.
+
 The independent required status is **Cyclops / Jev audit**. A skip decision passes;
 audit decisions stay pending until the configured Cyclops bot posts a validated
 completion receipt covering the exact head/base, decision, worker models/thinking,

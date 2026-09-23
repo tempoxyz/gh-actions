@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Trusted controller: classify immutable PR evidence, dispatch, validate receipts."""
 import base64
+import copy
 import datetime as dt
 import json
 import os
@@ -13,7 +14,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from routing import QUESTIONS, digest, route, receipt_valid
+from routing import QUESTIONS, DOMAINS, digest, route, receipt_valid, needs_context, validate_response
 
 POLICY = json.loads(Path(__file__).with_name('policy.json').read_text())
 DECISION = '<!-- cyclops-jev-decision:'
@@ -195,6 +196,52 @@ class Controller:
             complete = False
         return files, units[:30], complete
 
+    def expand_context(self, unit):
+        """One bounded lookup of nearby source/module/config files, at immutable revisions."""
+        if not hasattr(self, '_context_tree'):
+            self._context_tree = gh(f'{self.root}/git/trees/{self.head}?recursive=1')
+        tree = self._context_tree
+        filename = Path(unit['file'])
+        parent = filename.parent.as_posix()
+        # This is local context retrieval, not an assertion that all callers were found.
+        source = '\n'.join(unit['context'].values())
+        symbols = set(re.findall(r'\b(?:fn|def|class|struct|function)\s+([A-Za-z_][A-Za-z0-9_]*)', source))
+        manifests = {'Cargo.toml', 'pyproject.toml', 'package.json', 'tsconfig.json'}
+        modules = {'lib.rs', 'mod.rs', '__init__.py', 'index.ts'}
+        ancestors = {p.as_posix() for p in filename.parents}
+        candidates = []
+        for entry in tree.get('tree', []):
+            path = Path(entry['path'])
+            if entry.get('type') != 'blob' or entry.get('mode') == '120000' or path.as_posix() == filename.as_posix():
+                continue
+            directory = path.parent.as_posix()
+            score = 0
+            if directory in ancestors and path.name in manifests | modules:
+                score = 30 + len(path.parts)
+            if directory == parent and path.suffix in {'.rs', '.py', '.ts', '.js', '.sol'}:
+                score = max(score, 10)
+                if any(symbol.lower() in path.stem.lower() for symbol in symbols):
+                    score += 10
+            if score and entry.get('size', 0) <= 12000:
+                candidates.append((-score, path.as_posix()))
+        related = []
+        for _, path in sorted(candidates)[:4]:
+            versions = {}
+            for side, sha in [('base', self.base), ('head', self.head)]:
+                try:
+                    content = gh(f"{self.root}/contents/{urllib.parse.quote(path, safe='/')}?ref={sha}")
+                    if content.get('encoding') == 'base64' and content.get('size', 0) <= 12000:
+                        versions[side] = base64.b64decode(content['content'], validate=False).decode('utf-8')
+                except (RuntimeError, ValueError, UnicodeError):
+                    continue
+            if versions:
+                candidate = {'path': path, 'source': versions}
+                if len(json.dumps(dict(unit, related_context=related + [candidate])).encode()) <= 65000:
+                    related.append(candidate)
+        return dict(unit, related_context=related, context_search={
+            'scope': 'At most four nearby source/module/config files. Not exhaustive caller discovery.',
+            'tree_truncated': bool(tree.get('truncated'))})
+
     def classify(self, retry=False):
         if self.pull['state'] != 'open':
             return
@@ -222,6 +269,40 @@ class Controller:
         else:
             classifier_errors.append('OPENROUTER_API_KEY unavailable')
             complete = False
+        first_responses = copy.deepcopy(responses)
+        context_passes = []
+        if complete:
+            for index, response in enumerate(first_responses):
+                try:
+                    ambiguous = needs_context(files, response)
+                except (ValueError, TypeError, AttributeError):
+                    complete = False
+                    break
+                if not ambiguous or len(context_passes) >= 5:
+                    continue
+                attempt = {'unit': index, 'files': [], 'outcome': 'no_additional_context'}
+                context_passes.append(attempt)
+                try:
+                    expanded = self.expand_context(units[index])
+                    attempt.update(files=[f['path'] for f in expanded['related_context']],
+                                   tree_truncated=expanded['context_search']['tree_truncated'])
+                    if not expanded['related_context']:
+                        continue
+                    second = request(POLICY['endpoint'], key, 'POST',
+                                     {'model': POLICY['model'], 'state': expanded, 'questions': QUESTIONS})
+                    a = validate_response(second)
+                    original = validate_response(response)
+                    attempt.update(outcome='reclassified', response=second)
+                    # Resolve ambiguity with more evidence, without erasing previously detected risk.
+                    effective = copy.deepcopy(second)
+                    for domain in DOMAINS:
+                        if domain != 'context_missing':
+                            effective['answers'][domain]['noul'] = max(a[domain]['noul'], original[domain]['noul'])
+                    responses[index] = effective
+                    units[index] = expanded
+                except (RuntimeError, ValueError, TypeError, AttributeError) as error:
+                    attempt.update(outcome='context_pass_failed', error=type(error).__name__)
+                    # Keep the first, uncertain decision; failed retrieval never permits skip.
         plan = route(files, responses, complete, POLICY)
         identity = {'repository': self.repo, 'pr': self.number, 'head': self.head, 'base': self.base,
                     'controller_hash': controller_hash(), 'evidence_hash': digest(units)}
@@ -234,7 +315,8 @@ class Controller:
                         created_at=now(), phase='skipped' if plan['mode'] == 'skip' else ('classified' if classification_only else 'dispatching'),
                         classifier_models=sorted(set(r.get('model', '') for r in responses)))
         Path(os.environ.get('RUNNER_TEMP', '/tmp'), 'jev-decision.json').write_text(json.dumps(
-            {'decision': decision, 'responses': responses, 'evidence_complete': complete,
+            {'decision': decision, 'responses': responses, 'first_responses': first_responses,
+             'context_passes': context_passes, 'evidence_complete': complete,
              'classifier_errors': classifier_errors}, indent=2))
         if not self.current():
             return

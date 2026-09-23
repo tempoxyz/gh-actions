@@ -48,7 +48,25 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual((p['mode'],p['perf'],len(p['profile']['workers'])), ('critical',True,3))
     def test_incomplete_critical_context_falls_back(self):
         p=self.route([file('crates/evm/src/lib.rs')], [answer()], False)
-        self.assertEqual((p['mode'],p['perf']), ('critical',True))
+        self.assertEqual((p['mode'],p['perf']), ('critical',False))
+    def test_funds_uncertainty_does_not_invent_perf(self):
+        p=self.route([file('crates/precompiles/src/lib.rs')], [answer(funds=.96,context_missing=.44,performance_critical=.06)])
+        self.assertEqual((p['mode'],p['perf']), ('critical',False))
+    def test_runtime_scope_ambiguity_does_not_override_validated_prose(self):
+        a=answer('editorial',context_missing=.17)
+        a['answers']['scope'].update(confidence=.4,probabilities=dict(local=.55,unknown=.45,shared=0,system=0))
+        self.assertEqual(self.route([file()], [a])['mode'],'skip')
+    def test_missing_essential_evidence_still_prevents_prose_skip(self):
+        self.assertEqual(self.route([file()], [answer('editorial',context_missing=.3)])['mode'],'deep')
+        self.assertEqual(self.route([file()], [answer('editorial')],False)['mode'],'deep')
+    def test_normative_prose_in_docs_is_not_skipped(self):
+        self.assertEqual(self.route([file('docs/protocol.md')], [answer('editorial',normative_spec=.8)])['mode'],'deep')
+    def test_executable_markdown_is_not_skipped(self):
+        for text in ('+```sh', '+<script>alert(1)</script>', '+Run `release.sh`'):
+            self.assertNotEqual(self.route([file(patch=text)], [answer('editorial')])['mode'],'skip')
+    def test_unknown_source_scope_remains_conservative(self):
+        a=answer(); a['answers']['scope'].update(choice='unknown',probabilities=dict(local=0,unknown=1,shared=0,system=0))
+        self.assertEqual(self.route([file('src/helper.py')],[a])['mode'],'deep')
     def test_no_gemini_grok_fable(self):
         self.assertNotRegex(json.dumps(POLICY), '(?i)gemini|grok|fable')
     def test_invalid_probabilities_fail_closed(self):
