@@ -1,5 +1,5 @@
 {
-  "version": "tempo-jev-v2",
+  "version": "tempo-jev-v2.1",
   "repositories": ["tempoxyz/cyclops-canary"],
   "model": "typesafe/jev-1.13",
   "endpoint": "https://openrouter.ai/api/alpha/decisions",

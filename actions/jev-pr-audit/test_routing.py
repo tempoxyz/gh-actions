@@ -67,6 +67,14 @@ class RoutingTests(unittest.TestCase):
     def test_unknown_source_scope_remains_conservative(self):
         a=answer(); a['answers']['scope'].update(choice='unknown',probabilities=dict(local=0,unknown=1,shared=0,system=0))
         self.assertEqual(self.route([file('src/helper.py')],[a])['mode'],'deep')
+    def test_local_low_risk_uncertainty_requires_standard_audit(self):
+        p=self.route([file('src/helper.py')],[answer(context_missing=.3)])
+        self.assertEqual(p['mode'],'standard')
+        self.assertEqual(len(p['profile']['workers']),2)
+    def test_local_exception_never_overrides_missing_evidence_or_domain_risk(self):
+        self.assertEqual(self.route([file('src/helper.py')],[answer(context_missing=.3)],False)['mode'],'deep')
+        self.assertEqual(self.route([file('src/helper.py')],[answer(context_missing=.3,external_interface=.3)])['mode'],'deep')
+        self.assertEqual(self.route([file('crates/evm/src/helper.rs')],[answer(context_missing=.3)])['mode'],'critical')
     def test_no_gemini_grok_fable(self):
         self.assertNotRegex(json.dumps(POLICY), '(?i)gemini|grok|fable')
     def test_invalid_probabilities_fail_closed(self):

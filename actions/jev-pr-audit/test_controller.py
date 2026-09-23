@@ -61,7 +61,7 @@ class ClassificationOnlyTests(unittest.TestCase):
 
     def test_second_pass_is_not_retried_without_new_evidence(self):
         controller=self.controller()
-        controller.evidence=Mock(return_value=([file('src/helper.py')],[{}],True))
+        controller.evidence=Mock(return_value=([file('scripts/release.py')],[{}],True))
         controller.expand_context=Mock(return_value={'related_context':[], 'context_search':{'tree_truncated':False}})
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {
             'JEV_CLASSIFICATION_ONLY':'true','RUNNER_TEMP':tmp,'OPENROUTER_API_KEY':'test'

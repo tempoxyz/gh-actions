@@ -25,6 +25,15 @@ Artifacts retain the first responses, retrieval attempts, raw second responses,
 and effective decisions for comparison. Classification-only mode remains the
 canary default while calibration is in progress.
 
+V2.1 keeps unresolved semantic context on the standard two-worker audit only
+when the initial evidence is complete, the path floor is standard, implementation
+and local scope both have probability at least 0.95, and every risk domain is at
+most 0.05. It never permits skip or overrides a sensitive path, detected risk,
+unknown scope, or missing input evidence. The uncertainty remains visible in the
+decision reasons. `evaluation-prs` runs a read-only historical evaluation on up
+to 50 merged public Tempo PRs with at most three files each; it writes only a
+local artifact and prohibits GitHub mutations.
+
 The independent required status is **Cyclops / Jev audit**. A skip decision passes;
 audit decisions stay pending until the configured Cyclops bot posts a validated
 completion receipt covering the exact head/base, decision, worker models/thinking,

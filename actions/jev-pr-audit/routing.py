@@ -143,6 +143,15 @@ def needs_context(files, response):
         for k in dimensions)
 
 
+def low_risk_local_implementation(files, a):
+    """Unresolved context alone need not add a third worker to a standard audit."""
+    risk_keys = CRITICAL + DEEP + ['cross_component', 'performance_critical']
+    return (floor(files)[0] == 'standard'
+            and a['change_kind']['probabilities']['implementation'] >= 0.95
+            and a['scope']['probabilities']['local'] >= 0.95
+            and all(a[k]['noul'] <= 0.05 for k in risk_keys))
+
+
 def route(files, responses, complete, policy, force_perf=False):
     tier, reasons = floor(files)
     hot = any(HOT.match(p) for p in paths(files))
@@ -159,6 +168,7 @@ def route(files, responses, complete, policy, force_perf=False):
     if not all_answers:
         complete = False
     perf = bool(force_perf)
+    unresolved = False
     for a in all_answers:
         n = {k: a[k]['noul'] for k in DOMAINS}
         for k in CRITICAL:
@@ -170,7 +180,10 @@ def route(files, responses, complete, policy, force_perf=False):
         if n['cross_component'] >= 0.5 or a['scope']['probabilities']['system'] >= 0.5:
             promote('critical' if tier in ('deep', 'critical') else 'deep', 'cross-component scope')
         if needs_context(files, {'model': policy['model'], 'answers': a}):
-            complete = False
+            if low_risk_local_implementation(files, a):
+                promote('standard', 'low-risk local change; unresolved context requires standard audit')
+            else:
+                unresolved = True
         if not editorial_answer(files, a):
             promote('quick', 'skip criteria not met')
         risk_keys = CRITICAL + DEEP + ['cross_component', 'performance_critical']
@@ -178,7 +191,7 @@ def route(files, responses, complete, policy, force_perf=False):
                 and all(n[k] < 0.2 for k in risk_keys)) and tier == 'quick':
             promote('standard', 'quick criteria not met')
         perf |= n['performance_critical'] >= policy['perf_threshold'] or (hot and n['performance_critical'] >= policy['perf_uncertain_threshold'])
-    if not complete:
+    if not complete or unresolved:
         promote('critical' if any(CORE.match(p) for p in paths(files)) or not files else 'deep', 'incomplete/uncertain classifier evidence')
         # Missing evidence can increase audit depth, but is not performance evidence.
     if perf:
