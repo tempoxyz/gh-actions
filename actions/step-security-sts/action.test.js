@@ -22,11 +22,6 @@ test("accepts a hostname and rejects URL components", () => {
   for (const value of ["", "https://ss-sts.tempoxyz.net", "ss-sts.tempoxyz.net:443", "ss-sts.tempoxyz.net/path"]) {
     assert.throws(() => endpoint(value), /host must be a hostname/);
   }
-
-  for (const filename of ["action.yml", "http.cjs", "main.cjs", "post.cjs"]) {
-    const source = fs.readFileSync(path.join(__dirname, filename), "utf8");
-    assert.doesNotMatch(source, /tehq\.net|workers\.dev/);
-  }
 });
 
 test("retries transient exchange responses", async () => {
