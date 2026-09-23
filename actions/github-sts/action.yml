@@ -21,6 +21,10 @@ inputs:
     description: "GitHub STS hostname used for HTTPS requests and the GitHub OIDC audience"
     required: false
     default: "gh-sts.tempoxyz.net"
+  retry-timeout:
+    description: "Total OIDC/exchange retry budget in seconds (1–3600); report the retry deadline if it exceeds this budget"
+    required: false
+    default: "300"
 
 outputs:
   token:

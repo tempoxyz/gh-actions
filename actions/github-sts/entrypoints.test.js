@@ -9,8 +9,10 @@ const {
   REQUEST_TIMEOUT_MS,
   buildExchangeUrl,
   exchangeRequestOptions,
+  exchangeWithRetry,
   main,
   request,
+  retryTimeoutMs,
 } = require("./main.js");
 const {
   revocationRequestOptions,
@@ -20,6 +22,69 @@ const {
 const { host } = require("./host.js");
 
 const actionDirectory = __dirname;
+
+test("validates the total retry budget", () => {
+  assert.equal(retryTimeoutMs(), 300_000);
+  assert.equal(retryTimeoutMs("3600"), 3_600_000);
+  for (const value of ["0", "-1", "1.5", "Infinity", "3601", "abc", "1e2"]) {
+    assert.throws(() => retryTimeoutMs(value), /retry-timeout must be/);
+  }
+});
+
+test("request retains response headers for retry scheduling", async (t) => {
+  t.mock.method(https, "request", (_url, _options, callback) => {
+    const response = new EventEmitter();
+    response.statusCode = 429;
+    response.headers = { "retry-after": "3600" };
+    response.setEncoding = () => {};
+    const call = new EventEmitter();
+    call.end = () => {
+      callback(response);
+      response.emit("data", "{}");
+      response.emit("end");
+    };
+    return call;
+  });
+  const response = await request("https://sts.example.test");
+  assert.equal(response.headers["retry-after"], "3600");
+});
+
+test("refreshes OIDC only after a confirmed rate-limit wait", async () => {
+  let clock = 0;
+  let assertions = 0;
+  const calls = [];
+  const result = await exchangeWithRetry("https://sts.example.test", async () => {
+    calls.push(["oidc", clock]);
+    return `assertion-${++assertions}`;
+  }, async (_url, options) => {
+    calls.push([options.headers.Authorization, clock]);
+    return assertions === 1 ? { status: 429 } : { status: 200 };
+  }, {
+    isTransient: (r) => r.status === 429,
+    getDelayMs: () => 600_000,
+    now: () => clock, deadlineMs: 700_000,
+    sleep: async (ms) => { clock += ms; },
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls, [
+    ["oidc", 0], ["Bearer assertion-1", 0],
+    ["oidc", 600_000], ["Bearer assertion-2", 600_000],
+  ]);
+});
+
+test("reuses OIDC after ambiguous transport and server errors", async () => {
+  let assertions = 0;
+  const tokens = [];
+  const result = await exchangeWithRetry("https://sts.example.test", async () => `assertion-${++assertions}`,
+    async (_url, options) => {
+      tokens.push(options.headers.Authorization);
+      if (tokens.length === 1) throw new Error("connection lost after mint");
+      return { status: tokens.length === 2 ? 503 : 200 };
+    }, { isTransient: (r) => r.status === 503, sleep: async () => {} });
+  assert.equal(result.status, 200);
+  assert.equal(assertions, 1);
+  assert.deepEqual(tokens, Array(3).fill("Bearer assertion-1"));
+});
 
 test("accepts a hostname and rejects URL components", () => {
   assert.equal(host("gh-sts.tempoxyz.net"), "gh-sts.tempoxyz.net");
@@ -107,7 +172,7 @@ for (const owner of ["paradigmxyz", "newly-onboarded-org", ""]) {
   });
 }
 
-for (const status of [200, 403]) {
+for (const status of [200, 403, 429]) {
   test(`main delegates a new organization's authorization to STS (HTTP ${status})`, async (t) => {
     const env = {
       GITHUB_REPOSITORY_OWNER: "newly-onboarded-org",
@@ -116,6 +181,7 @@ for (const status of [200, 403]) {
       INPUT_SCOPE: "tempoxyz/aegis",
       INPUT_POLICY: "download-releases",
       INPUT_TTL: "15m",
+      INPUT_RETRY_TIMEOUT: "300",
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: "test-request-token",
       ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token",
       GITHUB_OUTPUT: "test-output",
@@ -136,6 +202,7 @@ for (const status of [200, 403]) {
       const oidc = calls.length === 1;
       const response = new EventEmitter();
       response.statusCode = oidc ? 200 : status;
+      response.headers = status === 429 && !oidc ? { "retry-after": "3600" } : {};
       response.setEncoding = () => {};
       const request = new EventEmitter();
       request.end = () => {
@@ -160,6 +227,10 @@ for (const status of [200, 403]) {
       assert.deepEqual(logs.mock.calls.map(({ arguments: args }) => args), [
         ["::add-mask::test-installation-token"],
       ]);
+    } else if (status === 429) {
+      await assert.rejects(main(), /retry timeout exceeded; next retry permitted at/);
+      assert.equal(writes.mock.callCount(), 0);
+      assert.equal(logs.mock.callCount(), 0);
     } else {
       await assert.rejects(main(), /GitHub STS exchange failed \(HTTP 403\): caller organization is not permitted by this service/);
       assert.equal(writes.mock.callCount(), 0);

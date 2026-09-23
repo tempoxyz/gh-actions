@@ -1,6 +1,87 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { isTransientStatus, retry } = require("./retry.js");
+const { isTransientStatus, retry, retryAfterMs } = require("./retry.js");
+
+test("interprets retry deadlines without applying a non-exhausted reset", () => {
+  const now = Date.UTC(2026, 8, 23, 12);
+  const cases = [
+    [{ "retry-after": "120" }, 120_000],
+    [{ "retry-after": new Date(now + 90_000).toUTCString() }, 90_000],
+    [{ "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(now / 1000 + 3600) }, 3_600_000],
+    [{ "retry-after": "30", "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(now / 1000 + 120) }, 120_000],
+    [{ "x-ratelimit-remaining": "10", "x-ratelimit-reset": String(now / 1000 + 3600) }, 60_000],
+    [{ "retry-after": "invalid" }, 60_000],
+    [{ "retry-after": "-5" }, 60_000],
+    [{ "retry-after": "99999999999999999999999999999" }, 60_000],
+    [{ "retry-after": new Date(now - 90_000).toUTCString() }, 60_000],
+    [{}, 60_000],
+  ];
+  for (const [headers, expected] of cases) {
+    assert.equal(retryAfterMs({ status: 429, headers }, now), expected);
+  }
+  assert.equal(retryAfterMs({ status: 503 }, now), 0);
+});
+
+test("honors the server deadline, including request time in the budget", async () => {
+  let clock = 0;
+  let attempts = 0;
+  const delays = [];
+  const result = await retry(async () => {
+    clock += 10_000;
+    return ++attempts === 1 ? { status: 429, headers: { "retry-after": "120" } } : { status: 200 };
+  }, {
+    isTransient: (r) => isTransientStatus(r.status),
+    getDelayMs: (r) => retryAfterMs(r, clock),
+    deadlineMs: 150_000,
+    now: () => clock,
+    sleep: async (ms) => { delays.push(ms); clock += ms; },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(attempts, 2);
+  assert.deepEqual(delays, [120_000]);
+  assert.equal(clock, 140_000);
+});
+
+test("does not shorten an hourly reset or retry a budget error", async () => {
+  const now = Date.UTC(2026, 8, 23, 12);
+  let attempts = 0;
+  await assert.rejects(retry(async () => {
+    attempts++;
+    return { status: 429, headers: { "retry-after": "3600" } };
+  }, {
+    isTransient: () => true,
+    getDelayMs: (r) => retryAfterMs(r, now),
+    deadlineMs: now + 300_000,
+    now: () => now,
+    sleep: async () => assert.fail("must not sleep past budget"),
+  }), /next retry permitted at 2026-09-23T13:00:00.000Z/);
+  assert.equal(attempts, 1);
+});
+
+test("does not send another request if scheduling resumes after the deadline", async () => {
+  let clock = 0;
+  let attempts = 0;
+  await assert.rejects(retry(async () => {
+    attempts++;
+    return { status: 503 };
+  }, {
+    isTransient: () => true, deadlineMs: 10_000, now: () => clock,
+    sleep: async () => { clock = 10_001; },
+  }), /retry timeout exceeded/);
+  assert.equal(attempts, 1);
+});
+
+test("does not retry a nested OIDC retry-budget failure", async () => {
+  let attempts = 0;
+  await assert.rejects(retry(() => retry(async () => {
+    attempts++;
+    return { status: 429, headers: { "retry-after": "3600" } };
+  }, {
+    isTransient: () => true, getDelayMs: retryAfterMs,
+    deadlineMs: Date.now() + 300_000,
+  }), { sleep: async () => assert.fail("must not retry an exhausted inner budget") }), /next retry permitted/);
+  assert.equal(attempts, 1);
+});
 
 test("recognizes transient HTTP statuses", () => {
   for (const status of [408, 425, 429, 500, 503]) {

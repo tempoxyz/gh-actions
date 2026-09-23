@@ -17,6 +17,7 @@ versions that use `GET` remain compatible during the coordinated rollout.
 | `policy` | Trust policy name (fetches file in `.github/sts/<policy>.sts.yaml` within `scope` repo) | Yes | |
 | `ttl` | Requested maximum lifetime (`30s`, `5m`, or `1h`) | No | Service/policy maximum |
 | `host` | GitHub STS hostname, without a scheme, port, or path | No | `gh-sts.tempoxyz.net` |
+| `retry-timeout` | Total OIDC/exchange request and retry budget in seconds (1–3600) | No | `300` |
 
 ## Outputs
 
@@ -71,3 +72,16 @@ OIDC requests, STS worker exchanges, and token revocations retry transient
 network errors and HTTP `408`, `425`, `429`, or `5xx` responses up to five
 times after the initial attempt, with exponential backoff (1, 2, 4, 8, and
 16 seconds). Other failures are returned immediately.
+
+OIDC and exchange retries honor `Retry-After` (seconds or HTTP date) and
+`x-ratelimit-reset` when `x-ratelimit-remaining` is zero. These delays are minimums:
+the action never shortens them to fit its budget. A `429` without a usable
+deadline waits at least 60 seconds. If the next retry would exceed
+`retry-timeout`, the action fails with the next permitted retry time instead of
+retrying early. Individual requests remain bounded to at most 10 seconds.
+
+After a confirmed `429`, the action requests a fresh OIDC assertion after the
+wait. Network errors and `5xx` retries reuse the original assertion, preserving
+STS replay protection when a token may already have been minted. This does not
+change post-job revocation retries. Deploy the STS `Retry-After` response support
+before repinning callers; older STS versions use the 60-second `429` fallback.
