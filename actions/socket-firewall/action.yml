@@ -45,7 +45,7 @@ runs:
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
       # refresh pending assertions
-      uses: tempoxyz/gh-actions/actions/socket-sts@fd11c6853774e1fa51b6194282626bf85aa6094c # 2026-09-23T02-11-14Z-fd11c685
+      uses: tempoxyz/gh-actions/actions/socket-sts@20ff54f9bb27cd6cf604937d28fa73d8501be28d # 2026-09-23T03-41-39Z-20ff54f9
       with:
         host: ${{ inputs.socket-sts-host }}
         upload-aegis-report: "false"
@@ -53,7 +53,7 @@ runs:
     - name: Exchange GitHub OIDC token for Aegis release access
       if: steps.oidc.outputs.available == 'true'
       id: release-token
-      uses: tempoxyz/gh-actions/actions/github-sts@fd11c6853774e1fa51b6194282626bf85aa6094c # 2026-09-23T02-11-14Z-fd11c685
+      uses: tempoxyz/gh-actions/actions/github-sts@20ff54f9bb27cd6cf604937d28fa73d8501be28d # 2026-09-23T03-41-39Z-20ff54f9
       with:
         scope: tempoxyz/aegis
         policy: download-releases
@@ -108,7 +108,7 @@ runs:
     - name: Prepare Aegis lifecycle and register cleanup
       if: steps.oidc.outputs.available == 'true'
       # Linux lifecycle
-      uses: tempoxyz/gh-actions/actions/aegis-report@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
+      uses: tempoxyz/gh-actions/actions/aegis-report@20ff54f9bb27cd6cf604937d28fa73d8501be28d # 2026-09-23T03-41-39Z-20ff54f9
       with:
         linux-installation-config: ${{ runner.os == 'Linux' && steps.config.outputs.path || '' }}
 
