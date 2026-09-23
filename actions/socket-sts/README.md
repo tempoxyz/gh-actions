@@ -17,7 +17,7 @@ The caller must grant `id-token: write`.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `host` | Socket STS hostname; accepts `socket-sts.tempoxyz.net` or `socket-sts.tehq.dev` | No | `socket-sts.tempoxyz.net` |
+| `host` | Socket STS hostname, without a scheme, port, or path | No | `socket-sts.tempoxyz.net` |
 | `upload-aegis-report` | Upload the final Aegis audit log after the job finishes | No | `true` |
 
 When `upload-aegis-report` is `true`, the post-job handler uploads the final

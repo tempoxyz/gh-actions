@@ -10,17 +10,17 @@ const { buildRevokeRequest } = require("./post.cjs");
 const stsHost = "ss-sts.tempoxyz.net";
 const leaseId = "11111111-1111-4111-8111-111111111111";
 
-test("accepts the supported development and production hosts", () => {
+test("accepts a hostname and rejects URL components", () => {
   assert.deepEqual(endpoint(stsHost), {
     audience: stsHost,
     origin: `https://${stsHost}`,
   });
-  assert.deepEqual(endpoint("ss-sts.tehq.dev"), {
-    audience: "ss-sts.tehq.dev",
-    origin: "https://ss-sts.tehq.dev",
+  assert.deepEqual(endpoint("sts.example.test"), {
+    audience: "sts.example.test",
+    origin: "https://sts.example.test",
   });
-  for (const value of ["ss-sts.tehq.net", "https://ss-sts.tempoxyz.net", "sts.example.test"]) {
-    assert.throws(() => endpoint(value), /host must be/);
+  for (const value of ["", "https://ss-sts.tempoxyz.net", "ss-sts.tempoxyz.net:443", "ss-sts.tempoxyz.net/path"]) {
+    assert.throws(() => endpoint(value), /host must be a hostname/);
   }
 
   for (const filename of ["action.yml", "http.cjs", "main.cjs", "post.cjs"]) {

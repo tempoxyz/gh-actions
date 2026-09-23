@@ -16,7 +16,7 @@ versions that use `GET` remain compatible during the coordinated rollout.
 | `scope` | Repository (`org/repo`) or organization whose trust policy to use | No | Current repository |
 | `policy` | Trust policy name (fetches file in `.github/sts/<policy>.sts.yaml` within `scope` repo) | Yes | |
 | `ttl` | Requested maximum lifetime (`30s`, `5m`, or `1h`) | No | Service/policy maximum |
-| `host` | GitHub STS hostname (`gh-sts.tempoxyz.net` or `gh-sts.tehq.dev`) | No | `gh-sts.tempoxyz.net` |
+| `host` | GitHub STS hostname, without a scheme, port, or path | No | `gh-sts.tempoxyz.net` |
 
 ## Outputs
 

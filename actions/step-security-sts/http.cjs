@@ -5,8 +5,16 @@ function isTransientStatus(status) {
 }
 
 function endpoint(value) {
-  if (!["ss-sts.tempoxyz.net", "ss-sts.tehq.dev"].includes(value)) {
-    throw new Error("host must be ss-sts.tempoxyz.net or ss-sts.tehq.dev");
+  if (
+    typeof value !== "string" ||
+    value.length > 253 ||
+    !value
+      .split(".")
+      .every((label) =>
+        /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(label),
+      )
+  ) {
+    throw new Error("host must be a hostname without a scheme, port, or path");
   }
   return { audience: value, origin: `https://${value}` };
 }

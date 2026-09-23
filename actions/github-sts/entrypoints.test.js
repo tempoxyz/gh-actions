@@ -17,8 +17,17 @@ const {
   revokeToken,
   stsRevocationRequestOptions,
 } = require("./post.js");
+const { host } = require("./host.js");
 
 const actionDirectory = __dirname;
+
+test("accepts a hostname and rejects URL components", () => {
+  assert.equal(host("gh-sts.tempoxyz.net"), "gh-sts.tempoxyz.net");
+  assert.equal(host("sts.example.test"), "sts.example.test");
+  for (const value of ["", "https://sts.example.test", "sts.example.test:443", "sts.example.test/path"]) {
+    assert.throws(() => host(value), /host must be a hostname/);
+  }
+});
 
 test("exchange request forwards ttl only when specified", () => {
   const withTtl = buildExchangeUrl("gh-sts.tempoxyz.net", "tempoxyz/example", "deploy", "30s");
@@ -85,7 +94,7 @@ for (const owner of ["paradigmxyz", "newly-onboarded-org", ""]) {
       env: {
         ...process.env,
         GITHUB_REPOSITORY_OWNER: owner,
-        INPUT_HOST: "invalid",
+        INPUT_HOST: "https://invalid.example",
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: "",
         ACTIONS_ID_TOKEN_REQUEST_URL: "",
       },
@@ -93,7 +102,7 @@ for (const owner of ["paradigmxyz", "newly-onboarded-org", ""]) {
     const output = `${result.stdout}${result.stderr}`;
 
     assert.equal(result.status, 1);
-    assert.match(output, /host must be gh-sts\.tempoxyz\.net or gh-sts\.tehq\.dev/);
+    assert.match(output, /host must be a hostname without a scheme, port, or path/);
     assert.doesNotMatch(output, /only supports repositories owned/);
   });
 }
@@ -194,7 +203,7 @@ test("STS revocation request authenticates with the minted token", () => {
 test("workflow cleanup revokes through STS without calling GitHub directly", async () => {
   const calls = [];
   const messages = [];
-  await revokeToken("test-token", "gh-sts.tehq.dev", {
+  await revokeToken("test-token", "gh-sts.tempoxyz.dev", {
     request: async (url, options) => {
       calls.push({ url, options });
       return 204;
@@ -203,7 +212,7 @@ test("workflow cleanup revokes through STS without calling GitHub directly", asy
     console: { log: (message) => messages.push(message), warn: (message) => messages.push(message) },
   });
 
-  assert.deepEqual(calls.map((call) => call.url), ["https://gh-sts.tehq.dev/sts/exchange"]);
+  assert.deepEqual(calls.map((call) => call.url), ["https://gh-sts.tempoxyz.dev/sts/exchange"]);
   assert.equal(calls[0].options.headers.Authorization, "Bearer test-token");
   assert.deepEqual(messages, ["GitHub App token revoked and STS ledger updated."]);
 });
@@ -227,9 +236,9 @@ test("workflow cleanup falls back to GitHub and then reconciles the STS ledger",
   ]);
 });
 
-test("workflow cleanup never sends a token to an unknown STS host", async () => {
+test("workflow cleanup does not send a token to a malformed STS host", async () => {
   const calls = [];
-  await revokeToken("test-token", "attacker.example", {
+  await revokeToken("test-token", "https://attacker.example", {
     request: async (url) => {
       calls.push(url);
       return 204;

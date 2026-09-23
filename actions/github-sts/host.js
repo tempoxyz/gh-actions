@@ -1,8 +1,16 @@
-const HOSTS = new Set(["gh-sts.tempoxyz.net", "gh-sts.tehq.dev"]);
-
 function host(value) {
-  if (HOSTS.has(value)) return value;
-  throw new Error("host must be gh-sts.tempoxyz.net or gh-sts.tehq.dev");
+  if (
+    typeof value === "string" &&
+    value.length <= 253 &&
+    value
+      .split(".")
+      .every((label) =>
+        /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(label),
+      )
+  ) {
+    return value;
+  }
+  throw new Error("host must be a hostname without a scheme, port, or path");
 }
 
 module.exports = { host };

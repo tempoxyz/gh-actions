@@ -30,8 +30,8 @@ preinstalled Aegis service would conflict with the version under test and a larg
 test matrix would otherwise request a separate StepSecurity credential per job.
 
 Both services use production by default. For a development deployment, set
-`step-security-sts-host: ss-sts.tehq.dev` and/or
-`socket-sts-host: socket-sts.tehq.dev`.
+`step-security-sts-host: ss-sts.tempoxyz.dev` and/or
+`socket-sts-host: socket-sts.tempoxyz.dev`.
 
 The caller must grant `id-token: write` for the STS exchanges. Harden Runner
 policies must allow the network access needed to install and use Socket Firewall.
