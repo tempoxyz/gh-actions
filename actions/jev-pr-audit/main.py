@@ -202,15 +202,19 @@ class Controller:
             return
         files, units, complete = self.evidence()
         responses = []
+        classifier_errors = []
         key = os.environ.get('OPENROUTER_API_KEY', '')
         if key:
             for unit in units:
                 try:
                     responses.append(request(POLICY['endpoint'], key, 'POST', {'model': POLICY['model'], 'state': unit, 'questions': QUESTIONS}))
-                except RuntimeError:
+                except RuntimeError as error:
+                    classifier_errors.append(str(error))
+                    print(f'Classifier unavailable: {error}; requiring an audit', flush=True)
                     complete = False
                     break
         else:
+            classifier_errors.append('OPENROUTER_API_KEY unavailable')
             complete = False
         plan = route(files, responses, complete, POLICY)
         identity = {'repository': self.repo, 'pr': self.number, 'head': self.head, 'base': self.base,
@@ -221,7 +225,9 @@ class Controller:
         decision = dict(identity, decision_id=decision_id, run_label=run_label, plan=plan, plan_hash=digest(plan),
                         created_at=now(), phase='skipped' if plan['mode'] == 'skip' else 'dispatching',
                         classifier_models=sorted(set(r.get('model', '') for r in responses)))
-        Path(os.environ.get('RUNNER_TEMP', '/tmp'), 'jev-decision.json').write_text(json.dumps({'decision': decision, 'responses': responses}, indent=2))
+        Path(os.environ.get('RUNNER_TEMP', '/tmp'), 'jev-decision.json').write_text(json.dumps(
+            {'decision': decision, 'responses': responses, 'evidence_complete': complete,
+             'classifier_errors': classifier_errors}, indent=2))
         if not self.current():
             return
         comment = self.write_decision(decision)
