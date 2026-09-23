@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { endpoint, rateLimitDelay, retry, retryRateLimited } = require("./http.cjs");
-const { publishToken } = require("./main.cjs");
+const { publishToken, retryExchange } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 
 const secretUrl = "https://sts.example.test";
@@ -50,6 +50,48 @@ test("retries transient exchange responses", async () => {
 
   assert.equal(attempts, 2);
   assert.equal(response.status, 200);
+});
+
+test("retries every 5xx exchange response with exponential backoff", async () => {
+  const delays = [];
+  const statuses = Array.from({ length: 100 }, (_, index) => 500 + index);
+  for (const status of statuses) {
+    let attempts = 0;
+    const response = await retryExchange(
+      async () => ({ status: ++attempts < 4 ? status : 200 }),
+      { sleep: async (delay) => delays.push(delay) },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(attempts, 4);
+  }
+  assert.deepEqual(delays, statuses.flatMap(() => [1000, 2000, 4000]));
+});
+
+test("does not retry a non-transient exchange response", async () => {
+  let attempts = 0;
+  const response = await retryExchange(
+    async () => {
+      attempts += 1;
+      return { status: 403 };
+    },
+    { sleep: async () => { throw new Error("unexpected retry"); } },
+  );
+  assert.equal(response.status, 403);
+  assert.equal(attempts, 1);
+});
+
+test("passes 429 to the rate-limit handler without an inner retry", async () => {
+  const delays = [];
+  let attempts = 0;
+  const response = await retryExchange(
+    async () => ++attempts === 1
+      ? { status: 429, headers: { "retry-after": "3" } }
+      : { status: 200 },
+    { now: () => 0, sleep: async (delay) => delays.push(delay) },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(attempts, 2);
+  assert.deepEqual(delays, [3000]);
 });
 
 test("honors an STS Retry-After response before retrying", async () => {

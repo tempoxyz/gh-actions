@@ -1,6 +1,8 @@
 const https = require("node:https");
 
-const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504]);
+function isTransientStatus(status) {
+  return status === 408 || status === 425 || status === 429 || (status >= 500 && status < 600);
+}
 
 function endpoint(value) {
   let url;
@@ -138,6 +140,8 @@ async function retryRateLimited(operation, options = {}) {
 
 async function retry(operation, options = {}) {
   const retryHttpResponses = options.retryHttpResponses !== false;
+  const shouldRetryResponse = options.shouldRetryResponse ||
+    ((response) => isTransientStatus(response.status));
   const sleep =
     options.sleep ||
     ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
@@ -147,7 +151,7 @@ async function retry(operation, options = {}) {
       last = await operation();
       if (
         !retryHttpResponses ||
-        !TRANSIENT.has(last.status) ||
+        !shouldRetryResponse(last) ||
         attempt === 3
       ) {
         return last;
@@ -163,6 +167,7 @@ async function retry(operation, options = {}) {
 module.exports = {
   MAX_RATE_LIMIT_DELAY_MS,
   endpoint,
+  isTransientStatus,
   rateLimitDelay,
   request,
   retry,
