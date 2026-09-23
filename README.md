@@ -139,8 +139,9 @@ steps:
 
 ### Secure runner
 
-Use `secure-runner` as the first step in a job. It uses the production STS endpoints by default;
-set `dev: true` to use the development endpoints.
+Use `secure-runner` as the first step in a job. It uses the production STS endpoints by default.
+For a development deployment, set `step-security-sts-host: ss-sts.tempoxyz.dev` and/or
+`socket-sts-host: socket-sts.tempoxyz.dev`.
 
 ```yaml
 jobs:

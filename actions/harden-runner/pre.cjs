@@ -4,6 +4,7 @@ const {
   maskSecret,
   required,
 } = require("../step-security-sts/main.cjs");
+const { endpoint } = require("../step-security-sts/http.cjs");
 const { runHardenRunner } = require("./run.cjs");
 
 // GitHub state key recorded when Harden Runner runs without the policy store.
@@ -12,10 +13,8 @@ const INLINE_POLICY_STATE = "inline_policy";
 const ENFORCEMENT_DISABLED_STATE = "enforcement_disabled";
 const UNSUPPORTED_PLATFORM_STATE = "unsupported_platform";
 
-function stsEndpoint(dev = process.env.INPUT_DEV || "false") {
-  if (dev === "true") return "https://ss-sts.tehq.dev";
-  if (dev === "false") return "https://ss-sts.tehq.net";
-  throw new Error("dev must be true or false");
+function stsHost(value = "ss-sts.tempoxyz.net") {
+  return endpoint(value).audience;
 }
 
 function oidcAvailable(env = process.env) {
@@ -92,11 +91,13 @@ async function main({
 
   // Harden Runner reads the policy in its pre-job entrypoint. Mint the key in
   // this same pre-job process so it exists before that entrypoint starts.
-  const result = await exchange(stsEndpoint(env.INPUT_DEV || "false"));
+  const result = await exchange(
+    stsHost(env["INPUT_STEP-SECURITY-STS-HOST"] || "ss-sts.tempoxyz.net"),
+  );
   maskSecret(result.token);
   append(required("GITHUB_STATE", env), "token", result.token);
   append(required("GITHUB_STATE", env), "lease_id", result.leaseId);
-  append(required("GITHUB_STATE", env), "sts_url", result.rawEndpoint);
+  append(required("GITHUB_STATE", env), "sts_host", result.rawHost);
   run("pre", result.token);
 }
 

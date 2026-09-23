@@ -16,6 +16,25 @@ rules:
   - ignore: true
     conditions:
       - expr: ActionName == "SocketDev/action"
+  # These nested first-party action pins intentionally reference commits in
+  # this pull request. Their release tags are created after merge, at which
+  # point the normal self-pin refresh replaces these exact exemptions.
+  - ignore: true
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/actions/socket-sts"
+      - expr: ActionVersion == "645c7bc579435697435a3990ee1d93aeeb0e65e7"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/actions/github-sts"
+      - expr: ActionVersion == "645c7bc579435697435a3990ee1d93aeeb0e65e7"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/actions/harden-runner"
+      - expr: ActionVersion == "950c3bc1e1464324ba6145183a740cdfab6051c2"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/actions/socket-firewall"
+      - expr: ActionVersion == "950c3bc1e1464324ba6145183a740cdfab6051c2"
   - ignore: true
     conditions:
       - expr: ActionName == "dtolnay/rust-toolchain"

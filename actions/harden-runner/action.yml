@@ -4,10 +4,10 @@ description: >-
   falling back to the inline policy on fork pull requests
 
 inputs:
-  dev:
-    description: "Use the development Step Security STS endpoint"
+  step-security-sts-host:
+    description: "Step Security STS hostname used for policy-store credentials"
     required: false
-    default: "false"
+    default: "ss-sts.tempoxyz.net"
   egress-policy:
     description: "Fallback outbound policy when no stored policy applies (audit or block)"
     required: false

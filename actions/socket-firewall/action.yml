@@ -3,10 +3,10 @@ description: >-
   Install Aegis with a short-lived Socket API token when enforcement is available
 
 inputs:
-  dev:
-    description: "Use the development Socket STS endpoint"
+  socket-sts-host:
+    description: "Socket STS hostname used for the Aegis credential"
     required: false
-    default: "false"
+    default: "socket-sts.tempoxyz.net"
 
 outputs:
   firewall-path-binary:
@@ -45,20 +45,19 @@ runs:
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
       # refresh pending assertions
-      uses: tempoxyz/gh-actions/actions/socket-sts@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
+      uses: tempoxyz/gh-actions/actions/socket-sts@645c7bc579435697435a3990ee1d93aeeb0e65e7 # zizmor: ignore[unpinned-uses] Commit is SHA-pinned; its release tag is created after merge.
       with:
-        dev: ${{ inputs.dev }}
+        host: ${{ inputs.socket-sts-host }}
         upload-aegis-report: "false"
 
     - name: Exchange GitHub OIDC token for Aegis release access
       if: steps.oidc.outputs.available == 'true'
       id: release-token
-      uses: tempoxyz/gh-actions/actions/github-sts@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
+      uses: tempoxyz/gh-actions/actions/github-sts@645c7bc579435697435a3990ee1d93aeeb0e65e7 # zizmor: ignore[unpinned-uses] Commit is SHA-pinned; its release tag is created after merge.
       with:
         scope: tempoxyz/aegis
         policy: download-releases
         ttl: 15m
-        dev: ${{ inputs.dev }}
 
     - name: Ensure GitHub CLI supports attestation verification
       if: steps.oidc.outputs.available == 'true'

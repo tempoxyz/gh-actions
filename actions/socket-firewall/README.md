@@ -70,7 +70,7 @@ writing the credential to disk.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `dev` | Use the development Socket STS endpoint for integration testing | No | `false` |
+| `socket-sts-host` | Socket STS hostname, without a scheme, port, or path | No | `socket-sts.tempoxyz.net` |
 
 ## Outputs
 

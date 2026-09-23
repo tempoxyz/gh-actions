@@ -5,25 +5,18 @@ function isTransientStatus(status) {
 }
 
 function endpoint(value) {
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("Step Security STS URL is invalid");
-  }
   if (
-    url.protocol !== "https:" ||
-    url.username !== "" ||
-    url.password !== "" ||
-    url.port !== "" ||
-    url.pathname !== "/" ||
-    url.search !== "" ||
-    url.hash !== "" ||
-    !/^[a-z0-9.-]+$/.test(url.hostname)
+    typeof value !== "string" ||
+    value.length > 253 ||
+    !value
+      .split(".")
+      .every((label) =>
+        /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(label),
+      )
   ) {
-    throw new Error("Step Security STS URL is invalid");
+    throw new Error("host must be a hostname without a scheme, port, or path");
   }
-  return { audience: url.hostname, origin: url.origin };
+  return { audience: value, origin: `https://${value}` };
 }
 
 function request(url, options = {}, body) {

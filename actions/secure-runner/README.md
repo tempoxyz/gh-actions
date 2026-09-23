@@ -20,7 +20,7 @@ verified against its release-tag source commit and `refs/heads/main`; see
 ## Inputs
 
 Accepts all inputs and defaults from [Harden Runner](../harden-runner/action.yml)
-and forwards them unchanged: `dev`, `egress-policy`, `allowed-endpoints`,
+and forwards them unchanged: `step-security-sts-host`, `egress-policy`, `allowed-endpoints`,
 `denied-endpoints`, `disable-telemetry`, `disable-sudo-and-containers`,
 `disable-file-monitoring`, `deploy-on-self-hosted-vm`, and `token`.
 
@@ -29,8 +29,9 @@ warning annotation. It is intended for Aegis's own installation tests, where a
 preinstalled Aegis service would conflict with the version under test and a large
 test matrix would otherwise request a separate StepSecurity credential per job.
 
-`dev` also selects the Socket STS endpoint. Both services use production by
-default; set `dev: true` to use their development endpoints.
+Both services use production by default. For a development deployment, set
+`step-security-sts-host: ss-sts.tempoxyz.dev` and/or
+`socket-sts-host: socket-sts.tempoxyz.dev`.
 
 The caller must grant `id-token: write` for the STS exchanges. Harden Runner
 policies must allow the network access needed to install and use Socket Firewall.

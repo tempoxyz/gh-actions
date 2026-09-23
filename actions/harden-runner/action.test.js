@@ -82,14 +82,14 @@ for (const check of ["fmt", "clippy"]) {
 test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
   assert.match(
     manifest,
-    /dev:\n\s+description:[^\n]+\n\s+required: false\n\s+default: "false"/,
+    /step-security-sts-host:\n\s+description:[^\n]+\n\s+required: false\n\s+default: "ss-sts\.tempoxyz\.net"/,
   );
-  assert.doesNotMatch(manifest, /sts-url:/);
+  assert.doesNotMatch(manifest, /\bdev:/);
   assert.match(manifest, /using: "node24"/);
   assert.match(manifest, /pre: "pre\.cjs"/);
   const pre = fs.readFileSync(path.join(__dirname, "pre.cjs"), "utf8");
   assert.ok(
-    pre.indexOf("await exchange(stsEndpoint(") <
+    pre.indexOf("await exchange(") <
       pre.indexOf('run("pre", result.token)'),
     "the STS exchange must finish before Harden Runner initializes",
   );
@@ -209,18 +209,18 @@ test("pre exchanges the STS credential whenever an OIDC token is available", asy
         return {
           token: "step_test_short_lived_api_key",
           leaseId: "11111111-1111-4111-8111-111111111111",
-          rawEndpoint: "https://sts.example.test",
+          rawHost: "ss-sts.tempoxyz.net",
         };
       },
     }),
   );
-  assert.deepEqual(endpoints, ["https://ss-sts.tehq.net"]);
+  assert.deepEqual(endpoints, ["ss-sts.tempoxyz.net"]);
   assert.deepEqual(calls, [["pre", "step_test_short_lived_api_key"]]);
   assert.equal(
     fs.readFileSync(state, "utf8"),
     "token=step_test_short_lived_api_key\n" +
       "lease_id=11111111-1111-4111-8111-111111111111\n" +
-      "sts_url=https://sts.example.test\n",
+      "sts_host=ss-sts.tempoxyz.net\n",
   );
 });
 

@@ -1,10 +1,10 @@
 const { host, request, retry } = require("./http.cjs");
 const { uploadAegisReport } = require("./dist/artifact-upload.cjs");
 
-function buildRevokeRequest(token, dev) {
+function buildRevokeRequest(token, endpoint) {
   const body = JSON.stringify({ token });
   return {
-    url: `https://${host(dev)}/sts/exchange`,
+    url: `https://${host(endpoint)}/sts/exchange`,
     options: {
       method: "DELETE",
       headers: {
@@ -28,7 +28,7 @@ async function main() {
   try {
     const revoke = buildRevokeRequest(
       token,
-      process.env.STATE_dev || "false",
+      process.env.STATE_host || "socket-sts.tempoxyz.net",
     );
     const response = await retry(() =>
       request(revoke.url, revoke.options, revoke.body),

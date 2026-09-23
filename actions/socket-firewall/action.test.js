@@ -27,7 +27,8 @@ test("uses both STS exchanges and the aegis download policy", () => {
   assert.match(manifest, /tempoxyz\/gh-actions\/actions\/github-sts@[0-9a-f]{40}/);
   assert.match(manifest, /scope: tempoxyz\/aegis\r?\n/);
   assert.match(manifest, /policy: download-releases\r?\n/);
-  assert.match(manifest, /dev: \$\{\{ inputs\.dev \}\}/);
+  assert.match(manifest, /host: \$\{\{ inputs\.socket-sts-host \}\}/);
+  assert.doesNotMatch(manifest, /\bdev:/);
   assert.match(manifest, /INPUT_SOCKET_TOKEN: \$\{\{ steps\.socket-token\.outputs\.token \}\}/);
   assert.match(manifest, /aegis install --config/);
 });
