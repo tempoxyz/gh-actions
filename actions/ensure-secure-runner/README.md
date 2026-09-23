@@ -4,7 +4,7 @@ Scans every workflow under `.github/workflows` and fails unless every job runs
 [`secure-runner`](../secure-runner) as its **first step**. Use it as a guard so no job
 runs without Harden Runner and Socket Firewall. The check is strict by design: a job passes
 only when it is `ok`, when it calls a reusable workflow (`reusable`), or when it is the job
-that runs this check and nothing else (`checker`). There is no other exemption mechanism.
+that runs this check and nothing else (`checker`), or under the narrow exceptions below.
 
 Workflows are parsed with [`@actions/workflow-parser`](https://www.npmjs.com/package/@actions/workflow-parser),
 GitHub's own workflow parser, so job and step structure, reusable-workflow calls and `if:`
@@ -15,6 +15,8 @@ normalization match what the Actions service sees. Each job is reported as one o
 | `ok` | The first step `uses:` an accepted action, or the job calls a workflow in this repository that is part of the same scan | |
 | `reusable` | The job calls a reusable workflow that is not part of this scan; its jobs are checked where that workflow is defined | |
 | `checker` | Every step of the job is `actions/checkout` or this action, so there is nothing to harden | |
+| `status-only` | A single reviewed SHA-pinned status action with explicit empty job permissions and no runtime overrides | |
+| `exempt` | An exact job exemption with a caller-supplied review reason | |
 | `not-a-workflow` | The file is an action manifest (`action.yml`), which is skipped; actions are called from jobs that are already checked | |
 | `missing` | No step uses the action (or the job has no steps) | yes |
 | `not-first` | The action is used, but not as step 1 | yes |
@@ -66,6 +68,44 @@ workflow in another repository is `reusable`: it does not fail, since the called
 jobs can only be inspected where it is defined, but it is listed in the step summary so the
 gap is visible. Run this action in the repository that defines the workflow to cover them.
 
+### Defaults and additional exemptions
+
+Status-only jobs are exempt by default only when they contain exactly one of these reviewed
+action revisions and explicitly declare job-level `permissions: {}`:
+
+- `tempoxyz/gh-actions/actions/check-needs@117919c943b804057be733b0c4034c5542e58959`
+- `re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35`
+
+The default checks structure, not job names. No checkout, extra steps, containers, services,
+job/step environment, or workflow defaults are accepted. Workflow environment is limited to
+literal `CARGO_TERM_COLOR` (`always`, `never`, `auto`), `RUST_BACKTRACE` (`full`, `0`, `1`), and
+`RUSTC_WRAPPER: sccache`; these do not affect the reviewed Node/Python actions. Other environment
+settings require explicit review. Only `jobs`, `allowed-skips`, and `allowed-failures` action
+inputs are accepted. New action revisions require review and an update to `STATUS_ACTIONS`.
+
+Add repository-specific exceptions through `exemptions`, a JSON object:
+
+```yaml
+with:
+  exemptions: |
+    {
+      ".github/workflows/ci.yml:codeql": "Reviewed static analysis with build-mode none; no project dependency installation."
+    }
+```
+
+Keys must be exact repository-relative workflow paths and job IDs, not display names.
+Wildcards and whole-workflow exclusions are rejected. Every entry needs a non-empty reason
+and must match a job missing secure-runner in the scanned files. Stale, redundant, malformed,
+or unmatched entries fail even with `fail-on-violation: false`; exemptions cannot hide parse
+errors or a misplaced/conditional secure-runner step. Defaults and explicit exemptions are
+listed with reasons in the log and summary, not reported as protected jobs.
+
+An explicit exemption is a reviewed policy decision, not proof that a job is safe. Re-review
+it when the job changes, and protect workflow/config changes through code review. No package
+installation does not imply no hardening value: jobs with write tokens, deployment credentials,
+or untrusted artifact handling should normally retain secure-runner. Exemptions only change
+this checker; they do not remove or disable any secure-runner steps.
+
 ## Inputs
 
 | Name | Description | Required | Default |
@@ -73,6 +113,7 @@ gap is visible. Run this action in the repository that defines the workflow to c
 | `workflows` | Workflow files or directories to check (comma, space or newline separated). Directories are not recursed, matching GitHub's discovery. Action manifests found among the paths are skipped. | No | `.github/workflows` |
 | `actions` | Accepted `uses:` targets for the hardening step. An entry without `@ref` accepts any ref; an entry with one requires exactly that ref. | No | `tempoxyz/gh-actions/actions/secure-runner` |
 | `fail-on-violation` | Fail the step on any violation. `false` only annotates and reports through outputs. | No | `true` |
+| `exemptions` | JSON object mapping exact `workflow-file:job-id` keys to review reasons; additive to the status-only default. | No | `{}` |
 
 ## Outputs
 
