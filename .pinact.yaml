@@ -11,11 +11,6 @@ min_age:
   value: 7
   always: true
 rules:
-  # This reviewed checker commit adds exemption support but is not tagged yet.
-  # Scope the exception to its immutable revision; normal self-pin refresh replaces it.
-  - ignore: true
-    conditions:
-      - expr: ActionName == "tempoxyz/gh-actions/actions/ensure-secure-runner" && ActionVersion == "b034d5783752feff450078e0b807ad186a40d550"
   # The shim-capable Socket action revision is not tagged yet. Keep its
   # immutable pin while exempting only this action from comment/min-age checks.
   - ignore: true

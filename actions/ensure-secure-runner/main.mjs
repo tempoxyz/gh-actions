@@ -31,16 +31,10 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-let report;
-try {
-  report = await checkWorkflows(
-    files.map((name) => ({ name, content: readFileSync(name, "utf8") })),
-    { actions, exemptions: process.env.EXEMPTIONS ?? "{}" },
-  );
-} catch (err) {
-  console.error(`::error::ensure-secure-runner: ${String(err.message).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`);
-  process.exit(1);
-}
+const report = await checkWorkflows(
+  files.map((name) => ({ name, content: readFileSync(name, "utf8") })),
+  { actions },
+);
 
 console.log(`checking ${report.jobs} job(s) in ${report.workflows} workflow(s) for a first step using ${actions.join(", ")}`);
 for (const f of report.findings) console.log(formatLine(f));
@@ -62,13 +56,11 @@ if (process.env.GITHUB_STEP_SUMMARY) {
 if (report.ok) {
   const calls = report.findings.filter((f) => f.status === "reusable").length;
   const checkers = report.findings.filter((f) => f.status === "checker").length;
-  const exempt = report.findings.filter((f) => f.status === "status-only" || f.status === "exempt").length;
-  const direct = report.jobs - calls - checkers - exempt;
+  const direct = report.jobs - calls - checkers;
   console.log(
     `no violations: ${direct} job(s) start with the secure-runner action` +
       (calls ? `, ${calls} reusable workflow call(s) are checked where they are defined` : "") +
       (checkers ? `, ${checkers} job(s) only run this check` : "") +
-      (exempt ? `, ${exempt} job(s) exempt (see reasons above)` : "") +
       (report.skipped ? `; ${report.skipped} action manifest(s) skipped` : ""),
   );
 } else {

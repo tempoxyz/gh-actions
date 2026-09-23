@@ -7,7 +7,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_ACTIONS,
-  STATUS_ACTIONS,
   checkWorkflow,
   checkWorkflows,
   discoverWorkflows,
@@ -17,7 +16,6 @@ import {
   isCheckerJob,
   isViolation,
   parseList,
-  parseExemptions,
   usesMatches,
 } from "./check.mjs";
 
@@ -47,95 +45,6 @@ test("usesMatches ignores the ref unless the accepted entry pins one", () => {
   assert.equal(usesMatches(SECURE, [SECURE]), true);
   assert.equal(usesMatches("tempoxyz/gh-actions/actions/secure-runner@main", [SECURE]), false);
   assert.equal(usesMatches("", DEFAULT_ACTIONS), false);
-});
-
-test("only reviewed status-only jobs with explicit empty permissions are automatic defaults", async () => {
-  for (const uses of STATUS_ACTIONS) {
-    const statusJob = job("gate", [`uses: ${uses}\n        with:\n          jobs: '{"build":{"result":"success"}}'`])
-      .replace("    steps:", "    permissions: {}\n    steps:");
-    const content = workflow(statusJob);
-    assert.deepEqual(await statuses(content), { gate: "status-only" });
-    assert.deepEqual(await statuses(content.replace("jobs:\n", 'env:\n  CARGO_TERM_COLOR: always\n  RUST_BACKTRACE: full\n  RUSTC_WRAPPER: sccache\njobs:\n')), { gate: "status-only" });
-    const cases = [
-      content.replace("    permissions: {}\n", ""),
-      content.replace("    permissions: {}", "    permissions: read-all"),
-      content.replace("    permissions: {}", "    permissions:\n      contents: write"),
-      content.replace("    permissions: {}", "    permissions:\n      contents: read"),
-      content.replace(uses, uses.replace(/@.*/, "@main")),
-      content.replace(uses, uses.replace(/@.*/, "@" + "0".repeat(40))),
-      content.replace(uses, "./actions/check-needs"),
-      content.replace("    steps:", "    container: node:24\n    steps:"),
-      content.replace("    steps:", "    services:\n      db:\n        image: postgres\n    steps:"),
-      content.replace("    steps:", "    env:\n      NODE_OPTIONS: --inspect\n    steps:"),
-      content.replace("jobs:\n", "env:\n  NODE_OPTIONS: --inspect\njobs:\n"),
-      content.replace("jobs:\n", "env:\n  BASH_ENV: /tmp/startup\njobs:\n"),
-      content.replace("jobs:\n", "env:\n  CARGO_TERM_COLOR: ${{ secrets.COLOR }}\njobs:\n"),
-      content.replace("jobs:\n", "env:\n  RUSTC_WRAPPER: custom-wrapper\njobs:\n"),
-      content.replace("jobs:\n", "defaults:\n  run:\n    shell: bash\njobs:\n"),
-      content.replace("        with:", "        env:\n          NODE_OPTIONS: --inspect\n        with:"),
-      content.replace("          jobs:", "          unexpected: value\n          jobs:"),
-      content + "      - run: echo extra\n",
-      content + "      - uses: actions/checkout@v4\n",
-    ];
-    for (const changed of cases) {
-      const result = await statuses(changed);
-      assert.notEqual(result.gate, "status-only", changed);
-      assert.ok(Object.values(result).every((status) => isViolation({ status })), JSON.stringify(result));
-    }
-    // The default is structural, not based on a job's name.
-    assert.deepEqual(await statuses(workflow(job("ci-success", ["run: echo status"]))), { "ci-success": "missing" });
-  }
-});
-
-test("explicit exemptions require exact keys and meaningful reasons", () => {
-  assert.deepEqual([...parseExemptions('{".github/workflows/ci.yml:codeql":" Static analysis "}')],
-    [[".github/workflows/ci.yml:codeql", "Static analysis"]]);
-  for (const value of ["", "oops", "null", "[]", "true", '{"w.yml:job":""}', '{"w.yml:job":"  "}',
-    '{"w.yml:job":true}', '{"*.yml:job":"reason"}', '{"w.yml:*":"reason"}',
-    '{"w.yml":"reason"}', '{"../w.yml:job":"reason"}', '{"/w.yml:job":"reason"}',
-    '{"./w.yml:job":"reason"}', '{"w//a.yml:job":"reason"}']) {
-    assert.throws(() => parseExemptions(value), /exemption/, value);
-  }
-});
-
-test("explicit exemptions are additive and never mask parse errors or broken hardening", async () => {
-  const files = [{ name: "w.yml", content: workflow(job("report", ["run: echo report"]) + job("build", ["run: make"])) }];
-  const exemptions = '{"w.yml:report":"No installs; reviewed reporting job"}';
-  const report = await checkWorkflows(files, { exemptions });
-  assert.deepEqual(report.findings.map((f) => f.status), ["exempt", "missing"]);
-  assert.equal(report.violations.length, 1);
-  assert.match(formatSummary(report), /No installs; reviewed reporting job/);
-  for (const key of ["w.yml:typo", "other.yml:report"]) {
-    await assert.rejects(checkWorkflows(files, { exemptions: JSON.stringify({ [key]: "reason" }) }), /unused exemption/);
-  }
-  for (const steps of [[`uses: ${SECURE}`], ["run: echo hi", `uses: ${SECURE}`],
-    [`uses: ${SECURE}\n        if: false`]]) {
-    await assert.rejects(checkWorkflows([{ name: "w.yml", content: workflow(job("report", steps)) }], { exemptions }), /unused exemption/);
-  }
-  await assert.rejects(checkWorkflows([{ name: "w.yml", content: "jobs: [" }], { exemptions }), /unused exemption/);
-  const mixed = await checkWorkflows([...files, { name: "broken.yml", content: "jobs: [" }], { exemptions });
-  assert.ok(mixed.violations.some((f) => f.status === "parse-error"));
-});
-
-test("CLI reports exemptions and always rejects invalid or stale configuration", () => {
-  const dir = mkdtempSync(join(tmpdir(), "csr-exempt-"));
-  try {
-    mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
-    writeFileSync(join(dir, ".github", "workflows", "ci.yml"), workflow(job("report", ["run: echo report"])));
-    const passed = runMain(dir, { EXEMPTIONS: '{".github/workflows/ci.yml:report":"Reviewed reporting job"}' });
-    assert.equal(passed.status, 0, passed.stdout + passed.stderr);
-    assert.match(passed.summary, /### Exempt jobs/);
-    assert.match(passed.summary, /Reviewed reporting job/);
-    assert.match(passed.stdout, /0 job\(s\) start with the secure-runner action/);
-    assert.match(passed.output, /^count=0$/m);
-    for (const EXEMPTIONS of ["bad json", '{".github/workflows/ci.yml:typo":"reason"}']) {
-      const failed = runMain(dir, { EXEMPTIONS, FAIL_ON_VIOLATION: "false" });
-      assert.equal(failed.status, 1);
-      assert.match(failed.stderr, /exemption/);
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 test("a job whose first step is secure-runner passes", async () => {
@@ -344,10 +253,18 @@ test("main.mjs fails on violations, emits annotations and outputs, and can be to
     const soft = runMain(dir, { FAIL_ON_VIOLATION: "false" });
     assert.equal(soft.status, 0, soft.stdout + soft.stderr);
     assert.match(soft.stdout, /::warning::ensure-secure-runner: 1 job\(s\)/);
+    assert.match(soft.stdout, /::error file=.*Job 'bad': missing:/);
+    assert.equal(soft.output, failed.output, "advisory mode must preserve violation outputs");
+    assert.equal(soft.summary, failed.summary, "advisory mode must preserve the report");
+
+    const strict = runMain(dir, { FAIL_ON_VIOLATION: "true" });
+    assert.equal(strict.status, 1, "explicit true must remain blocking");
 
     const missingDir = runMain(dir, { WORKFLOWS: "nope" });
     assert.equal(missingDir.status, 1);
     assert.match(missingDir.stderr, /workflow path not found: nope/);
+    const advisoryMissingDir = runMain(dir, { WORKFLOWS: "nope", FAIL_ON_VIOLATION: "false" });
+    assert.equal(advisoryMissingDir.status, 1, "advisory mode must not hide setup failures");
 
     writeFileSync(join(dir, ".github", "workflows", "ci.yml"), workflow(job("good", [`uses: ${SECURE}`])));
     const clean = runMain(dir, {});
@@ -363,7 +280,7 @@ test("action.yml wires the inputs main.mjs reads and the outputs it writes", () 
   const action = readFileSync(join(here, "action.yml"), "utf8");
   assert.match(action, /using: "composite"/);
   assert.match(action, /node "\$GITHUB_ACTION_PATH\/main\.mjs"/);
-  for (const env of ["WORKFLOWS: ${{ inputs.workflows }}", "ACTIONS: ${{ inputs.actions }}", "FAIL_ON_VIOLATION: ${{ inputs.fail-on-violation }}", "EXEMPTIONS: ${{ inputs.exemptions }}"]) {
+  for (const env of ["WORKFLOWS: ${{ inputs.workflows }}", "ACTIONS: ${{ inputs.actions }}", "FAIL_ON_VIOLATION: ${{ inputs.fail-on-violation }}"]) {
     assert.ok(action.includes(env), `action.yml should set ${env}`);
   }
   for (const output of ["count", "jobs", "workflows", "violations"]) {
@@ -377,8 +294,9 @@ test("the reusable scanner relies on the accepted-action default", () => {
   const checker = scanner.match(/- name: Ensure every job starts with secure-runner\n([\s\S]*?)(?=\n      - name:)/)?.[1] ?? "";
   assert.match(checker, /uses: tempoxyz\/gh-actions\/actions\/ensure-secure-runner@[0-9a-f]{40}/);
   assert.doesNotMatch(checker, /^\s+actions:/m, "the reusable scanner must not narrow accepted action references");
-  assert.ok(checker.includes("exemptions: ${{ inputs.secure-runner-exemptions }}"));
-  assert.match(scanner, /secure-runner-exemptions:\n[\s\S]*?type: string\n\s+default: "\{\}"/);
+  assert.ok(checker.includes("fail-on-violation: ${{ inputs.secure-runner-fail-on-violation }}"));
+  assert.doesNotMatch(checker, /continue-on-error:/, "only violations, not checker setup failures, may be non-blocking");
+  assert.match(scanner, /secure-runner-fail-on-violation:\n[^\n]*\n\s+required: false\n\s+type: boolean\n\s+default: true/);
 });
 
 test("the committed parser bundle matches the version pinned in package.json", () => {

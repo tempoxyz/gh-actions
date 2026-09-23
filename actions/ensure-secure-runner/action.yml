@@ -15,10 +15,6 @@ inputs:
     description: "Fail the step on any violation. Set to false to only annotate and report through outputs."
     required: false
     default: "true"
-  exemptions:
-    description: "JSON object mapping exact repository-relative workflow-file:job-id keys to non-empty exemption reasons. Invalid or unused entries fail."
-    required: false
-    default: "{}"
 
 outputs:
   count:
@@ -44,5 +40,4 @@ runs:
         WORKFLOWS: ${{ inputs.workflows }}
         ACTIONS: ${{ inputs.actions }}
         FAIL_ON_VIOLATION: ${{ inputs.fail-on-violation }}
-        EXEMPTIONS: ${{ inputs.exemptions }}
       run: node "$GITHUB_ACTION_PATH/main.mjs"

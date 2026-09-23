@@ -6,7 +6,8 @@
 // dist/workflow-parser.cjs by build.mjs) rather than plain YAML so that job/step structure,
 // reusable-workflow calls and `if:` normalization match what the Actions service does.
 //
-// Exceptions are either structurally verified status-only jobs or exact, reasoned opt-ins.
+// The check is strict: only "ok", "reusable" and "checker" pass. There is no general exemption
+// mechanism; "checker" covers just the job that runs this action and nothing else.
 import { readdirSync, statSync } from "node:fs";
 import { relative, resolve, join } from "node:path";
 import {
@@ -28,63 +29,9 @@ export const SELF_ACTIONS = [
 ];
 export const CHECKOUT_ACTIONS = ["actions/checkout"];
 
-// Reviewed implementations that only inspect needs results; new revisions require review.
-export const STATUS_ACTIONS = [
-  "tempoxyz/gh-actions/actions/check-needs@117919c943b804057be733b0c4034c5542e58959",
-  "re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35",
-];
-
 // Every status a finding can have. Only the PASSING ones do not fail the check.
-export const STATUSES = ["ok", "reusable", "checker", "status-only", "exempt", "not-a-workflow", "missing", "not-first", "conditional", "parse-error"];
-export const PASSING = new Set(["ok", "reusable", "checker", "status-only", "exempt", "not-a-workflow"]);
-
-export function parseExemptions(value = "{}") {
-  let parsed;
-  try { parsed = JSON.parse(value); }
-  catch { throw new Error("exemptions must be a JSON object mapping workflow-file:job-id to a reason"); }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("exemptions must be a JSON object");
-  }
-  for (const [key, reason] of Object.entries(parsed)) {
-    const path = key.split(":")[0];
-    if (!/^[A-Za-z0-9_./-]+\.ya?ml:[A-Za-z_][A-Za-z0-9_-]*$/.test(key) ||
-        path.split("/").some((part) => !part || part === "." || part === "..")) {
-      throw new Error(`invalid exemption ${JSON.stringify(key)}: use an exact repository-relative workflow-file:job-id (no wildcards)`);
-    }
-    if (typeof reason !== "string" || !reason.trim()) {
-      throw new Error(`exemption ${JSON.stringify(key)} requires a non-empty reason`);
-    }
-  }
-  return new Map(Object.entries(parsed).map(([key, reason]) => [key, reason.trim()]));
-}
-
-function mappingValue(token, key) {
-  return token?.type === 2 ? [...token].find((pair) => scalarText(pair.key) === key)?.value : undefined;
-}
-
-function onlyKeys(token, keys) {
-  return token?.type === 2 && [...token].every((pair) => keys.includes(scalarText(pair.key)));
-}
-
-// Inspect raw tokens: conversion intentionally omits permissions and some other fields.
-// Only these literal Rust settings are harmless to the reviewed Node/Python status actions.
-const STATUS_ENV = { CARGO_TERM_COLOR: ["always", "never", "auto"], RUST_BACKTRACE: ["full", "0", "1"], RUSTC_WRAPPER: ["sccache"] };
-function isStatusEnvironment(env) {
-  return !env || (env.type === 2 && [...env].every(({ key, value }) =>
-    value.type === 0 && Object.hasOwn(STATUS_ENV, scalarText(key)) && STATUS_ENV[scalarText(key)].includes(scalarText(value))));
-}
-
-function isStatusOnlyJob(root, rawJob, steps) {
-  const permissions = mappingValue(rawJob, "permissions");
-  if (permissions?.type !== 2 || permissions.count !== 0 || steps.length !== 1) return false;
-  if (!isStatusEnvironment(mappingValue(root, "env")) || mappingValue(root, "defaults")) return false;
-  if (!onlyKeys(rawJob, ["name", "needs", "if", "runs-on", "permissions", "steps", "timeout-minutes"])) return false;
-  const rawStep = mappingValue(rawJob, "steps")?.get(0);
-  if (!onlyKeys(rawStep, ["name", "id", "uses", "with"])) return false;
-  const inputs = mappingValue(rawStep, "with");
-  if (inputs && !onlyKeys(inputs, ["jobs", "allowed-skips", "allowed-failures"])) return false;
-  return STATUS_ACTIONS.includes(scalarText(steps[0].uses));
-}
+export const STATUSES = ["ok", "reusable", "checker", "not-a-workflow", "missing", "not-first", "conditional", "parse-error"];
+export const PASSING = new Set(["ok", "reusable", "checker", "not-a-workflow"]);
 
 // Only workflows are checked. Composite and JavaScript actions are called from workflow jobs
 // that already start with secure-runner, so an action manifest (top-level `runs:` and no
@@ -249,11 +196,6 @@ export async function checkWorkflow({ name, content }, { actions = DEFAULT_ACTIO
 
     const steps = job.steps ?? [];
     const index = steps.findIndex((s) => s.uses && usesMatches(scalarText(s.uses), actions));
-    const rawJob = mappingValue(mappingValue(result.value, "jobs"), id);
-    if (index === -1 && isStatusOnlyJob(result.value, rawJob, steps)) {
-      finding({ job: id, line: jobLine, status: "status-only", detail: "only an approved pinned status action, with explicit permissions: {} and no runtime overrides" });
-      continue;
-    }
     if (index === -1 && isCheckerJob(steps)) {
       finding({ job: id, line: jobLine, status: "checker", detail: "runs only checkout and ensure-secure-runner" });
       continue;
@@ -297,21 +239,11 @@ export async function checkWorkflow({ name, content }, { actions = DEFAULT_ACTIO
 
 // Check many workflows. files: [{ name, content }].
 export async function checkWorkflows(files, options = {}) {
-  const exemptions = parseExemptions(options.exemptions ?? "{}");
   const scanned = options.scanned ?? new Set(files.map((f) => f.name));
   const findings = [];
   for (const file of files) {
     const { findings: f } = await checkWorkflow(file, { ...options, scanned });
     findings.push(...f);
-  }
-  for (const [key, reason] of exemptions) {
-    const target = findings.find((f) => f.job !== null && `${f.workflow}:${f.job}` === key);
-    if (!target) throw new Error(`unused exemption ${JSON.stringify(key)}: no matching job in the scanned workflows`);
-    if (target.status !== "missing") {
-      throw new Error(`unused exemption ${JSON.stringify(key)}: job has status ${target.status}; remove the exemption or fix the job`);
-    }
-    target.status = "exempt";
-    target.detail = reason;
   }
   const violations = findings.filter(isViolation);
   const jobs = findings.filter((f) => f.job !== null).length;
@@ -321,7 +253,7 @@ export async function checkWorkflows(files, options = {}) {
 
 export function formatLine(f) {
   const where = f.job === null ? f.workflow : `${f.workflow} › ${f.job}`;
-  const label = { ok: "ok", reusable: "call", checker: "self", "status-only": "skip", exempt: "skip", "not-a-workflow": "skip" }[f.status] ?? "FAIL";
+  const label = { ok: "ok", reusable: "call", checker: "self", "not-a-workflow": "skip" }[f.status] ?? "FAIL";
   const extra = f.status === "ok" ? f.detail : `${f.status}: ${f.detail}`;
   return `${label.padEnd(4)}  ${where}  (${extra})`;
 }
@@ -345,16 +277,10 @@ export function formatSummary(report, { actions = DEFAULT_ACTIONS } = {}) {
   const out = ["## Secure runner check", ""];
   out.push(
     report.ok
-      ? `✅ No secure-runner policy violations across ${report.jobs} job(s) in ${report.workflows} workflow(s). Accepted actions: \`${actions.join("`, `")}\`.`
+      ? `✅ All ${report.jobs} job(s) across ${report.workflows} workflow(s) start with \`${actions.join("`, `")}\`.`
       : `❌ ${report.violations.length} violation(s) across ${report.workflows} workflow(s); ${report.jobs} job(s) checked.`,
   );
   out.push("");
-  const exemptions = report.findings.filter((f) => f.status === "status-only" || f.status === "exempt");
-  if (exemptions.length) {
-    out.push("### Exempt jobs", "", "| Workflow | Job | Status | Reason |", "|---|---|---|---|");
-    for (const f of exemptions) out.push(`| \`${cell(f.workflow)}\` | \`${cell(f.job)}\` | ${f.status} | ${cell(f.detail)} |`);
-    out.push("");
-  }
   if (report.violations.length) {
     out.push("| Workflow | Job | Line | Problem | Detail |", "|---|---|---|---|---|");
     for (const f of report.violations) {
