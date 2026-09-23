@@ -35,7 +35,7 @@ permissions:
 steps:
   - name: Fetch GitHub token via STS
     id: sts
-    uses: tempoxyz/gh-actions/actions/github-sts@7e2ea6e1a8f5a22f16c2d4b389ffde25da93fa1b # 2026-09-22T22-21-59Z-7e2ea6e1
+    uses: tempoxyz/gh-actions/actions/github-sts@20ff54f9bb27cd6cf604937d28fa73d8501be28d # 2026-09-23T03-41-39Z-20ff54f9
     with:
       policy: deploy # Uses .github/sts/deploy.sts.yaml as the permissions policy
       ttl: 15m
