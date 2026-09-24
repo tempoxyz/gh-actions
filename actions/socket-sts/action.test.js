@@ -15,7 +15,7 @@ const {
   retryExchangeInProgress,
   retryRateLimited,
 } = require("./http.cjs");
-const { ASSERTION_ATTEMPTS, exchangeWithFreshAssertion, publishToken } = require("./main.cjs");
+const { ASSERTION_ATTEMPTS, exchangeWithFreshAssertion, exchangeWithRetry, publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
@@ -226,6 +226,135 @@ test("fails instead of waiting more than two minutes for a Socket STS rate limit
     /exceeds the 2 minute limit/,
   );
 });
+
+const pendingExchange = {
+  status: 429,
+  headers: { "retry-after": "1" },
+  body: '{"message":"exchange is already in progress"}',
+};
+const providerRateLimit = {
+  status: 429,
+  headers: { "retry-after": "1" },
+  body: '{"message":"Socket API rate limit exceeded"}',
+};
+const mintTimeout = {
+  status: 502,
+  body: '{"message":"Socket API token creation timed out"}',
+};
+
+for (const { name, response, fresh } of [
+  { name: "provider rate limit", response: providerRateLimit, fresh: true },
+  { name: "pending exchange", response: pendingExchange, fresh: false },
+  {
+    name: "workflow issuance limit",
+    response: { ...pendingExchange, body: '{"message":"credential issuance limit reached for this workflow run"}' },
+    fresh: false,
+  },
+  { name: "unknown 429", response: { ...pendingExchange, body: '{}' }, fresh: false },
+  { name: "non-JSON 429", response: { ...pendingExchange, body: 'rate limited' }, fresh: false },
+]) {
+  test(`exchange ${fresh ? "refreshes" : "retains"} the assertion after ${name}`, async () => {
+    const events = [];
+    const assertions = [];
+    let issued = 0;
+    const result = await exchangeWithRetry(
+      async () => {
+        const assertion = `assertion-${++issued}`;
+        events.push(assertion);
+        return assertion;
+      },
+      async (assertion) => {
+        assertions.push(assertion);
+        return assertions.length === 1 ? response : { status: 200, body: "token" };
+      },
+      { now: () => 0, sleep: async (delay) => events.push(delay) },
+    );
+
+    assert.equal(result.body, "token");
+    assert.deepEqual(assertions, ["assertion-1", fresh ? "assertion-2" : "assertion-1"]);
+    assert.deepEqual(events, fresh ? ["assertion-1", 1_000, "assertion-2"] : ["assertion-1", 1_000]);
+  });
+}
+
+test("polls the same claim before and after a provider rate limit", async () => {
+  const responses = [pendingExchange, providerRateLimit, pendingExchange, { status: 200, body: "token" }];
+  const assertions = [];
+  const delays = [];
+  let issued = 0;
+  const result = await exchangeWithRetry(
+    async () => `assertion-${++issued}`,
+    async (assertion) => {
+      assertions.push(assertion);
+      return responses.shift();
+    },
+    { now: () => 0, sleep: async (delay) => delays.push(delay) },
+  );
+
+  assert.equal(result.body, "token");
+  assert.deepEqual(assertions, ["assertion-1", "assertion-1", "assertion-2", "assertion-2"]);
+  assert.deepEqual(delays, [1_000, 1_000, 1_000]);
+});
+
+for (const failure of [mintTimeout, Object.assign(new Error("timed out"), { code: "ETIMEDOUT" })]) {
+  test(`recovers from a pending exchange followed by ${failure.status || failure.code}`, async () => {
+    const responses = [pendingExchange, failure, pendingExchange, { status: 200, body: "token" }];
+    const assertions = [];
+    let issued = 0;
+    const result = await exchangeWithRetry(
+      async () => `assertion-${++issued}`,
+      async (assertion) => {
+        assertions.push(assertion);
+        const response = responses.shift();
+        if (response instanceof Error) throw response;
+        return response;
+      },
+      { now: () => 0, sleep: async () => {} },
+    );
+
+    assert.equal(result.body, "token");
+    assert.deepEqual(assertions, ["assertion-1", "assertion-1", "assertion-2", "assertion-2"]);
+  });
+}
+
+test("does not reset the timeout recovery limit after pending polls", async () => {
+  const assertions = [];
+  let issued = 0;
+  await assert.rejects(
+    exchangeWithRetry(
+      async () => `assertion-${++issued}`,
+      async (assertion) => {
+        assertions.push(assertion);
+        return assertions.length % 2 === 1 ? pendingExchange : mintTimeout;
+      },
+      { now: () => 0, sleep: async () => {} },
+    ),
+    { code: "ESTS_FRESH_ASSERTION_REQUIRED" },
+  );
+  assert.deepEqual(assertions, ["assertion-1", "assertion-1", "assertion-2", "assertion-2"]);
+});
+
+for (const response of [pendingExchange, providerRateLimit]) {
+  test(`bounds repeated ${JSON.parse(response.body).message} responses to two minutes`, async () => {
+    const assertions = [];
+    let issued = 0;
+    let now = 0;
+    await assert.rejects(
+      exchangeWithRetry(
+        async () => `assertion-${++issued}`,
+        async (assertion) => {
+          assertions.push(assertion);
+          return { ...response, headers: { "retry-after": "60" } };
+        },
+        { now: () => now, sleep: async (delay) => { now += delay; } },
+      ),
+      /exceeds the 2 minute limit/,
+    );
+    assert.equal(now, 120_000);
+    assert.deepEqual(assertions, response === providerRateLimit
+      ? ["assertion-1", "assertion-2", "assertion-3"]
+      : ["assertion-1", "assertion-1", "assertion-1"]);
+  });
+}
 
 test("main fails closed without GitHub id-token permission", () => {
   const result = spawnSync(process.execPath, [path.join(__dirname, "main.cjs")], {

@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const {
   host,
+  isProviderRateLimited,
   request,
   retry,
   retryExchangeInProgress,
@@ -35,6 +36,34 @@ async function exchangeWithFreshAssertion(getAssertion, exchange) {
     }
   }
   throw lastError;
+}
+
+function exchangeWithRetry(getAssertion, exchange, options = {}) {
+  return exchangeWithFreshAssertion(getAssertion, (initialAssertion) => {
+    let assertion = initialAssertion;
+    let refresh = false;
+    return retryRateLimited(async () => {
+      // A provider rate limit consumes the assertion. Refresh only after the
+      // retry delay; pending exchanges must keep polling their original claim.
+      if (refresh) {
+        assertion = await getAssertion();
+        refresh = false;
+      }
+      const response = await retryExchangeInProgress(() =>
+        retry(() => exchange(assertion), {
+          sleep: options.sleep,
+          // Let the outer handlers pace 429s and refresh after definite mint
+          // timeouts, legacy in-progress responses, or transport timeouts.
+          shouldRetryResponse: (response) =>
+            (response.status < 200 || response.status >= 300) &&
+            response.status !== 429 && !requiresFreshAssertion(response),
+          shouldRetryError: (error) => error?.code !== "ETIMEDOUT",
+        }),
+      );
+      refresh = isProviderRateLimited(response);
+      return response;
+    }, options);
+  });
 }
 
 function append(file, name, value) {
@@ -90,32 +119,17 @@ async function main() {
     return oidc;
   };
 
-  const exchange = await exchangeWithFreshAssertion(
+  const exchange = await exchangeWithRetry(
     getAssertion,
     (oidc) =>
-      retryRateLimited(() =>
-        retryExchangeInProgress(() =>
-          retry(
-            () =>
-              request(`https://${endpoint}/sts/exchange`, {
-                method: "POST",
-                headers: {
-                  authorization: `Bearer ${oidc}`,
-                  "content-length": "0",
-                  "user-agent": "tempoxyz-socket-sts-action",
-                },
-              }),
-            {
-              // Let the outer handlers own 429 and the service's idempotent
-              // in-progress response. A transport timeout or a definite
-              // upstream mint timeout needs a fresh OIDC assertion instead.
-              shouldRetryResponse: (response) =>
-                response.status !== 429 && !requiresFreshAssertion(response),
-              shouldRetryError: (error) => error?.code !== "ETIMEDOUT",
-            },
-          ),
-        ),
-      ),
+      request(`https://${endpoint}/sts/exchange`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${oidc}`,
+          "content-length": "0",
+          "user-agent": "tempoxyz-socket-sts-action",
+        },
+      }),
   );
   let result = {};
   try {
@@ -154,6 +168,7 @@ if (require.main === module) {
 module.exports = {
   ASSERTION_ATTEMPTS,
   exchangeWithFreshAssertion,
+  exchangeWithRetry,
   main,
   maskSecret,
   publishToken,
