@@ -121,7 +121,7 @@ class Controller:
         if decision.get('classification_only'):
             text += 'Classification-only test: no audit was dispatched and no merge rule is enforced by this test.'
         else:
-            text += 'This gate permits merging; other repository requirements still apply.' if plan['mode'] == 'skip' else 'This status stays pending until the required audit passes and publication complete.'
+            text += 'This gate permits merging; other repository requirements still apply.' if plan['mode'] == 'skip' else 'This status stays pending until the audit ends. Failed audits and worker rejections also satisfy this gate.'
         body = pack(decision, DECISION) + '\n' + text
         if comment:
             return gh(f"{self.root}/issues/comments/{comment['id']}", 'PATCH', {'body': body})
@@ -140,18 +140,15 @@ class Controller:
             receipt = unpack(c.get('body', ''), RECEIPT)
             if not receipt or receipt.get('run_label') != decision['run_label']:
                 continue
-            if receipt.get('status') != 'completed':
-                self.status('error', 'Cyclops audit incomplete; inspect the receipt and retry', c['html_url'])
-                return
-            review = gh(f"{self.root}/pulls/{self.number}/reviews/{int(receipt.get('review_id', 0))}")
-            if review.get('user', {}).get('id') == POLICY['completion_bot_id'] and receipt_valid(receipt, decision, review):
-                self.status('success', 'Cyclops: all required audit passes and publication completed', c['html_url'])
+            if receipt_valid(receipt, decision):
+                outcome = receipt['workflow_phase']
+                self.status('success', f'Cyclops audit ended ({outcome}); terminal-outcome gate satisfied', c['html_url'])
                 return
         deadline = dt.datetime.fromisoformat(decision['created_at']).timestamp() + decision['plan']['profile']['budget_seconds'] + 1800
         if time.time() > deadline or decision['phase'] == 'dispatch_failed':
-            self.status('error', 'Cyclops: no valid completion receipt; retry required', comment['html_url'])
+            self.status('error', 'Cyclops: no terminal audit receipt; inspect workflow', comment['html_url'])
         else:
-            self.status('pending', 'Cyclops: waiting for required audit completion', comment['html_url'])
+            self.status('pending', 'Cyclops: waiting for audit to end', comment['html_url'])
 
     def evidence(self):
         files = pages(f'{self.root}/pulls/{self.number}/files')

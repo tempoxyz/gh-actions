@@ -70,3 +70,8 @@ dependency delta for Jev; Cyclops must audit it. No production rollout, benchmar
 calibration or skip-accuracy claim is implied by unit-test success.
 
 Validate: `python3 -m unittest discover -s actions/jev-pr-audit -p 'test_*.py'`.
+
+The merge gate now requires a trusted Argo exit receipt for the exact audit attempt,
+not successful worker passes or review publication. Succeeded, Failed, and Error
+outcomes open the gate. Running audits, failed dispatches, stale receipts, and absent
+terminal evidence remain blocked. Worker-level receipts are retained as diagnostics.

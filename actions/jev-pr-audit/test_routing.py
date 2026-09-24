@@ -107,25 +107,22 @@ class ReceiptTests(unittest.TestCase):
     def setUp(self):
         self.d=dict(repository='tempoxyz/cyclops-canary',pr=10,head='a'*40,base='b'*40,run_label='jev-123',decision_id='d',plan_hash='h',plan=route([file('tests/test.rs')],[answer('tests')],True,POLICY))
         self.r={k:self.d[k] for k in ('repository','pr','head','base','run_label','decision_id','plan_hash')}
-        self.r.update(status='completed',perf=False,review_id=1,workers=[dict(id='pr-10-w1',engine='codex/gpt-6-sol',thinking='medium',passes=1)])
-        self.review=dict(id=1,commit_id='a'*40,state='COMMENTED')
-    def test_exact_receipt(self):
-        self.assertTrue(receipt_valid(self.r,self.d,self.review))
+        self.r.update(status='completed',perf=False,terminal=True,source='argo-exit-v1',workflow_phase='Succeeded',workflow_name='audit-123',workflow_uid='uuid')
+    def test_exact_terminal_receipt(self):
+        self.assertTrue(receipt_valid(self.r,self.d))
+    def test_failed_and_error_audits_open_gate_without_review_or_workers(self):
+        for phase in ('Failed','Error'):
+            r=dict(self.r,status='failed',workflow_phase=phase)
+            self.assertTrue(receipt_valid(r,self.d))
     def test_stale_receipt_rejected(self):
-        for key in ('head','base','run_label','plan_hash','decision_id'):
+        for key in ('repository','pr','head','base','run_label','plan_hash','decision_id'):
             r=dict(self.r); r[key]='wrong'
-            self.assertFalse(receipt_valid(r,self.d,self.review))
-    def test_partial_worker_and_wrong_effort_rejected(self):
-        for k,v in [('passes',0),('thinking','low'),('engine','codex/other')]:
-            r=copy.deepcopy(self.r); r['workers'][0][k]=v
-            self.assertFalse(receipt_valid(r,self.d,self.review))
-    def test_review_must_be_same_head(self):
-        self.assertFalse(receipt_valid(self.r,self.d,dict(self.review,commit_id='c'*40)))
+            self.assertFalse(receipt_valid(r,self.d))
+    def test_running_and_legacy_receipts_do_not_open_gate(self):
+        for changes in ({'workflow_phase':'Running'}, {'terminal':False}, {'source':'worker'}, {'workflow_uid':''}, {'status':'incomplete'}):
+            self.assertFalse(receipt_valid(dict(self.r,**changes),self.d))
     def test_perf_required(self):
-        r=dict(self.r,perf=True)
-        self.assertFalse(receipt_valid(r,self.d,self.review))
-    def test_dismissed_review_rejected(self):
-        self.assertFalse(receipt_valid(self.r,self.d,dict(self.review,state='DISMISSED')))
+        self.assertFalse(receipt_valid(dict(self.r,perf=True),self.d))
     def test_machine_records_roundtrip_and_invalid_input(self):
         self.assertEqual(main.unpack(main.pack(self.d,main.DECISION)+'\nsummary',main.DECISION),self.d)
         self.assertIsNone(main.unpack(main.DECISION+'invalid -->',main.DECISION))

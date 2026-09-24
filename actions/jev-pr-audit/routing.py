@@ -211,20 +211,16 @@ def route(files, responses, complete, policy, force_perf=False):
             profile.update(policy['perf_profiles'][tier])
     return {'mode': tier, 'perf': bool(perf), 'reasons': reasons, 'profile': profile}
 
-def receipt_valid(receipt, decision, review):
-    expected = decision['plan']['profile']
-    if not expected or receipt.get('status') != 'completed':
+def receipt_valid(receipt, decision, review=None):
+    if not decision['plan']['profile'] or receipt.get('terminal') is not True or receipt.get('source') != 'argo-exit-v1':
+        return False
+    phase = receipt.get('workflow_phase')
+    if phase not in ('Succeeded', 'Failed', 'Error'):
+        return False
+    if receipt.get('status') != ('completed' if phase == 'Succeeded' else 'failed'):
         return False
     for key in ('repository', 'pr', 'head', 'base', 'run_label', 'decision_id', 'plan_hash'):
         if receipt.get(key) != decision.get(key):
             return False
-    if receipt.get('review_id') != review.get('id') or review.get('commit_id') != decision['head'] or review.get('state') not in ('COMMENTED', 'APPROVED', 'CHANGES_REQUESTED'):
-        return False
-    workers = receipt.get('workers', [])
-    if len(workers) != len(expected['workers']):
-        return False
-    for i, (actual, wanted) in enumerate(zip(workers, expected['workers']), 1):
-        if (actual.get('id') != f"pr-{decision['pr']}-w{i}" or actual.get('engine') != wanted['backend'] + '/' + wanted['model']
-                or actual.get('thinking') != wanted['thinking'] or actual.get('passes') != expected['iterations']):
-            return False
-    return receipt.get('perf') is decision['plan']['perf']
+    return (bool(receipt.get('workflow_name')) and bool(receipt.get('workflow_uid'))
+            and receipt.get('perf') is decision['plan']['perf'])
