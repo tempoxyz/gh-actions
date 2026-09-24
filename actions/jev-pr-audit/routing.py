@@ -5,6 +5,7 @@ import re
 from pathlib import PurePosixPath
 
 DOMAINS = {
+    'performance_benchmark': 'benchmark or performance-regression test measurement of throughput, latency, scaling, allocations or resource use',
     'authorization': 'signature validation, signer recovery, account/key permissions, access-key limits, policy enforcement, replay protection or nonces',
     'funds': 'balances, transfers, mint/burn, allowances, fee/refund accounting, DEX settlement, reserves, rounding or conservation of value',
     'consensus': 'block validity, deterministic execution, payload ordering, validator/DKG behavior or consensus wire encodings',
@@ -39,6 +40,7 @@ COMMON = ('Classify the effect of the supplied patch, using before/after source 
           'Do not classify unchanged surrounding code as changed. Assess affected behavior, not whether a bug is proven. ')
 # Criteria describe each domain explicitly: Jev evaluates questions independently.
 BOUNDARIES = {
+    'performance_benchmark': ('Adds or changes executable benchmark or performance-regression test code that measures elapsed time, throughput, allocations or scaling across workloads.', 'Ordinary functional assertions, sorting examples, prose, filenames, or claims about speed without executable measurement do not qualify.'),
     'authorization': ('Changes validation of identities, signatures, permissions, replay protection, or nonces.', 'No such enforcement changes; a mention of signing or an unrelated test does not qualify.'),
     'funds': ('Changes balance movement, ownership, settlement, mint/burn, fees/refunds, reserves, or value arithmetic.', 'Does not change how assets or financial amounts are accounted for; report wording is not fund handling.'),
     'consensus': ('Changes block validity, deterministic execution, ordering, validator agreement, or consensus encoding.', 'No consensus behavior changes; merely residing in a blockchain repository is insufficient.'),
@@ -168,6 +170,7 @@ def route(files, responses, complete, policy, force_perf=False):
     if not all_answers:
         complete = False
     perf = bool(force_perf)
+    benchmark_perf = tests_only(files) and any(a['performance_benchmark']['noul'] >= 0.5 for a in all_answers)
     unresolved = False
     for a in all_answers:
         n = {k: a[k]['noul'] for k in DOMAINS}
@@ -196,12 +199,16 @@ def route(files, responses, complete, policy, force_perf=False):
         # Missing evidence can increase audit depth, but is not performance evidence.
     if perf:
         promote('deep', 'performance-critical')
+    elif benchmark_perf:
+        perf = True
+        if tier not in ('quick', 'deep', 'critical'):
+            promote('deep', 'performance benchmark requires broader review')
+        reasons.append('performance benchmark')
     profile = None
     if tier != 'skip':
         profile = json.loads(json.dumps(policy['profiles'][tier]))
         if perf:
-            profile.update(iterations=4, budget_seconds=9000 if tier == 'critical' else 6600,
-                           reserve_seconds=1800 if tier == 'critical' else 1200)
+            profile.update(policy['perf_profiles'][tier])
     return {'mode': tier, 'perf': bool(perf), 'reasons': reasons, 'profile': profile}
 
 def receipt_valid(receipt, decision, review):

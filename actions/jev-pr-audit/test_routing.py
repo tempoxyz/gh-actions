@@ -40,6 +40,21 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(p['profile']['workers'][0]['thinking'],'medium')
     def test_weakened_tests_escalate(self):
         self.assertEqual(self.route([file('crates/foo/tests/test.rs')], [answer('tests', reduced_coverage=.3)])['mode'],'deep')
+    def test_benchmark_only_quick_perf(self):
+        p=self.route([file('benches/dedup.py')], [answer('tests', performance_benchmark=.95)])
+        self.assertEqual((p['mode'],p['perf'],p['profile']['iterations']), ('quick',True,4))
+        self.assertEqual(len(p['profile']['workers']),1)
+        self.assertEqual(p['profile']['workers'][0]['thinking'],'medium')
+    def test_benchmark_risk_and_missing_context_still_escalate(self):
+        for values in ({'reduced_coverage':.8}, {'context_missing':.8}, {'authorization':.8}):
+            p=self.route([file('benches/dedup.py')], [answer('tests', performance_benchmark=.95, **values)])
+            self.assertIn(p['mode'], ('deep','critical'))
+            self.assertTrue(p['perf'])
+        p=self.route([file('benches/dedup.py')], [answer('tests', performance_benchmark=.95)], False)
+        self.assertEqual(p['mode'],'deep')
+    def test_benchmark_signal_does_not_enable_perf_for_production_code(self):
+        p=self.route([file('src/helper.py')], [answer(performance_benchmark=.95)])
+        self.assertFalse(p['perf'])
     def test_perf_sets_four_passes_and_minimum_deep(self):
         p=self.route([file('crates/node/src/rpc.rs')], [answer(performance_critical=.8)])
         self.assertEqual((p['mode'],p['perf'],p['profile']['iterations']), ('deep',True,4))

@@ -3,7 +3,9 @@
 Enabled only for `tempoxyz/cyclops-canary`. Uses Jev 1.13 through OpenRouter's
 Decisions API, a trusted path floor, and fixed worker profiles. Quick uses Sol
 medium; standard uses Sol/Opus high; deep and critical add Astra. No fourth worker.
-Performance-critical changes enable the existing four-pass `perf` mode.
+Production performance-critical changes enable deep/critical four-pass `perf` mode.
+Low-risk benchmark-only changes can use quick + perf: one Sol medium worker, four passes
+ending with the performance pass, 1800 seconds total with 600 reserved for consolidation.
 
 Set `classification-only: 'true'` to test real Jev decisions without dispatching
 audits. Non-skip statuses remain pending and comments explicitly identify the
