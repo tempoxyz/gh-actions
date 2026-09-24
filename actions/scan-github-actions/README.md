@@ -38,6 +38,9 @@ jobs:
       id-token: write
 ```
 
+Set `ensure-secure-runner: false` on the reusable workflow to skip the secure-runner
+presence check, including its annotations and summary. The scan job still runs secure-runner.
+
 Disable the lint pass or point zizmor at a custom config:
 
 ```yaml
