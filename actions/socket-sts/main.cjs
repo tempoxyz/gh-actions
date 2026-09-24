@@ -37,6 +37,13 @@ async function exchangeWithFreshAssertion(getAssertion, exchange) {
   throw lastError;
 }
 
+function exchangeWithRateLimit(getAssertion, exchange, options) {
+  return retryRateLimited(
+    () => exchangeWithFreshAssertion(getAssertion, exchange),
+    options,
+  );
+}
+
 function append(file, name, value) {
   if (/\r|\n/.test(value)) throw new Error(`${name} contains a newline`);
   fs.appendFileSync(file, `${name}=${value}\n`);
@@ -90,30 +97,28 @@ async function main() {
     return oidc;
   };
 
-  const exchange = await exchangeWithFreshAssertion(
+  const exchange = await exchangeWithRateLimit(
     getAssertion,
     (oidc) =>
-      retryRateLimited(() =>
-        retryExchangeInProgress(() =>
-          retry(
-            () =>
-              request(`https://${endpoint}/sts/exchange`, {
-                method: "POST",
-                headers: {
-                  authorization: `Bearer ${oidc}`,
-                  "content-length": "0",
-                  "user-agent": "tempoxyz-socket-sts-action",
-                },
-              }),
-            {
-              // Let the outer handlers own 429 and the service's idempotent
-              // in-progress response. A transport timeout or a definite
-              // upstream mint timeout needs a fresh OIDC assertion instead.
-              shouldRetryResponse: (response) =>
-                response.status !== 429 && !requiresFreshAssertion(response),
-              shouldRetryError: (error) => error?.code !== "ETIMEDOUT",
-            },
-          ),
+      retryExchangeInProgress(() =>
+        retry(
+          () =>
+            request(`https://${endpoint}/sts/exchange`, {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${oidc}`,
+                "content-length": "0",
+                "user-agent": "tempoxyz-socket-sts-action",
+              },
+            }),
+          {
+            // Let the outer handlers own 429 and the service's idempotent
+            // in-progress response. A transport timeout or a definite
+            // upstream mint timeout needs a fresh OIDC assertion instead.
+            shouldRetryResponse: (response) =>
+              response.status !== 429 && !requiresFreshAssertion(response),
+            shouldRetryError: (error) => error?.code !== "ETIMEDOUT",
+          },
         ),
       ),
   );
@@ -154,6 +159,7 @@ if (require.main === module) {
 module.exports = {
   ASSERTION_ATTEMPTS,
   exchangeWithFreshAssertion,
+  exchangeWithRateLimit,
   main,
   maskSecret,
   publishToken,

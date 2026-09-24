@@ -15,7 +15,7 @@ const {
   retryExchangeInProgress,
   retryRateLimited,
 } = require("./http.cjs");
-const { ASSERTION_ATTEMPTS, exchangeWithFreshAssertion, publishToken } = require("./main.cjs");
+const { ASSERTION_ATTEMPTS, exchangeWithFreshAssertion, exchangeWithRateLimit, publishToken } = require("./main.cjs");
 const { buildRevokeRequest } = require("./post.cjs");
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
@@ -211,6 +211,31 @@ test("honors Socket STS rate-limit metadata before retrying", async () => {
     rateLimitDelay({ status: 429, headers: {}, body: '{"retry_after_ms":250}' }, 0),
     250,
   );
+});
+
+test("uses a fresh assertion after a rate-limited exchange", async () => {
+  const assertions = [];
+  const exchanges = [];
+  const delays = [];
+  const response = await exchangeWithRateLimit(
+    async () => {
+      const assertion = `assertion-${assertions.length + 1}`;
+      assertions.push(assertion);
+      return assertion;
+    },
+    async (assertion) => {
+      exchanges.push(assertion);
+      return exchanges.length === 1
+        ? { status: 429, headers: { "retry-after": "1" }, body: "" }
+        : { status: 200, headers: {}, body: "recovered" };
+    },
+    { now: () => 0, sleep: async (delay) => delays.push(delay) },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(assertions, ["assertion-1", "assertion-2"]);
+  assert.deepEqual(exchanges, assertions);
+  assert.deepEqual(delays, [1_000]);
 });
 
 test("fails instead of waiting more than two minutes for a Socket STS rate limit", async () => {
