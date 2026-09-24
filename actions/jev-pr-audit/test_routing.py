@@ -114,6 +114,17 @@ class ReceiptTests(unittest.TestCase):
         for phase in ('Failed','Error'):
             r=dict(self.r,status='failed',workflow_phase=phase)
             self.assertTrue(receipt_valid(r,self.d))
+    def test_reconcile_opens_failed_terminal_audit_without_fetching_review(self):
+        controller=object.__new__(main.Controller)
+        receipt=dict(self.r,status='failed',workflow_phase='Failed')
+        controller.comments=lambda: [{'user':{'id':POLICY['completion_bot_id']},'body':main.pack(receipt,main.RECEIPT),'html_url':'receipt-url'}]
+        statuses=[]
+        controller.status=lambda *args: statuses.append(args)
+        with patch.object(main,'gh') as github:
+            controller.reconcile({'html_url':'decision-url'},self.d)
+            github.assert_not_called()
+        self.assertEqual(statuses[0][0],'success')
+        self.assertIn('Failed',statuses[0][1])
     def test_stale_receipt_rejected(self):
         for key in ('repository','pr','head','base','run_label','plan_hash','decision_id'):
             r=dict(self.r); r[key]='wrong'

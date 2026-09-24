@@ -38,9 +38,10 @@ local artifact and prohibits GitHub mutations.
 
 The independent required status is **Cyclops / Jev audit**. A skip decision passes;
 audit decisions stay pending until the configured Cyclops bot posts a validated
-completion receipt covering the exact head/base, decision, worker models/thinking,
-all passes, performance pass when selected, and published GitHub review. A normal
-Cyclops review, stale receipt or partial worker success cannot pass this gate.
+Argo exit receipt covering the exact head/base, decision, selected plan, and audit
+attempt. Succeeded, Failed, and Error outcomes pass this terminal-outcome gate,
+even when workers fail or reject a prompt. Running audits, stale receipts, and
+worker-level completion comments cannot pass it. Review publication is not required.
 Other repository review/check requirements remain in force.
 
 Run from trusted `pull_request_target` code with no PR checkout. Also invoke on
