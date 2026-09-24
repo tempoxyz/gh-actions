@@ -21,7 +21,7 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
-const SECURE = "tempoxyz/gh-actions/actions/secure-runner@d39baa2b43f5eba5d261c047521a4fbd56101129";
+const SECURE = "tempoxyz/gh-actions/actions/secure-runner@ddde9bacfffed2574debefdeee00747b3d2c6087";
 
 const workflow = (jobs) => `on: push\npermissions: {}\njobs:\n${jobs}`;
 const job = (id, steps) => `  ${id}:\n    runs-on: ubuntu-latest\n    steps:\n${steps.map((s) => `      - ${s}\n`).join("")}`;
@@ -119,7 +119,7 @@ test("every status other than ok, reusable and checker is a violation", () => {
 });
 
 test("the job that only checks out and runs ensure-secure-runner is exempt, nothing else is", async () => {
-  const ENSURE = "tempoxyz/gh-actions/actions/ensure-secure-runner@d39baa2b43f5eba5d261c047521a4fbd56101129";
+  const ENSURE = "tempoxyz/gh-actions/actions/ensure-secure-runner@ddde9bacfffed2574debefdeee00747b3d2c6087";
   const checker = workflow(job("ensure", ["uses: actions/checkout@v4\n        with:\n          persist-credentials: false", `uses: ${ENSURE}`]));
   const { findings } = await checkWorkflow({ name: "w.yml", content: checker });
   assert.equal(findings[0].status, "checker");
