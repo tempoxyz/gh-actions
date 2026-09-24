@@ -67,7 +67,6 @@ runs:
 
     - name: Install Socket Firewall
       if: inputs.disable-enforcement != 'true'
-      # refresh pending assertions
-      uses: tempoxyz/gh-actions/actions/socket-firewall@d39baa2b43f5eba5d261c047521a4fbd56101129 # 2026-09-23T04-31-11Z-d39baa2b
+      uses: tempoxyz/gh-actions/actions/socket-firewall@35f9587c741c060542d356a90952643616a3cf14 # 2026-09-24T19-55-49Z-35f9587c
       with:
         socket-sts-host: ${{ inputs.socket-sts-host }}
