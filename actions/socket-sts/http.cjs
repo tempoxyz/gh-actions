@@ -59,6 +59,15 @@ function requiresFreshAssertion(response) {
   }
 }
 
+function isProviderRateLimited(response) {
+  if (response.status !== 429) return false;
+  try {
+    return JSON.parse(response.body).message === "Socket API rate limit exceeded";
+  } catch {
+    return false;
+  }
+}
+
 function header(response, name) {
   const value = response.headers?.[name];
   return Array.isArray(value) ? value[0] : value;
@@ -211,6 +220,7 @@ module.exports = {
   RETRY_ATTEMPTS,
   host,
   isExchangeInProgress,
+  isProviderRateLimited,
   requiresFreshAssertion,
   rateLimitDelay,
   request,

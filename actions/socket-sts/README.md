@@ -13,6 +13,14 @@ on `PATH`; this is the same self-hosted-runner-safe runtime model introduced in
 
 The caller must grant `id-token: write`.
 
+The action waits and retries HTTP 429 responses for up to two minutes per
+exchange attempt. An explicit `Socket API rate limit exceeded` response consumes
+the OIDC assertion, so the next retry obtains a fresh assertion after waiting.
+An `exchange is already in progress` 429 retains the assertion to retrieve the
+original token when creation completes. Other 429 responses also retain it.
+Transport timeouts and explicit token-creation timeouts retain the existing
+limit of one fresh-assertion recovery attempt.
+
 ## Inputs
 
 | Name | Description | Required | Default |
