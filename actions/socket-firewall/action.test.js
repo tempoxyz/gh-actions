@@ -265,6 +265,9 @@ test("forwards the Aegis binary and audit log through the compatibility outputs"
   assert.match(manifest, /steps\.install-windows\.outputs\.report/);
 });
 
+// Windows checkouts use CRLF; compare against LF so offsets and line anchors hold.
+const manifestLF = manifest.replace(/\r\n/g, "\n");
+
 // Stage names paired with the condition that gates them. A stage runs only when
 // the previous stage succeeded, so a failure anywhere stops all later work.
 const SETUP_CHAIN = [
@@ -280,13 +283,13 @@ const SETUP_CHAIN = [
 ];
 
 function manifestStep(name) {
-  const step = manifest.split(/\n    - name: /).slice(1).find((value) => value.startsWith(`${name}\n`));
+  const step = manifestLF.split(/\n    - name: /).slice(1).find((value) => value.startsWith(`${name}\n`));
   assert.ok(step, `step "${name}" must exist`);
   return step;
 }
 
 test("every setup stage degrades instead of failing and gates the next stage", () => {
-  const order = SETUP_CHAIN.map(([name]) => manifest.indexOf(`- name: ${name}\n`));
+  const order = SETUP_CHAIN.map(([name]) => manifestLF.indexOf(`- name: ${name}\n`));
   assert.deepEqual([...order].sort((a, b) => a - b), order, "stages must appear in chain order");
   for (const [name, condition] of SETUP_CHAIN) {
     const step = manifestStep(name);
@@ -294,7 +297,7 @@ test("every setup stage degrades instead of failing and gates the next stage", (
     assert.match(step, /^      continue-on-error: true$/m, `${name} must not fail the job`);
   }
   const report = manifestStep("Report package firewall status");
-  assert.ok(manifest.indexOf("- name: Report package firewall status") > Math.max(...order));
+  assert.ok(manifestLF.indexOf("- name: Report package firewall status") > Math.max(...order));
   assert.doesNotMatch(report, /continue-on-error/);
   for (const id of ["socket-token", "release-token", "gh-cli", "download", "config", "lifecycle", "install-linux", "install-macos", "install-windows"]) {
     assert.ok(report.includes(`\${{ steps.${id}.outcome }}`), `the report must read the ${id} outcome`);
