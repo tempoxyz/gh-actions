@@ -75,7 +75,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,7 +84,7 @@ jobs:
 
       - name: Ensure every job starts with secure-runner
         if: ${{ inputs.ensure-secure-runner }}
-        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
         with:
           fail-on-violation: ${{ inputs.secure-runner-fail-on-violation }}
 
@@ -170,7 +170,7 @@ jobs:
 
       - name: Scan GitHub Actions
         if: ${{ !cancelled() }}
-        uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
         with:
           inputs: ${{ inputs.paths }}
           persona: regular

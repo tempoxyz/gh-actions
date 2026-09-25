@@ -9,7 +9,7 @@
   "consume_as": "tempoxyz/gh-actions/vendor/helm/chart-testing-action@<gh-actions-sha>",
   "files_removed": 6,
   "nested_rewrites": [
-    "sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad -> tempoxyz/gh-actions/vendor/sigstore/cosign-installer@d0bd3f715fb4efadb78897db98fe87e7c94a6d95",
-    "astral-sh/setup-uv@eb1897b8dc4b5d5bfe39a428a8f2304605e0983c -> tempoxyz/gh-actions/vendor/astral-sh/setup-uv@d0bd3f715fb4efadb78897db98fe87e7c94a6d95"
+    "sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad -> tempoxyz/gh-actions/vendor/sigstore/cosign-installer@9714ff353c4199ff9f498205ef7b3319869dd51d",
+    "astral-sh/setup-uv@eb1897b8dc4b5d5bfe39a428a8f2304605e0983c -> tempoxyz/gh-actions/vendor/astral-sh/setup-uv@9714ff353c4199ff9f498205ef7b3319869dd51d"
   ]
 }
