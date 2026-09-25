@@ -48,6 +48,21 @@ firewall installation, so package downloads are not inspected or blocked. Any
 other event without an OIDC token fails, since that means the job is missing
 `id-token: write`.
 
+When GitHub does issue an OIDC token but no StepSecurity policy-store
+credential can be obtained, Harden Runner degrades instead of failing the job.
+That covers connection failures and timeouts, transient responses (HTTP 408,
+425, 429, and 5xx) that persist through every retry, an exhausted rate-limit
+wait budget, malformed responses, and definitive rejections such as HTTP 401 or
+403, whether from the Step Security STS or from GitHub's OIDC issuer. The action
+emits a warning annotation titled "StepSecurity policy store unavailable" that
+names the failure, then starts Harden Runner without the policy store, so the
+inline `egress-policy` applies: audit mode by default, which observes and reports
+egress without blocking it. This matches Harden Runner's own behavior, which
+defaults to audit mode whenever it has no policy-store credential or finds no
+stored policy. Only an invalid `step-security-sts-host` input still fails the
+job, since it is validated before any request is made. Socket Firewall is
+unaffected; it uses its own STS.
+
 ## Usage
 
 Pin this action to a full commit SHA in production:

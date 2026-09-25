@@ -7,8 +7,10 @@ const {
 const { endpoint } = require("../step-security-sts/http.cjs");
 const { runHardenRunner } = require("./run.cjs");
 
-// GitHub state key recorded when Harden Runner runs without the policy store.
-// The main and post entrypoints read it back as STATE_inline_policy.
+// GitHub state key recorded when Harden Runner runs without the policy store,
+// either because a fork pull request received no OIDC token or because no
+// Step Security STS credential could be obtained. The main and post
+// entrypoints read it back as STATE_inline_policy.
 const INLINE_POLICY_STATE = "inline_policy";
 const ENFORCEMENT_DISABLED_STATE = "enforcement_disabled";
 const UNSUPPORTED_PLATFORM_STATE = "unsupported_platform";
@@ -30,6 +32,12 @@ function inlinePolicyAllowed(env = process.env) {
   return env.GITHUB_EVENT_NAME === "pull_request";
 }
 
+// The egress policy Harden Runner applies when it runs without the policy
+// store. It mirrors the vendored action's egress-policy input default.
+function inlineEgressPolicy(env = process.env) {
+  return env["INPUT_EGRESS-POLICY"] || "audit";
+}
+
 function unsupportedPlatform(env = process.env) {
   return env.RUNNER_OS === "Windows" && env.RUNNER_ARCH === "ARM64";
 }
@@ -41,12 +49,19 @@ function enforcementDisabled(env = process.env) {
   throw new Error("disable-enforcement must be true or false");
 }
 
-function warning(message) {
-  const escaped = message
+function escapeAnnotation(value) {
+  return value
     .replaceAll("%", "%25")
     .replaceAll("\r", "%0D")
     .replaceAll("\n", "%0A");
-  console.log(`::warning::${escaped}`);
+}
+
+function warning(message, title) {
+  const properties =
+    title === undefined
+      ? ""
+      : ` title=${escapeAnnotation(title).replaceAll(":", "%3A").replaceAll(",", "%2C")}`;
+  console.log(`::warning${properties}::${escapeAnnotation(message)}`);
 }
 
 async function main({
@@ -90,10 +105,33 @@ async function main({
   }
 
   // Harden Runner reads the policy in its pre-job entrypoint. Mint the key in
-  // this same pre-job process so it exists before that entrypoint starts.
-  const result = await exchange(
-    stsHost(env["INPUT_STEP-SECURITY-STS-HOST"] || "ss-sts.tempoxyz.net"),
-  );
+  // this same pre-job process so it exists before that entrypoint starts. The
+  // hostname is validated here, before any request, so a bad input still
+  // fails the job.
+  const host = stsHost(env["INPUT_STEP-SECURITY-STS-HOST"] || "ss-sts.tempoxyz.net");
+  let result;
+  try {
+    result = await exchange(host);
+  } catch (error) {
+    // Any failure to obtain the credential degrades instead of failing the
+    // job: the STS or GitHub's OIDC issuer was unreachable, kept answering
+    // with transient errors through every retry, exceeded its rate-limit wait
+    // budget, returned an unusable response, or rejected the exchange
+    // outright. Without a credential, Harden Runner applies the inline egress
+    // policy, which defaults to audit.
+    const reason = error instanceof Error ? error.message : String(error);
+    warning(
+      `Could not obtain a StepSecurity policy-store credential from ${host}: ` +
+        `${reason}. Harden Runner is running in ${inlineEgressPolicy(env)} ` +
+        "mode from the workflow's inline egress policy, without the " +
+        "StepSecurity policy store, so stored egress policies are not " +
+        "applied to this job.",
+      "StepSecurity policy store unavailable",
+    );
+    append(required("GITHUB_STATE", env), INLINE_POLICY_STATE, "true");
+    run("pre", null);
+    return;
+  }
   maskSecret(result.token);
   append(required("GITHUB_STATE", env), "token", result.token);
   append(required("GITHUB_STATE", env), "lease_id", result.leaseId);
@@ -113,6 +151,7 @@ module.exports = {
   INLINE_POLICY_STATE,
   UNSUPPORTED_PLATFORM_STATE,
   enforcementDisabled,
+  inlineEgressPolicy,
   inlinePolicyAllowed,
   main,
   oidcAvailable,

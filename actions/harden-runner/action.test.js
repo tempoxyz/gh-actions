@@ -407,3 +407,117 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
   assert.ok(runnableJobs > 0, "expected at least one runnable workflow job");
   assert.equal(protectedJobs, runnableJobs);
 });
+
+const degradedAnnotation = (host, reason, policy = "audit") =>
+  "::warning title=StepSecurity policy store unavailable::" +
+  `Could not obtain a StepSecurity policy-store credential from ${host}: ` +
+  `${reason}. Harden Runner is running in ${policy} mode from the workflow's ` +
+  "inline egress policy, without the StepSecurity policy store, so stored " +
+  "egress policies are not applied to this job.";
+
+test("pre degrades to the inline policy whenever no STS credential can be obtained", async () => {
+  const failures = [
+    ["push", "Step Security STS exchange failed (HTTP 503): upstream\nunavailable"],
+    ["pull_request", "Step Security STS exchange failed: HTTPS request timed out"],
+    ["workflow_dispatch", "Step Security STS exchange failed: HTTPS request failed"],
+    ["push", "Step Security STS exchange failed: Rate limit retry delay (121s) exceeds the 2 minute limit"],
+    ["push", "Step Security STS response is invalid"],
+    ["push", "Step Security STS exchange failed (HTTP 403): repository is not authorized"],
+    ["push", "Step Security STS exchange failed (HTTP 404)"],
+    ["push", "GitHub OIDC request failed (HTTP 401)"],
+    ["push", "GitHub OIDC request failed: HTTPS request timed out"],
+  ];
+  for (const [event, reason] of failures) {
+    const calls = [];
+    const state = stateFile();
+    const { lines } = await capturedLogs(() =>
+      preMain({
+        env: {
+          ...oidcEnv,
+          GITHUB_EVENT_NAME: event,
+          GITHUB_STATE: state,
+          "INPUT_STEP-SECURITY-STS-HOST": "ss-sts.tempoxyz.dev",
+        },
+        run: (...args) => calls.push(args),
+        exchange: async () => {
+          throw new Error(reason);
+        },
+      }),
+    );
+
+    assert.deepEqual(calls, [["pre", null]], reason);
+    assert.equal(fs.readFileSync(state, "utf8"), "inline_policy=true\n", reason);
+    assert.deepEqual(
+      lines.filter((line) => line.startsWith("::")),
+      [degradedAnnotation("ss-sts.tempoxyz.dev", reason.replaceAll("\n", "%0A"))],
+      reason,
+    );
+  }
+});
+
+test("the degraded annotation names the caller's inline egress policy", async () => {
+  const state = stateFile();
+  const { lines } = await capturedLogs(() =>
+    preMain({
+      env: {
+        ...oidcEnv,
+        GITHUB_STATE: state,
+        "INPUT_EGRESS-POLICY": "block",
+      },
+      run: () => {},
+      exchange: async () => {
+        throw new Error("Step Security STS exchange failed (HTTP 502)");
+      },
+    }),
+  );
+  assert.deepEqual(
+    lines.filter((line) => line.startsWith("::")),
+    [
+      degradedAnnotation(
+        "ss-sts.tempoxyz.net",
+        "Step Security STS exchange failed (HTTP 502)",
+        "block",
+      ),
+    ],
+  );
+});
+
+test("pre still fails on an invalid STS host input before any request", async () => {
+  const calls = [];
+  const state = stateFile();
+  const { lines } = await capturedLogs(() =>
+    assert.rejects(
+      preMain({
+        env: {
+          ...oidcEnv,
+          GITHUB_STATE: state,
+          "INPUT_STEP-SECURITY-STS-HOST": "https://ss-sts.tempoxyz.net",
+        },
+        run: (...args) => calls.push(args),
+        exchange: async () => {
+          throw new Error("the STS must not be contacted with an invalid host");
+        },
+      }),
+      /host must be a hostname/,
+    ),
+  );
+  assert.deepEqual(calls, []);
+  assert.ok(!fs.existsSync(state));
+  assert.deepEqual(lines.filter((line) => line.startsWith("::")), []);
+});
+
+test("main and post treat a degraded run like the fork fallback", async () => {
+  const calls = [];
+  const run = (...args) => calls.push(args);
+  mainMain({ env: { STATE_inline_policy: "true" }, run });
+  let revocations = 0;
+  await postMain({
+    env: { STATE_inline_policy: "true", STATE_token: "" },
+    run,
+    revoke: async () => {
+      revocations += 1;
+    },
+  });
+  assert.deepEqual(calls, [["main", null], ["post", null]]);
+  assert.equal(revocations, 1);
+});
