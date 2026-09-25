@@ -340,8 +340,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Test PR audit comment authorization
-        run: node --test actions/pr-audit-comment/pr_audit_comment.test.js
+      - name: Test PR audit comment authorization and completion gate
+        run: node --test actions/pr-audit-comment/pr_audit_comment.test.js testdata/pr-audit.test.js
 
       # Guard: the reusable workflow and composite action must use the same
       # pinned vendored tool, since they duplicate the zizmor + actionlint steps.
