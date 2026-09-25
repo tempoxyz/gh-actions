@@ -59,7 +59,11 @@ an output. Cleanup uses `DELETE /sts/exchange` and can authenticate after the
 minted Cloudflare token expires. If no token was minted, cleanup is skipped.
 
 OIDC, exchange, and cleanup requests retry network errors and HTTP `408`, `425`,
-`429`, or `5xx` responses up to five times, using exponential backoff.
+`429`, or `5xx` responses up to five times, using exponential backoff. Each retry
+sequence has a 90-second budget, including HTTP requests and waits. Requests have
+a 10-second wall-clock timeout, shortened to fit the remaining budget. A `429`
+response's `Retry-After` (seconds or HTTP date) is honored; if it cannot fit in the
+budget, the action fails without retrying early. Retries reuse the OIDC assertion.
 
 ## Tests
 
