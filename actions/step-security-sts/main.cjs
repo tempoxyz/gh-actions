@@ -7,19 +7,6 @@ const {
   retryRateLimited,
 } = require("./http.cjs");
 
-// Raised when no credential could be obtained for reasons outside the caller's
-// control: a transport failure or timeout, a transient response (408, 425,
-// 429, or 5xx) that persisted through every retry, an exhausted rate-limit
-// budget, or a malformed success response. Definitive rejections such as 401,
-// 403, or 404 stay plain Errors: they mean the request itself is wrong, and a
-// silent fallback would hide that misconfiguration.
-class StsUnavailableError extends Error {
-  constructor(message, options) {
-    super(message, options);
-    this.name = "StsUnavailableError";
-  }
-}
-
 function required(name, env = process.env) {
   const value = env[name] || "";
   if (!/^\S+$/.test(value)) throw new Error(`${name} is missing`);
@@ -59,14 +46,6 @@ function retryExchange(operation, options = {}) {
   );
 }
 
-// A transient status that survived every retry is an availability failure; any
-// other non-success status is a definitive rejection.
-function failedRequest(message, status) {
-  return isTransientStatus(status)
-    ? new StsUnavailableError(message)
-    : new Error(message);
-}
-
 function parseJson(body) {
   try {
     const value = JSON.parse(body);
@@ -75,6 +54,9 @@ function parseJson(body) {
   return {};
 }
 
+// Every failure surfaces as an Error whose message names the leg that failed
+// and either the HTTP status or the transport cause, so callers that degrade
+// instead of failing can report exactly why no credential was obtained.
 async function exchangeToken(
   rawHost,
   { env = process.env, request = httpRequest, sleep, now } = {},
@@ -98,20 +80,16 @@ async function exchangeToken(
       { sleep },
     );
   } catch (error) {
-    throw new StsUnavailableError(
-      `GitHub OIDC request failed: ${error.message}`,
-      { cause: error },
-    );
+    throw new Error(`GitHub OIDC request failed: ${error.message}`, {
+      cause: error,
+    });
   }
   if (oidcResponse.status < 200 || oidcResponse.status >= 300) {
-    throw failedRequest(
-      `GitHub OIDC request failed (HTTP ${oidcResponse.status})`,
-      oidcResponse.status,
-    );
+    throw new Error(`GitHub OIDC request failed (HTTP ${oidcResponse.status})`);
   }
   const oidc = parseJson(oidcResponse.body).value;
   if (typeof oidc !== "string" || !/^\S+$/.test(oidc)) {
-    throw new StsUnavailableError("GitHub OIDC response is invalid");
+    throw new Error("GitHub OIDC response is invalid");
   }
 
   // The STS makes exact OIDC assertion replays idempotent, so retrying a
@@ -131,10 +109,9 @@ async function exchangeToken(
       { sleep, now },
     );
   } catch (error) {
-    throw new StsUnavailableError(
-      `Step Security STS exchange failed: ${error.message}`,
-      { cause: error },
-    );
+    throw new Error(`Step Security STS exchange failed: ${error.message}`, {
+      cause: error,
+    });
   }
   const result = parseJson(exchange.body);
   if (exchange.status < 200 || exchange.status >= 300) {
@@ -142,9 +119,8 @@ async function exchangeToken(
       typeof result.message === "string"
         ? `: ${result.message.replace(/[\r\n]+/g, " ").slice(0, 500)}`
         : "";
-    throw failedRequest(
+    throw new Error(
       `Step Security STS exchange failed (HTTP ${exchange.status})${message}`,
-      exchange.status,
     );
   }
   if (
@@ -157,7 +133,7 @@ async function exchangeToken(
       result.lease_id,
     )
   ) {
-    throw new StsUnavailableError("Step Security STS response is invalid");
+    throw new Error("Step Security STS response is invalid");
   }
   return {
     token: result.token,
@@ -181,7 +157,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  StsUnavailableError,
   append,
   exchangeToken,
   main,

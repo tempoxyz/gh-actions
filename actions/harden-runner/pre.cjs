@@ -1,5 +1,4 @@
 const {
-  StsUnavailableError,
   append,
   exchangeToken,
   maskSecret,
@@ -9,8 +8,8 @@ const { endpoint } = require("../step-security-sts/http.cjs");
 const { runHardenRunner } = require("./run.cjs");
 
 // GitHub state key recorded when Harden Runner runs without the policy store,
-// either because a fork pull request received no OIDC token or because the
-// Step Security STS could not issue a credential. The main and post
+// either because a fork pull request received no OIDC token or because no
+// Step Security STS credential could be obtained. The main and post
 // entrypoints read it back as STATE_inline_policy.
 const INLINE_POLICY_STATE = "inline_policy";
 const ENFORCEMENT_DISABLED_STATE = "enforcement_disabled";
@@ -106,24 +105,27 @@ async function main({
   }
 
   // Harden Runner reads the policy in its pre-job entrypoint. Mint the key in
-  // this same pre-job process so it exists before that entrypoint starts.
+  // this same pre-job process so it exists before that entrypoint starts. The
+  // hostname is validated here, before any request, so a bad input still
+  // fails the job.
   const host = stsHost(env["INPUT_STEP-SECURITY-STS-HOST"] || "ss-sts.tempoxyz.net");
   let result;
   try {
     result = await exchange(host);
   } catch (error) {
-    // Only an availability failure degrades: the STS (or GitHub's OIDC issuer)
-    // could not be reached, kept answering with transient errors through every
-    // retry, or returned an unusable response. A definitive rejection means the
-    // request is misconfigured and still fails the job. Without a credential,
-    // Harden Runner applies the inline egress policy, which defaults to audit.
-    if (!(error instanceof StsUnavailableError)) throw error;
+    // Any failure to obtain the credential degrades instead of failing the
+    // job: the STS or GitHub's OIDC issuer was unreachable, kept answering
+    // with transient errors through every retry, exceeded its rate-limit wait
+    // budget, returned an unusable response, or rejected the exchange
+    // outright. Without a credential, Harden Runner applies the inline egress
+    // policy, which defaults to audit.
+    const reason = error instanceof Error ? error.message : String(error);
     warning(
-      `Could not obtain a StepSecurity policy-store credential from ${host} ` +
-        `after retrying (${error.message}). Harden Runner is running in ` +
-        `${inlineEgressPolicy(env)} mode from the workflow's inline egress ` +
-        "policy, without the StepSecurity policy store, so stored egress " +
-        "policies are not applied to this job.",
+      `Could not obtain a StepSecurity policy-store credential from ${host}: ` +
+        `${reason}. Harden Runner is running in ${inlineEgressPolicy(env)} ` +
+        "mode from the workflow's inline egress policy, without the " +
+        "StepSecurity policy store, so stored egress policies are not " +
+        "applied to this job.",
       "StepSecurity policy store unavailable",
     );
     append(required("GITHUB_STATE", env), INLINE_POLICY_STATE, "true");

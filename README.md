@@ -17,7 +17,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
 | [`secure-runner`](actions/secure-runner) | Start Harden Runner and install Socket Firewall with short-lived credentials
 | [`ensure-secure-runner`](actions/ensure-secure-runner) | Fail unless every workflow job starts with the `secure-runner` action
-| [`harden-runner`](actions/harden-runner) | Start Harden Runner with authenticated StepSecurity policy-store access, falling back to the inline policy on fork pull requests or when the STS is unavailable
+| [`harden-runner`](actions/harden-runner) | Start Harden Runner with authenticated StepSecurity policy-store access, falling back to the inline policy on fork pull requests or when no StepSecurity credential can be obtained
 | [`socket-sts`](actions/socket-sts) | Exchange GitHub OIDC tokens for short-lived Socket API tokens
 | [`socket-firewall`](actions/socket-firewall) | Install Aegis with a short-lived, repository-scoped Socket token
 | [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR

@@ -188,7 +188,7 @@ test("post is a no-op when no API key was minted", () => {
   assert.match(`${result.stdout}${result.stderr}`, /skipping revocation/);
 });
 
-const { StsUnavailableError, exchangeToken } = require("./main.cjs");
+const { exchangeToken } = require("./main.cjs");
 
 const oidcEnv = {
   ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-token",
@@ -198,6 +198,15 @@ const oidcIssued = {
   status: 200,
   headers: {},
   body: JSON.stringify({ value: "oidc-assertion" }),
+};
+const leaseIssued = {
+  status: 200,
+  headers: {},
+  body: JSON.stringify({
+    token: "step_test_short_lived_api_key",
+    expires_at: "2026-09-25T00:00:00Z",
+    lease_id: leaseId,
+  }),
 };
 
 // Drives exchangeToken against scripted responses. Each leg replays its final
@@ -227,19 +236,7 @@ function scriptedExchange({ oidc = [oidcIssued], sts = [] }) {
 }
 
 test("exchangeToken returns the minted lease", async () => {
-  const { attempts, exchange } = scriptedExchange({
-    sts: [
-      {
-        status: 200,
-        headers: {},
-        body: JSON.stringify({
-          token: "step_test_short_lived_api_key",
-          expires_at: "2026-09-25T00:00:00Z",
-          lease_id: leaseId,
-        }),
-      },
-    ],
-  });
+  const { attempts, exchange } = scriptedExchange({ sts: [leaseIssued] });
   assert.deepEqual(await exchange(), {
     token: "step_test_short_lived_api_key",
     expiresAt: "2026-09-25T00:00:00Z",
@@ -249,46 +246,43 @@ test("exchangeToken returns the minted lease", async () => {
   assert.deepEqual(attempts, { oidc: 1, sts: 1 });
 });
 
-test("STS failures that persist through every retry are reported as unavailability", async () => {
+test("STS failures that persist through every retry name the final failure", async () => {
   const cases = [
     {
       name: "5xx on every attempt",
       sts: [{ status: 503, headers: {}, body: "" }],
-      message: /Step Security STS exchange failed \(HTTP 503\)/,
+      message: "Step Security STS exchange failed (HTTP 503)",
       attempts: 4,
     },
     {
       name: "connection timeout on every attempt",
       sts: [new Error("HTTPS request timed out")],
-      message: /Step Security STS exchange failed: HTTPS request timed out/,
+      message: "Step Security STS exchange failed: HTTPS request timed out",
       attempts: 4,
     },
     {
       name: "connection failure on every attempt",
       sts: [new Error("HTTPS request failed")],
-      message: /Step Security STS exchange failed: HTTPS request failed/,
+      message: "Step Security STS exchange failed: HTTPS request failed",
       attempts: 4,
     },
     {
       name: "429 whose Retry-After exceeds the wait budget",
       sts: [{ status: 429, headers: { "retry-after": "121" }, body: "" }],
-      message: /Step Security STS exchange failed: Rate limit retry delay \(121s\) exceeds the 2 minute limit/,
+      message:
+        "Step Security STS exchange failed: Rate limit retry delay (121s) exceeds the 2 minute limit",
       attempts: 1,
     },
     {
       name: "unparseable success response",
       sts: [{ status: 200, headers: {}, body: "<html>upstream error</html>" }],
-      message: /Step Security STS response is invalid/,
+      message: "Step Security STS response is invalid",
       attempts: 1,
     },
   ];
   for (const { name, sts, message, attempts: expected } of cases) {
     const { attempts, exchange } = scriptedExchange({ sts });
-    await assert.rejects(
-      exchange(),
-      { name: "StsUnavailableError", message },
-      name,
-    );
+    await assert.rejects(exchange(), { name: "Error", message }, name);
     assert.equal(attempts.sts, expected, name);
   }
 });
@@ -299,22 +293,14 @@ test("transient STS failures that recover within the retries still mint a lease"
       new Error("HTTPS request timed out"),
       { status: 502, headers: {}, body: "" },
       { status: 429, headers: { "retry-after": "1" }, body: "" },
-      {
-        status: 200,
-        headers: {},
-        body: JSON.stringify({
-          token: "step_test_short_lived_api_key",
-          expires_at: "2026-09-25T00:00:00Z",
-          lease_id: leaseId,
-        }),
-      },
+      leaseIssued,
     ],
   });
   assert.equal((await exchange()).token, "step_test_short_lived_api_key");
   assert.equal(attempts.sts, 4);
 });
 
-test("definitive STS rejections are not unavailability", async () => {
+test("definitive STS rejections fail after a single attempt with the server's message", async () => {
   for (const status of [400, 401, 403, 404]) {
     const { attempts, exchange } = scriptedExchange({
       sts: [
@@ -325,50 +311,48 @@ test("definitive STS rejections are not unavailability", async () => {
         },
       ],
     });
-    const error = await exchange().then(
-      () => assert.fail("expected the exchange to fail"),
-      (caught) => caught,
-    );
-    assert.ok(!(error instanceof StsUnavailableError), `HTTP ${status}`);
-    assert.equal(error.name, "Error");
-    assert.match(
-      error.message,
-      new RegExp(`Step Security STS exchange failed \\(HTTP ${status}\\): repository is not authorized`),
+    await assert.rejects(
+      exchange(),
+      {
+        name: "Error",
+        message: `Step Security STS exchange failed (HTTP ${status}): repository is not authorized`,
+      },
+      `HTTP ${status}`,
     );
     assert.equal(attempts.sts, 1, `HTTP ${status}`);
   }
 });
 
-test("GitHub OIDC issuer failures follow the same classification", async () => {
-  const unavailable = [
+test("GitHub OIDC issuer failures name the issuer and stop before the STS", async () => {
+  const cases = [
     {
       name: "5xx on every attempt",
       oidc: [{ status: 503, headers: {}, body: "" }],
-      message: /GitHub OIDC request failed \(HTTP 503\)/,
+      message: "GitHub OIDC request failed (HTTP 503)",
+      attempts: 4,
     },
     {
       name: "timeout on every attempt",
       oidc: [new Error("HTTPS request timed out")],
-      message: /GitHub OIDC request failed: HTTPS request timed out/,
+      message: "GitHub OIDC request failed: HTTPS request timed out",
+      attempts: 4,
     },
     {
       name: "malformed issuer response",
       oidc: [{ status: 200, headers: {}, body: "{}" }],
-      message: /GitHub OIDC response is invalid/,
+      message: "GitHub OIDC response is invalid",
+      attempts: 1,
+    },
+    {
+      name: "definitive issuer rejection",
+      oidc: [{ status: 401, headers: {}, body: "" }],
+      message: "GitHub OIDC request failed (HTTP 401)",
+      attempts: 1,
     },
   ];
-  for (const { name, oidc, message } of unavailable) {
+  for (const { name, oidc, message, attempts: expected } of cases) {
     const { attempts, exchange } = scriptedExchange({ oidc });
-    await assert.rejects(exchange(), { name: "StsUnavailableError", message }, name);
-    assert.equal(attempts.sts, 0, name);
+    await assert.rejects(exchange(), { name: "Error", message }, name);
+    assert.deepEqual(attempts, { oidc: expected, sts: 0 }, name);
   }
-
-  const { attempts, exchange } = scriptedExchange({
-    oidc: [{ status: 401, headers: {}, body: "" }],
-  });
-  await assert.rejects(exchange(), {
-    name: "Error",
-    message: /GitHub OIDC request failed \(HTTP 401\)/,
-  });
-  assert.deepEqual(attempts, { oidc: 1, sts: 0 });
 });
