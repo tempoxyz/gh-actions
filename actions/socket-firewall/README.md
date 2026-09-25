@@ -60,6 +60,21 @@ work: it does not exchange tokens, download Aegis, install a firewall, or inspec
 downloads. Both outputs are empty. Any other event without an OIDC token fails,
 since that means the job is missing `id-token: write`.
 
+Every later stage degrades instead of failing the job. Each stage runs only if
+the previous one succeeded: the Socket STS token exchange, the GitHub STS
+exchange for the Aegis release download token, the GitHub CLI bootstrap, the
+Aegis release download and verification, the token provider, the lifecycle
+handler, and finally the package installation. When one of them fails after its
+own retries, nothing after it runs, so Aegis is never installed without a Socket
+API token and no unverified release is ever installed. A final step then emits a
+warning annotation titled "Package-policy enforcement disabled" that names the
+stage that failed and points at its step log, and the job continues without a
+package firewall: package downloads are not inspected or blocked, and both
+outputs are empty. A checksum or provenance mismatch is reported the same way;
+it also installs nothing. The step that fails is still marked failed in the job
+log, so an outage of the Socket STS, the GitHub STS, GitHub releases, or Aegis
+itself is visible without halting the run.
+
 Aegis does not permit API keys in installation JSON. On enforcing runs, the action keeps the
 masked STS token in a detached process and gives Aegis an unguessable,
 loopback-only `test_token_url` in a mode-0600 configuration file. The installed
