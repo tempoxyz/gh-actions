@@ -380,3 +380,62 @@ test("the report step names the first failed stage in a warning annotation", {
   const everythingSkipped = Object.fromEntries(REPORT_STAGES.map((stage) => [`${stage}_OUTCOME`, "skipped"]));
   assert.match(run(everythingSkipped)[0], /^::warning title=Package-policy enforcement disabled::Socket Firewall was not installed: Socket Firewall setup did not complete\./);
 });
+
+function detectScript() {
+  const body = manifestStep("Detect fork and GitHub OIDC availability").split(/\n      run: \|\n/)[1];
+  assert.ok(body, "the detect step must be a bash block");
+  const lines = [];
+  for (const line of body.split("\n")) {
+    if (line !== "" && !line.startsWith("        ")) break;
+    lines.push(line.slice(8));
+  }
+  return lines.join("\n");
+}
+
+test("degrade warnings are mirrored into the step summary", {
+  skip: process.platform === "win32" && "POSIX shell fixture; Windows is covered by the live action matrix",
+}, () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "socket-firewall-summary-"));
+  const run = (script, env) => {
+    const summary = path.join(directory, `${crypto.randomUUID()}.md`);
+    const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", script], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, GITHUB_STEP_SUMMARY: summary, ...env },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return {
+      stdout: result.stdout.trim().split("\n"),
+      summary: fs.existsSync(summary) ? fs.readFileSync(summary, "utf8") : "",
+    };
+  };
+  try {
+    const report = reportScript();
+    const degraded = run(report, { AEGIS_BINARY: "", ...chainOutcomes("SOCKET_TOKEN") });
+    const [annotation] = degraded.stdout;
+    assert.match(annotation, /^::warning title=Package-policy enforcement disabled::/);
+    assert.equal(
+      degraded.summary,
+      `> ⚠️ **Package-policy enforcement disabled:** ${annotation.split("::")[2]}\n`,
+      "the summary carries the annotation's message",
+    );
+    const installed = run(report, { AEGIS_BINARY: "/usr/bin/aegis", ...chainOutcomes(null) });
+    assert.equal(installed.summary, "", "an installed firewall writes no degraded summary");
+
+    const output = path.join(directory, "detect.output");
+    const fork = run(detectScript(), {
+      GITHUB_OUTPUT: output,
+      GITHUB_EVENT_NAME: "pull_request",
+      HEAD_REPOSITORY: "fork/gh-actions",
+      CURRENT_REPOSITORY: "tempoxyz/gh-actions",
+    });
+    assert.equal(fs.readFileSync(output, "utf8"), "available=false\n");
+    const [forkAnnotation] = fork.stdout;
+    assert.match(forkAnnotation, /^::warning title=Package-policy enforcement disabled::This job is running for a fork pull request/);
+    assert.equal(
+      fork.summary,
+      `> ⚠️ **Package-policy enforcement disabled:** ${forkAnnotation.split("::")[2]}\n`,
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

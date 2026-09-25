@@ -29,6 +29,10 @@ warning annotation. It is intended for Aegis's own installation tests, where a
 preinstalled Aegis service would conflict with the version under test and a large
 test matrix would otherwise request a separate StepSecurity credential per job.
 
+Every warning below that skips or degrades protection is also written to the
+job's step summary, so a job that ran with reduced enforcement says so on its
+summary page and not only in its annotations.
+
 Both services use production by default. For a development deployment, set
 `step-security-sts-host: ss-sts.tempoxyz.dev` and/or
 `socket-sts-host: socket-sts.tempoxyz.dev`.

@@ -36,7 +36,11 @@ runs:
           echo "available=true" >> "$GITHUB_OUTPUT"
         elif [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] && [ -n "$HEAD_REPOSITORY" ] && [ "$HEAD_REPOSITORY" != "$CURRENT_REPOSITORY" ]; then
           echo "available=false" >> "$GITHUB_OUTPUT"
-          echo "::warning title=Package-policy enforcement disabled::This job is running for a fork pull request, which receives no GitHub OIDC token. No package firewall will be installed; downloads will not be inspected or blocked."
+          message="This job is running for a fork pull request, which receives no GitHub OIDC token. No package firewall will be installed; downloads will not be inspected or blocked."
+          echo "::warning title=Package-policy enforcement disabled::$message"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            printf '> ⚠️ **Package-policy enforcement disabled:** %s\n' "$message" >> "$GITHUB_STEP_SUMMARY"
+          fi
         else
           echo "::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing: the job must grant id-token: write (event: ${GITHUB_EVENT_NAME:-unknown})"
           exit 1
@@ -212,7 +216,7 @@ runs:
     # Runs whenever OIDC was available, after every stage above has either
     # succeeded, failed without stopping the job, or been skipped because an
     # earlier stage failed. Reports the first failure so the job's annotations
-    # say exactly why no package firewall is running.
+    # and step summary say exactly why no package firewall is running.
     - name: Report package firewall status
       if: steps.oidc.outputs.available == 'true'
       shell: bash
@@ -251,4 +255,10 @@ runs:
             break
           fi
         done
-        echo "::warning title=Package-policy enforcement disabled::Socket Firewall was not installed: ${reason}. See the failed step's log for details. No package firewall is running for this job, so package downloads are not inspected or blocked."
+        message="Socket Firewall was not installed: ${reason}. See the failed step's log for details. No package firewall is running for this job, so package downloads are not inspected or blocked."
+        echo "::warning title=Package-policy enforcement disabled::$message"
+        # Mirror the annotation into the step summary so the degraded state is
+        # visible on the job's summary page too.
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          printf '> ⚠️ **Package-policy enforcement disabled:** %s\n' "$message" >> "$GITHUB_STEP_SUMMARY"
+        fi

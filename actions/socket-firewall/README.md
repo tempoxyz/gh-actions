@@ -55,7 +55,8 @@ when the job finishes, and limits its lifetime with the STS lease expiration.
 
 GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
 permissions the workflow declares. On such a run, the action emits a warning
-annotation that package-policy enforcement is disabled and performs no other
+annotation that package-policy enforcement is disabled, mirrors it into the
+job's step summary, and performs no other
 work: it does not exchange tokens, download Aegis, install a firewall, or inspect
 downloads. Both outputs are empty. Any other event without an OIDC token fails,
 since that means the job is missing `id-token: write`.
@@ -68,7 +69,8 @@ handler, and finally the package installation. When one of them fails after its
 own retries, nothing after it runs, so Aegis is never installed without a Socket
 API token and no unverified release is ever installed. A final step then emits a
 warning annotation titled "Package-policy enforcement disabled" that names the
-stage that failed and points at its step log, and the job continues without a
+stage that failed and points at its step log, mirrors it into the job's step
+summary, and the job continues without a
 package firewall: package downloads are not inspected or blocked, and both
 outputs are empty. A checksum or provenance mismatch is reported the same way;
 it also installs nothing. The step that fails is still marked failed in the job

@@ -68,6 +68,7 @@ function startHardenRunner(run, token, env) {
       `Harden Runner did not start (${reason}). This job is running without ` +
         "Harden Runner's runtime monitoring and egress enforcement.",
       "Harden Runner unavailable",
+      env,
     );
     append(required("GITHUB_STATE", env), START_FAILED_STATE, "true");
   }
@@ -82,6 +83,8 @@ async function main({
     warning(
       "Runner security enforcement was explicitly disabled for this job; " +
         "Harden Runner will not start.",
+      undefined,
+      env,
     );
     append(required("GITHUB_STATE", env), ENFORCEMENT_DISABLED_STATE, "true");
     return;
@@ -90,6 +93,8 @@ async function main({
   if (unsupportedPlatform(env)) {
     warning(
       "Harden Runner does not support Windows ARM64; skipping Harden Runner.",
+      undefined,
+      env,
     );
     append(required("GITHUB_STATE", env), UNSUPPORTED_PLATFORM_STATE, "true");
     return;
@@ -107,6 +112,8 @@ async function main({
       "GitHub issued no OIDC token to this pull_request run (fork pull " +
         "requests never receive one). Harden Runner is running with the " +
         "workflow's inline egress policy instead of the StepSecurity policy store.",
+      undefined,
+      env,
     );
     append(required("GITHUB_STATE", env), INLINE_POLICY_STATE, "true");
     startHardenRunner(run, null, env);
@@ -136,6 +143,7 @@ async function main({
         "StepSecurity policy store, so stored egress policies are not " +
         "applied to this job.",
       "StepSecurity policy store unavailable",
+      env,
     );
     append(required("GITHUB_STATE", env), INLINE_POLICY_STATE, "true");
     startHardenRunner(run, null, env);

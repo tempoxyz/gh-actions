@@ -606,3 +606,106 @@ test("post cleans up best-effort after a failed start and still revokes the leas
   );
   assert.equal(revocations, 2, "revocation is attempted even when cleanup fails");
 });
+
+function summaryFile() {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), "harden-runner-summary-")), "summary.md");
+}
+
+// Reconstructs the summary line a warning annotation should have produced.
+function summaryFor(annotation) {
+  const match = /^::warning(?: title=([^:]*))?::(.*)$/.exec(annotation);
+  assert.ok(match, annotation);
+  const unescape = (value) =>
+    value.replaceAll("%0A", "\n").replaceAll("%0D", "\r").replaceAll("%3A", ":").replaceAll("%2C", ",").replaceAll("%25", "%");
+  const title = match[1] === undefined ? "Harden Runner" : unescape(match[1]);
+  return `> ⚠️ **${title}:** ${unescape(match[2]).replace(/\s*\r?\n\s*/g, " ")}`;
+}
+
+test("every pre-job warning is mirrored into the step summary", async () => {
+  const scenarios = [
+    {
+      name: "STS unavailable",
+      env: { ...oidcEnv },
+      exchange: async () => {
+        throw new Error("Step Security STS exchange failed (HTTP 503): upstream\nunavailable");
+      },
+      run: () => {},
+    },
+    {
+      name: "fork inline policy",
+      env: { GITHUB_EVENT_NAME: "pull_request" },
+      exchange: async () => assert.fail("no exchange without OIDC"),
+      run: () => {},
+    },
+    {
+      name: "enforcement disabled",
+      env: { ...oidcEnv, "INPUT_DISABLE-ENFORCEMENT": "true" },
+      exchange: async () => assert.fail("no exchange when disabled"),
+      run: () => {},
+    },
+    {
+      name: "unsupported platform",
+      env: { ...oidcEnv, RUNNER_OS: "Windows", RUNNER_ARCH: "ARM64" },
+      exchange: async () => assert.fail("no exchange on an unsupported runner"),
+      run: () => {},
+    },
+    {
+      name: "Harden Runner did not start",
+      env: { ...oidcEnv },
+      exchange: async () => ({
+        token: "step_test_short_lived_api_key",
+        leaseId: "11111111-1111-4111-8111-111111111111",
+        rawHost: "ss-sts.tempoxyz.net",
+      }),
+      run: startFailure,
+    },
+  ];
+  for (const scenario of scenarios) {
+    const summary = summaryFile();
+    const { lines } = await capturedLogs(() =>
+      preMain({
+        env: { ...scenario.env, GITHUB_STATE: stateFile(), GITHUB_STEP_SUMMARY: summary },
+        run: scenario.run,
+        exchange: scenario.exchange,
+      }),
+    );
+    const warnings = lines.filter((line) => line.startsWith("::warning"));
+    assert.ok(warnings.length > 0, scenario.name);
+    assert.equal(
+      fs.readFileSync(summary, "utf8"),
+      warnings.map((line) => `${summaryFor(line)}\n`).join(""),
+      scenario.name,
+    );
+    assert.doesNotMatch(fs.readFileSync(summary, "utf8"), /\n>[^\n]*\n>/, "one summary line per warning");
+  }
+
+  // No summary file means no summary, not an error.
+  const { lines } = await capturedLogs(() =>
+    preMain({
+      env: { GITHUB_EVENT_NAME: "pull_request", GITHUB_STATE: stateFile() },
+      run: () => {},
+      exchange: async () => assert.fail("no exchange without OIDC"),
+    }),
+  );
+  assert.equal(lines.filter((line) => line.startsWith("::warning")).length, 1);
+});
+
+test("the post-job cleanup warning is mirrored into the step summary", async () => {
+  const summary = summaryFile();
+  await capturedLogs(() =>
+    postMain({
+      env: {
+        STATE_start_failed: "true",
+        STATE_token: "step_test_short_lived_api_key",
+        GITHUB_STEP_SUMMARY: summary,
+      },
+      run: startFailure,
+      revoke: async () => {},
+    }),
+  );
+  assert.equal(
+    fs.readFileSync(summary, "utf8"),
+    "> ⚠️ **Harden Runner unavailable:** Harden Runner post-job cleanup failed after " +
+      "Harden Runner did not start (Harden Runner post failed (exit 1)).\n",
+  );
+});
