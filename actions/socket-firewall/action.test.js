@@ -245,17 +245,11 @@ test("fork pull requests emit a warning and skip all enforcement setup", () => {
   assert.match(detect, /::warning title=Package-policy enforcement disabled::/);
   assert.match(detect, /No package firewall will be installed; downloads will not be inspected or blocked/);
   assert.match(detect, /::error::ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing[^\r\n]*\r?\n\s+exit 1/);
-  for (const name of [
-    "Exchange GitHub OIDC token for a Socket token",
-    "Exchange GitHub OIDC token for Aegis release access",
-    "Ensure GitHub CLI supports attestation verification",
-    "Download and verify Aegis",
-    "Prepare Aegis configuration",
-    "Install Aegis package on Linux",
-    "Install Aegis package on macOS",
-    "Install Aegis package on Windows",
-  ]) {
-    assert.match(steps.find((step) => step.startsWith(name)), /^\s+if: steps\.oidc\.outputs\.available == 'true'/m, name);
+  assert.doesNotMatch(detect, /continue-on-error/, "a missing id-token permission must still fail the job");
+  // Only the first exchange and the final report key off OIDC availability;
+  // every other stage is gated on its predecessor, so a fork run skips them all.
+  for (const name of ["Exchange GitHub OIDC token for a Socket token", "Report package firewall status"]) {
+    assert.match(steps.find((step) => step.startsWith(name)), /^\s+if: steps\.oidc\.outputs\.available == 'true'$/m, name);
   }
   assert.doesNotMatch(manifest, /AEGIS_USE_VENDORED_RELEASE|disable_enforcement/);
   assert.doesNotMatch(manifest, /Socket Firewall Free/);
@@ -269,4 +263,117 @@ test("forwards the Aegis binary and audit log through the compatibility outputs"
   assert.match(manifest, /steps\.install-linux\.outputs\.report/);
   assert.match(manifest, /steps\.install-macos\.outputs\.report/);
   assert.match(manifest, /steps\.install-windows\.outputs\.report/);
+});
+
+// Stage names paired with the condition that gates them. A stage runs only when
+// the previous stage succeeded, so a failure anywhere stops all later work.
+const SETUP_CHAIN = [
+  ["Exchange GitHub OIDC token for a Socket token", "steps.oidc.outputs.available == 'true'"],
+  ["Exchange GitHub OIDC token for Aegis release access", "steps.socket-token.outcome == 'success'"],
+  ["Ensure GitHub CLI supports attestation verification", "steps.release-token.outcome == 'success'"],
+  ["Download and verify Aegis", "steps.gh-cli.outcome == 'success'"],
+  ["Prepare Aegis configuration", "steps.download.outcome == 'success'"],
+  ["Prepare Aegis lifecycle and register cleanup", "steps.config.outcome == 'success'"],
+  ["Install Aegis package on Linux", "steps.lifecycle.outcome == 'success' && runner.os == 'Linux'"],
+  ["Install Aegis package on macOS", "steps.lifecycle.outcome == 'success' && runner.os == 'macOS'"],
+  ["Install Aegis package on Windows", "steps.lifecycle.outcome == 'success' && runner.os == 'Windows'"],
+];
+
+function manifestStep(name) {
+  const step = manifest.split(/\n    - name: /).slice(1).find((value) => value.startsWith(`${name}\n`));
+  assert.ok(step, `step "${name}" must exist`);
+  return step;
+}
+
+test("every setup stage degrades instead of failing and gates the next stage", () => {
+  const order = SETUP_CHAIN.map(([name]) => manifest.indexOf(`- name: ${name}\n`));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "stages must appear in chain order");
+  for (const [name, condition] of SETUP_CHAIN) {
+    const step = manifestStep(name);
+    assert.ok(step.includes(`\n      if: ${condition}\n`), `${name} must be gated on: ${condition}`);
+    assert.match(step, /^      continue-on-error: true$/m, `${name} must not fail the job`);
+  }
+  const report = manifestStep("Report package firewall status");
+  assert.ok(manifest.indexOf("- name: Report package firewall status") > Math.max(...order));
+  assert.doesNotMatch(report, /continue-on-error/);
+  for (const id of ["socket-token", "release-token", "gh-cli", "download", "config", "lifecycle", "install-linux", "install-macos", "install-windows"]) {
+    assert.ok(report.includes(`\${{ steps.${id}.outcome }}`), `the report must read the ${id} outcome`);
+  }
+});
+
+function reportScript() {
+  const body = manifestStep("Report package firewall status").split(/\n      run: \|\n/)[1];
+  assert.ok(body, "the report step must be a bash block");
+  const lines = [];
+  for (const line of body.split("\n")) {
+    if (line !== "" && !line.startsWith("        ")) break;
+    lines.push(line.slice(8));
+  }
+  return lines.join("\n");
+}
+
+const REPORT_STAGES = [
+  "SOCKET_TOKEN", "RELEASE_TOKEN", "GH_CLI", "DOWNLOAD", "CONFIG", "LIFECYCLE",
+  "INSTALL_LINUX", "INSTALL_MACOS", "INSTALL_WINDOWS",
+];
+
+// Models the chain: stages before the failure succeeded, the failing stage
+// failed, and everything after it was skipped. Only one install stage runs.
+function chainOutcomes(failedStage, installStage = "INSTALL_LINUX") {
+  const outcomes = {};
+  let reached = true;
+  for (const stage of REPORT_STAGES) {
+    const applicable = !stage.startsWith("INSTALL_") || stage === installStage;
+    if (!reached || !applicable) outcomes[`${stage}_OUTCOME`] = "skipped";
+    else if (stage === failedStage) {
+      outcomes[`${stage}_OUTCOME`] = "failure";
+      reached = false;
+    } else outcomes[`${stage}_OUTCOME`] = "success";
+  }
+  return outcomes;
+}
+
+test("the report step names the first failed stage in a warning annotation", {
+  skip: process.platform === "win32" && "POSIX shell fixture; Windows is covered by the live action matrix",
+}, () => {
+  const script = reportScript();
+  assert.match(script, /^set -euo pipefail$/m);
+  const run = (env) => {
+    const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", script], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, AEGIS_BINARY: "/usr/bin/aegis", ...env },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim().split("\n");
+  };
+
+  const expectations = [
+    ["SOCKET_TOKEN", "the Socket STS did not issue a Socket API token"],
+    ["RELEASE_TOKEN", "the GitHub STS did not issue an Aegis release download token"],
+    ["GH_CLI", "a GitHub CLI with attestation support could not be bootstrapped"],
+    ["DOWNLOAD", "the Aegis release could not be downloaded and verified"],
+    ["CONFIG", "the Aegis token provider could not be started"],
+    ["LIFECYCLE", "the Aegis lifecycle handler could not be prepared"],
+    ["INSTALL_LINUX", "the Aegis package could not be installed"],
+  ];
+  for (const [stage, reason] of expectations) {
+    assert.deepEqual(run(chainOutcomes(stage)), [
+      "::warning title=Package-policy enforcement disabled::Socket Firewall was not installed: " +
+        `${reason}. See the failed step's log for details. No package firewall is running for ` +
+        "this job, so package downloads are not inspected or blocked.",
+    ], stage);
+  }
+  for (const installStage of ["INSTALL_MACOS", "INSTALL_WINDOWS"]) {
+    const [line] = run(chainOutcomes(installStage, installStage));
+    assert.match(line, /^::warning title=Package-policy enforcement disabled::.*the Aegis package could not be installed\./, installStage);
+  }
+
+  for (const installStage of ["INSTALL_LINUX", "INSTALL_MACOS", "INSTALL_WINDOWS"]) {
+    const lines = run(chainOutcomes(null, installStage));
+    assert.deepEqual(lines, ["Socket Firewall installed Aegis at /usr/bin/aegis; package downloads are inspected and enforced."], installStage);
+  }
+
+  // Nothing failed but nothing installed either: still never silent.
+  const everythingSkipped = Object.fromEntries(REPORT_STAGES.map((stage) => [`${stage}_OUTCOME`, "skipped"]));
+  assert.match(run(everythingSkipped)[0], /^::warning title=Package-policy enforcement disabled::Socket Firewall was not installed: Socket Firewall setup did not complete\./);
 });

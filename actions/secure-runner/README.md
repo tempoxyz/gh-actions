@@ -60,8 +60,15 @@ inline `egress-policy` applies: audit mode by default, which observes and report
 egress without blocking it. This matches Harden Runner's own behavior, which
 defaults to audit mode whenever it has no policy-store credential or finds no
 stored policy. Only an invalid `step-security-sts-host` input still fails the
-job, since it is validated before any request is made. Socket Firewall is
-unaffected; it uses its own STS.
+job, since it is validated before any request is made.
+
+Socket Firewall degrades the same way. If the Socket STS does not issue a token,
+the GitHub STS does not issue the Aegis release download token, or the Aegis
+release cannot be downloaded, verified, or installed, Socket Firewall stops at
+that stage, installs nothing further, and emits a warning annotation titled
+"Package-policy enforcement disabled" naming the stage that failed. The job
+continues without a package firewall, so package downloads are not inspected or
+blocked. See [Socket Firewall](../socket-firewall) for the full stage list.
 
 ## Usage
 

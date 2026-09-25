@@ -1,6 +1,7 @@
 name: "Socket Firewall"
 description: >-
-  Install Aegis with a short-lived Socket API token when enforcement is available
+  Install Aegis with a short-lived Socket API token when enforcement is
+  available, skipping installation with a warning when any setup stage fails
 
 inputs:
   socket-sts-host:
@@ -41,17 +42,25 @@ runs:
           exit 1
         fi
 
+    # Every stage from here on degrades instead of failing the job. Each stage
+    # runs only if the previous one succeeded, so nothing is downloaded or
+    # installed once a token exchange fails, and the final step reports the
+    # first failure as a warning annotation. A Socket STS, GitHub STS, GitHub
+    # release, or Aegis installation outage therefore leaves the job running
+    # without a package firewall rather than halting it.
     - name: Exchange GitHub OIDC token for a Socket token
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
+      continue-on-error: true
       uses: tempoxyz/gh-actions/actions/socket-sts@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
       with:
         host: ${{ inputs.socket-sts-host }}
         upload-aegis-report: "false"
 
     - name: Exchange GitHub OIDC token for Aegis release access
-      if: steps.oidc.outputs.available == 'true'
+      if: steps.socket-token.outcome == 'success'
       id: release-token
+      continue-on-error: true
       uses: tempoxyz/gh-actions/actions/github-sts@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
       with:
         scope: tempoxyz/aegis
@@ -59,7 +68,9 @@ runs:
         ttl: 15m
 
     - name: Ensure GitHub CLI supports attestation verification
-      if: steps.oidc.outputs.available == 'true'
+      if: steps.release-token.outcome == 'success'
+      id: gh-cli
+      continue-on-error: true
       shell: bash
       env:
         GH_TOKEN: ${{ steps.release-token.outputs.token }}
@@ -80,8 +91,9 @@ runs:
     # Socket STS runs on the runner's bundled Node, even when PATH has no node.
     # Reuse that exact executable without installing a runtime or changing PATH.
     - name: Download and verify Aegis
-      if: steps.oidc.outputs.available == 'true'
+      if: steps.gh-cli.outcome == 'success'
       id: download
+      continue-on-error: true
       shell: bash
       env:
         GH_TOKEN: ${{ steps.release-token.outputs.token }}
@@ -94,8 +106,9 @@ runs:
     # provider keeps the token in memory and exposes it only at an unguessable
     # loopback URL, which is the release's supported installed-CI token source.
     - name: Prepare Aegis configuration
-      if: steps.oidc.outputs.available == 'true'
+      if: steps.download.outcome == 'success'
       id: config
+      continue-on-error: true
       shell: bash
       env:
         INPUT_SOCKET_TOKEN: ${{ steps.socket-token.outputs.token }}
@@ -105,15 +118,18 @@ runs:
     # Register after STS (so post runs before credential revocation), but before
     # installation (so failures still upload logs and clean up owned state).
     - name: Prepare Aegis lifecycle and register cleanup
-      if: steps.oidc.outputs.available == 'true'
+      if: steps.config.outcome == 'success'
+      id: lifecycle
+      continue-on-error: true
       # Linux lifecycle
       uses: tempoxyz/gh-actions/actions/aegis-report@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
       with:
         linux-installation-config: ${{ runner.os == 'Linux' && steps.config.outputs.path || '' }}
 
     - name: Install Aegis package on Linux
-      if: steps.oidc.outputs.available == 'true' && runner.os == 'Linux'
+      if: steps.lifecycle.outcome == 'success' && runner.os == 'Linux'
       id: install-linux
+      continue-on-error: true
       shell: bash
       env:
         AEGIS_PACKAGE: ${{ steps.download.outputs.package }}
@@ -136,8 +152,9 @@ runs:
         echo "report=/var/log/aegis/service.jsonl" >> "$GITHUB_OUTPUT"
 
     - name: Install Aegis package on macOS
-      if: steps.oidc.outputs.available == 'true' && runner.os == 'macOS'
+      if: steps.lifecycle.outcome == 'success' && runner.os == 'macOS'
       id: install-macos
+      continue-on-error: true
       shell: bash
       env:
         AEGIS_PACKAGE: ${{ steps.download.outputs.package }}
@@ -163,8 +180,9 @@ runs:
         echo "report=/Library/Application Support/Aegis/service.jsonl" >> "$GITHUB_OUTPUT"
 
     - name: Install Aegis package on Windows
-      if: steps.oidc.outputs.available == 'true' && runner.os == 'Windows'
+      if: steps.lifecycle.outcome == 'success' && runner.os == 'Windows'
       id: install-windows
+      continue-on-error: true
       shell: pwsh
       env:
         AEGIS_PACKAGE: ${{ steps.download.outputs.package }}
@@ -190,3 +208,47 @@ runs:
         Invoke-WithRetry { & $binary install --config $env:AEGIS_CONFIG } 'aegis install'
         "path=$binary" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "report=$(Join-Path $env:ProgramData 'Aegis\service.jsonl')" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    # Runs whenever OIDC was available, after every stage above has either
+    # succeeded, failed without stopping the job, or been skipped because an
+    # earlier stage failed. Reports the first failure so the job's annotations
+    # say exactly why no package firewall is running.
+    - name: Report package firewall status
+      if: steps.oidc.outputs.available == 'true'
+      shell: bash
+      env:
+        SOCKET_TOKEN_OUTCOME: ${{ steps.socket-token.outcome }}
+        RELEASE_TOKEN_OUTCOME: ${{ steps.release-token.outcome }}
+        GH_CLI_OUTCOME: ${{ steps.gh-cli.outcome }}
+        DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+        CONFIG_OUTCOME: ${{ steps.config.outcome }}
+        LIFECYCLE_OUTCOME: ${{ steps.lifecycle.outcome }}
+        INSTALL_LINUX_OUTCOME: ${{ steps.install-linux.outcome }}
+        INSTALL_MACOS_OUTCOME: ${{ steps.install-macos.outcome }}
+        INSTALL_WINDOWS_OUTCOME: ${{ steps.install-windows.outcome }}
+        AEGIS_BINARY: ${{ steps.install-linux.outputs.path || steps.install-macos.outputs.path || steps.install-windows.outputs.path }}
+      run: |
+        set -euo pipefail
+        install=skipped
+        for outcome in "$INSTALL_LINUX_OUTCOME" "$INSTALL_MACOS_OUTCOME" "$INSTALL_WINDOWS_OUTCOME"; do
+          if [ "$outcome" != skipped ]; then install=$outcome; fi
+        done
+        if [ "$install" = success ]; then
+          echo "Socket Firewall installed Aegis at $AEGIS_BINARY; package downloads are inspected and enforced."
+          exit 0
+        fi
+        reason="Socket Firewall setup did not complete"
+        for stage in \
+          "$SOCKET_TOKEN_OUTCOME|the Socket STS did not issue a Socket API token" \
+          "$RELEASE_TOKEN_OUTCOME|the GitHub STS did not issue an Aegis release download token" \
+          "$GH_CLI_OUTCOME|a GitHub CLI with attestation support could not be bootstrapped" \
+          "$DOWNLOAD_OUTCOME|the Aegis release could not be downloaded and verified" \
+          "$CONFIG_OUTCOME|the Aegis token provider could not be started" \
+          "$LIFECYCLE_OUTCOME|the Aegis lifecycle handler could not be prepared" \
+          "$install|the Aegis package could not be installed"; do
+          if [ "${stage%%|*}" = failure ]; then
+            reason="${stage#*|}"
+            break
+          fi
+        done
+        echo "::warning title=Package-policy enforcement disabled::Socket Firewall was not installed: ${reason}. See the failed step's log for details. No package firewall is running for this job, so package downloads are not inspected or blocked."
