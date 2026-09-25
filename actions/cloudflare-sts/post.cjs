@@ -1,30 +1,6 @@
-const https = require("node:https");
+const { request } = require("./http.cjs");
 const { validateHost } = require("./host.cjs");
 const { isTransientStatus, retry } = require("./retry.cjs");
-
-const MAX_RESPONSE_BYTES = 64 * 1024;
-
-function request(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const outbound = https.request(url, options, (response) => {
-      let body = "";
-      let bytes = 0;
-      response.setEncoding("utf8");
-      response.on("data", (chunk) => {
-        bytes += Buffer.byteLength(chunk);
-        if (bytes > MAX_RESPONSE_BYTES) {
-          response.destroy(new Error("response exceeded 64 KiB"));
-          return;
-        }
-        body += chunk;
-      });
-      response.on("end", () => resolve({ status: response.statusCode, body }));
-      response.on("error", reject);
-    });
-    outbound.on("error", reject);
-    outbound.end();
-  });
-}
 
 function required(name) {
   const value = process.env[name] || "";
@@ -67,8 +43,9 @@ async function main() {
   const oidcUrl = new URL(required("ACTIONS_ID_TOKEN_REQUEST_URL"));
   oidcUrl.searchParams.set("audience", host);
   const oidcResponse = await retry(
-    () =>
+    (timeoutMs) =>
       request(oidcUrl, {
+        timeoutMs,
         headers: { Authorization: `Bearer ${oidcRequestToken}` },
       }),
     {
@@ -94,9 +71,10 @@ async function main() {
   revokeUrl.searchParams.set("identity", identity);
   revokeUrl.searchParams.set("token_id", tokenId);
   const revokeResponse = await retry(
-    () =>
+    (timeoutMs) =>
       request(revokeUrl, {
         method: "DELETE",
+        timeoutMs,
         headers: { Authorization: `Bearer ${oidc}` },
       }),
     {

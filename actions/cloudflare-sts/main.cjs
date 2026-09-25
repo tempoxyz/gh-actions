@@ -1,10 +1,8 @@
 const fs = require("node:fs");
-const https = require("node:https");
+const { request } = require("./http.cjs");
 const { validateHost } = require("./host.cjs");
 const { isTransientStatus, retry } = require("./retry.cjs");
 const { parseTtl } = require("./ttl.cjs");
-
-const MAX_RESPONSE_BYTES = 64 * 1024;
 
 function input(name) {
   const key = name.toUpperCase();
@@ -13,28 +11,6 @@ function input(name) {
     process.env[`INPUT_${key.replaceAll("-", "_")}`] ||
     ""
   );
-}
-
-function request(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const outbound = https.request(url, options, (response) => {
-      let body = "";
-      let bytes = 0;
-      response.setEncoding("utf8");
-      response.on("data", (chunk) => {
-        bytes += Buffer.byteLength(chunk);
-        if (bytes > MAX_RESPONSE_BYTES) {
-          response.destroy(new Error("response exceeded 64 KiB"));
-          return;
-        }
-        body += chunk;
-      });
-      response.on("end", () => resolve({ status: response.statusCode, body }));
-      response.on("error", reject);
-    });
-    outbound.on("error", reject);
-    outbound.end();
-  });
 }
 
 function output(name, value) {
@@ -84,8 +60,9 @@ async function main() {
   const oidcUrl = new URL(oidcRequestUrl);
   oidcUrl.searchParams.set("audience", host);
   const oidcResponse = await retry(
-    () =>
+    (timeoutMs) =>
       request(oidcUrl, {
+        timeoutMs,
         headers: { Authorization: `Bearer ${oidcRequestToken}` },
       }),
     {
@@ -111,9 +88,10 @@ async function main() {
   exchangeUrl.searchParams.set("identity", policy);
   exchangeUrl.searchParams.set("ttl", ttl);
   const exchangeResponse = await retry(
-    () =>
+    (timeoutMs) =>
       request(exchangeUrl, {
         method: "POST",
+        timeoutMs,
         headers: { Authorization: `Bearer ${oidc}` },
       }),
     {
