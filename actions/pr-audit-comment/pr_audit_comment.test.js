@@ -41,6 +41,39 @@ test("private composes with fast and note arguments", () => {
   assert.equal(defaults.note, "focus on authorization");
 });
 
+test("runner selection accepts only trusted deployment channels", () => {
+  const { defaults, errors } = handle.parseArgs(
+    "cyclops audit runner=staging",
+    "^cyclops\\s+audit\\b",
+  );
+  assert.deepEqual(errors, []);
+  assert.equal(defaults.runner, "staging");
+  assert.equal(handle.parseArgs("cyclops audit runner=ab", "^cyclops\\s+audit\\b").defaults.runner, "ab");
+
+  const rejected = handle.parseArgs("cyclops audit runner=experimental", "^cyclops\\s+audit\\b");
+  assert.match(rejected.errors[0], /must be production, staging, or ab/);
+  assert.match(handle.parseArgs("cyclops audit runner=v2", "^cyclops\\s+audit\\b").errors[0], /must be production, staging, or ab/);
+});
+
+test("A/B comments create distinct channel payloads without image overrides", () => {
+  const defaults = handle.parseArgs("cyclops audit runner=ab run-label=canary", "^cyclops\\s+audit\\b").defaults;
+  const payloads = handle.buildPayloads(makeContext({ body: "cyclops audit runner=ab" }), makePr(), defaults);
+  assert.deepEqual(payloads.map((payload) => payload.data.runner_channel), ["production", "staging"]);
+  assert.deepEqual(payloads.map((payload) => payload.data.run_label), ["canary-production", "canary-staging"]);
+  for (const payload of payloads) {
+    assert.equal(Object.hasOwn(payload.data, "image"), false);
+    assert.equal(Object.hasOwn(payload.data, "runner_version"), false);
+  }
+});
+
+test("label routing never accepts an image or digest from event data", () => {
+  const workflow = fs.readFileSync(path.join(__dirname, "../../.github/workflows/pr-audit.yml"), "utf8");
+  assert.equal(workflow.includes("body.data.image"), false);
+  assert.equal(workflow.includes("body.data.runner_version"), false);
+  assert.equal(workflow.includes("--arg image"), false);
+  assert.equal(workflow.includes("sha256:"), false);
+});
+
 function makePr({
   authorAssociation = "MEMBER",
   authorId = 2,
@@ -268,7 +301,7 @@ function shellQuote(value) {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
-function makeProcessHarness(tmp) {
+function makeProcessHarness(tmp, { failCurlCalls = [] } = {}) {
   const bin = path.join(tmp, "bin");
   fs.mkdirSync(bin);
 
@@ -282,7 +315,10 @@ function makeProcessHarness(tmp) {
     pythonEnv: path.join(tmp, "python-env"),
     curlArgs: path.join(tmp, "curl-args"),
     curlEnv: path.join(tmp, "curl-env"),
+    curlCalls: path.join(tmp, "curl-calls"),
+    jqArgs: path.join(tmp, "jq-args"),
     payload: path.join(tmp, "payload.json"),
+    payloads: path.join(tmp, "payloads.jsonl"),
   };
 
   writeExecutable(path.join(bin, "python3"), `#!/bin/sh
@@ -292,15 +328,20 @@ exec ${shellQuote(pythonPath)} "$@"
 `);
   writeExecutable(path.join(bin, "curl"), `#!/bin/sh
 printf '%s\n' "$@" > ${shellQuote(files.curlArgs)}
+printf 'call\n' >> ${shellQuote(files.curlCalls)}
 env > ${shellQuote(files.curlEnv)}
 for arg in "$@"; do
   case "$arg" in
-    @*) cp "\${arg#@}" ${shellQuote(files.payload)} ;;
+    @*) cp "\${arg#@}" ${shellQuote(files.payload)}; cat "\${arg#@}" >> ${shellQuote(files.payloads)}; printf '\n' >> ${shellQuote(files.payloads)} ;;
   esac
 done
 cat >/dev/null
+case "$(wc -l < ${shellQuote(files.curlCalls)} | tr -d ' ')" in
+  ${failCurlCalls.length > 0 ? failCurlCalls.join("|") : "never"}) exit 22 ;;
+esac
 `);
   writeExecutable(path.join(bin, "jq"), `#!/bin/sh
+printf '%s\n' '---' "$@" >> ${shellQuote(files.jqArgs)}
 printf '%s\n' '{"repository":"tempoxyz/example","event":"pr_audit","data":{}}'
 `);
 
@@ -335,12 +376,12 @@ function assertIsolatedEnvironment(file, expectedProxy = undefined) {
   }
 }
 
-function workflowPublishScript() {
+function workflowStepScript(stepName) {
   const lines = fs.readFileSync(
     path.join(__dirname, "../../.github/workflows/pr-audit.yml"),
     "utf8",
   ).split("\n");
-  const name = lines.findIndex((line) => line.trim() === "- name: Publish event");
+  const name = lines.findIndex((line) => line.trim() === `- name: ${stepName}`);
   assert.notEqual(name, -1);
   const run = lines.findIndex((line, index) => index > name && line.trim() === "run: |");
   assert.notEqual(run, -1);
@@ -351,6 +392,14 @@ function workflowPublishScript() {
     script.push(line.startsWith("          ") ? line.slice(10) : "");
   }
   return script.join("\n");
+}
+
+function workflowPublishScript() {
+  return workflowStepScript("Publish event");
+}
+
+function workflowResolveScript() {
+  return workflowStepScript("Resolve target");
 }
 
 test("org mode uses a separate client for permission-token", async () => {
@@ -612,6 +661,82 @@ test("private audit publishes the flag without creating a GitHub status comment"
   }
 });
 
+test("staging audit publishes only the generic channel", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-staging-"));
+  const harness = makeProcessHarness(tmp);
+  const restoreEnvironment = setEnvironment({
+    PATH: `${harness.bin}:${process.env.PATH}`,
+    EVENTS_ARGS: "--url https://events.example",
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+  });
+
+  try {
+    const result = await runScenario({ mode: "association", body: "cyclops audit runner=staging" });
+    assert.deepEqual(result.core.failures, []);
+    const payload = JSON.parse(fs.readFileSync(harness.files.payload));
+    assert.equal(payload.data.runner_channel, "staging");
+    assert.equal(Object.hasOwn(payload.data, "runner_version"), false);
+    assert.match(result.primary.calls.commentUpdates[0].body, /runner: `staging`/);
+  } finally {
+    restoreEnvironment();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("A/B audit publishes independent production and staging events", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-ab-"));
+  const harness = makeProcessHarness(tmp);
+  const restoreEnvironment = setEnvironment({
+    PATH: `${harness.bin}:${process.env.PATH}`,
+    EVENTS_ARGS: "--url https://events.example",
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+  });
+
+  try {
+    const result = await runScenario({ mode: "association", body: "cyclops audit runner=ab" });
+    assert.deepEqual(result.core.failures, []);
+    const payloads = fs.readFileSync(harness.files.payloads, "utf8").trim().split("\n").map(JSON.parse);
+    assert.deepEqual(payloads.map((payload) => payload.data.runner_channel), ["production", "staging"]);
+    assert.deepEqual(payloads.map((payload) => payload.data.run_label), [
+      "pr-123-comment-456-production",
+      "pr-123-comment-456-staging",
+    ]);
+    assert.equal(readLines(harness.files.curlCalls).length, 2);
+    assert.match(result.primary.calls.commentUpdates[0].body, /runner: `ab`/);
+  } finally {
+    restoreEnvironment();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("A/B audit attempts both channels when either publication fails", async () => {
+  for (const failedCall of [1, 2]) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `pr-audit-comment-ab-failure-${failedCall}-`));
+    const harness = makeProcessHarness(tmp, { failCurlCalls: [failedCall] });
+    const restoreEnvironment = setEnvironment({
+      PATH: `${harness.bin}:${process.env.PATH}`,
+      EVENTS_ARGS: "--url https://events.example",
+      EVENTS_KEY: "event-key-canary",
+      EVENTS_CERT: "event-cert-canary",
+    });
+
+    try {
+      const result = await runScenario({ mode: "association", body: "cyclops audit runner=ab" });
+      assert.equal(result.core.failures.length, 1);
+      assert.match(result.core.failures[0], /Failed to publish channel\(s\)/);
+      assert.equal(readLines(harness.files.curlCalls).length, 2);
+      const payloads = fs.readFileSync(harness.files.payloads, "utf8").trim().split("\n").map(JSON.parse);
+      assert.deepEqual(payloads.map((payload) => payload.data.runner_channel), ["production", "staging"]);
+      assert.match(result.primary.calls.commentUpdates[0].body, /failed to publish/);
+    } finally {
+      restoreEnvironment();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+});
+
 test("comment publisher continues when the queued status comment fails", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-create-failure-"));
   const harness = makeProcessHarness(tmp);
@@ -804,6 +929,112 @@ test("reusable workflow publisher preserves arguments and isolates child process
     assert.equal(fs.existsSync(shellMarker), false);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("trusted staging and A/B labels resolve independently for every PR", () => {
+  for (const [label, prNumber, expectedChannels] of [
+    ["cyclops-staging", "7", "staging"],
+    ["cyclops-ab", "8421", "production staging"],
+    ["cyclops", "99", "legacy"],
+  ]) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-label-routing-"));
+    const output = path.join(tmp, "github-output");
+    const result = spawnSync("bash", ["-c", workflowResolveScript()], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ACTOR: "trusted-user",
+        REQUIRED_LABEL: "cyclops",
+        REQUIRED_LABELS: "",
+        BRANCH: "",
+        EVENT_ACTION: "labeled",
+        EVENT_NAME: "pull_request",
+        GH_TOKEN: "unused",
+        LABEL_NAME: label,
+        PR_HEAD_SHA: "0123456789abcdef0123456789abcdef01234567",
+        PR_NUMBER: prNumber,
+        REPO: "tempoxyz/example",
+        TARGET_PR_NUMBER: "",
+        GITHUB_OUTPUT: output,
+      },
+    });
+
+    try {
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      const outputs = Object.fromEntries(readLines(output).map((line) => line.split("=", 2)));
+      assert.equal(outputs.publish, "true");
+      assert.equal(outputs.pr_number, prNumber);
+      assert.equal(outputs.channels, expectedChannels);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+});
+
+test("reusable workflow A/B publisher emits two channel-scoped run labels", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-workflow-ab-"));
+  const harness = makeProcessHarness(tmp);
+  const runnerTemp = path.join(tmp, "runner-temp");
+  fs.mkdirSync(runnerTemp);
+  const result = spawnSync("bash", ["-c", workflowPublishScript()], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${harness.bin}:${process.env.PATH}`,
+      EVENTS_ARGS: "--url https://events.example",
+      EVENTS_KEY: "event-key-canary",
+      EVENTS_CERT: "event-cert-canary",
+      REPO: "tempoxyz/example",
+      TARGET_PR_NUMBER: "321",
+      TARGET_SHA: "0123456789abcdef0123456789abcdef01234567",
+      RUNNER_CHANNELS: "production staging",
+      RUNNER_TEMP: runnerTemp,
+    },
+  });
+
+  try {
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(readLines(harness.files.curlCalls).length, 2);
+    const jqArgs = fs.readFileSync(harness.files.jqArgs, "utf8");
+    assert.match(jqArgs, /production/);
+    assert.match(jqArgs, /pr-321-0123456789ab-production/);
+    assert.match(jqArgs, /staging/);
+    assert.match(jqArgs, /pr-321-0123456789ab-staging/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("reusable workflow A/B publisher attempts both channels before reporting failure", () => {
+  for (const failedCall of [1, 2]) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `pr-audit-workflow-ab-failure-${failedCall}-`));
+    const harness = makeProcessHarness(tmp, { failCurlCalls: [failedCall] });
+    const runnerTemp = path.join(tmp, "runner-temp");
+    fs.mkdirSync(runnerTemp);
+    const result = spawnSync("bash", ["-c", workflowPublishScript()], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${harness.bin}:${process.env.PATH}`,
+        EVENTS_ARGS: "--url https://events.example",
+        EVENTS_KEY: "event-key-canary",
+        EVENTS_CERT: "event-cert-canary",
+        REPO: "tempoxyz/example",
+        TARGET_PR_NUMBER: "321",
+        TARGET_SHA: "0123456789abcdef0123456789abcdef01234567",
+        RUNNER_CHANNELS: "production staging",
+        RUNNER_TEMP: runnerTemp,
+      },
+    });
+
+    try {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout + result.stderr, /Failed to publish pr_audit event for channel/);
+      assert.equal(readLines(harness.files.curlCalls).length, 2);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   }
 });
 
