@@ -47,6 +47,11 @@ test("downloads the latest stable release and verifies its checksums and provena
   assert.match(downloader, /DOWNLOAD_ATTEMPTS = 3/);
   assert.match(downloader, /--clobber/);
   assert.match(downloader, /GH_API_TIMEOUT_MS = 10 \* 1000/);
+  assert.match(downloader, /RELEASE_DOWNLOAD_TIMEOUT_MS = 120 \* 1000/);
+  assert.match(downloader, /ATTESTATION_TIMEOUT_MS = 60 \* 1000/);
+  // \s+ rather than \n: Windows checkouts use CRLF.
+  assert.match(downloader, /"Aegis release download", \{\s+execOptions: \{ stdio: "inherit", timeout: RELEASE_DOWNLOAD_TIMEOUT_MS \},/);
+  assert.match(downloader, /"Aegis provenance verification", \{\s+execOptions: \{ stdio: "inherit", timeout: ATTESTATION_TIMEOUT_MS \},/);
   assert.match(downloader, /Aegis provenance verification/);
 });
 
@@ -55,7 +60,7 @@ test("bounds connection waits and retries every Socket Firewall outbound command
     path.join(__dirname, "..", "setup-foundry", "ensure-gh.sh"),
     "utf8",
   );
-  assert.match(bootstrap, /curl -fsSL --connect-timeout 10 --retry 3 --retry-all-errors/);
+  assert.match(bootstrap, /curl -fsSL --connect-timeout 10 --retry 3 --retry-all-errors --max-time 120 /);
   assert.match(manifest, /retry bash "\$GITHUB_ACTION_PATH\/\.\.\/setup-foundry\/ensure-gh\.sh"/);
   assert.match(manifest, /Acquire::http::Timeout=10/);
   assert.match(manifest, /Acquire::https::Timeout=10/);
@@ -77,6 +82,7 @@ test("retries every GitHub CLI failure with exponential backoff", () => {
         return "{\"tag_name\":\"v1.2.3\"}";
       },
       execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS },
+      random: () => 0,
       sleep: (delay) => delays.push(delay),
     },
   );
@@ -438,4 +444,21 @@ test("degrade warnings are mirrored into the step summary", {
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("GitHub CLI retries carry up to 25% jitter", () => {
+  const { DOWNLOAD_JITTER_RATIO } = require("./download.cjs");
+  assert.equal(DOWNLOAD_JITTER_RATIO, 0.25);
+  const delays = [];
+  let attempts = 0;
+  runGh(["api", "x"], "test", {
+    execute: () => {
+      attempts += 1;
+      if (attempts < 3) throw new Error("connection reset");
+      return "ok";
+    },
+    random: () => 1,
+    sleep: (delay) => delays.push(delay),
+  });
+  assert.deepEqual(delays, [1250, 2500]);
 });

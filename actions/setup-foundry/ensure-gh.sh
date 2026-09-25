@@ -34,7 +34,7 @@ esac
 install_dir=$(mktemp -d "${RUNNER_TEMP:?}/foundry-gh.XXXXXX")
 asset="gh_${version}_linux_${arch}.tar.gz"
 archive="$install_dir/$asset"
-curl -fsSL --connect-timeout 10 --retry 3 --retry-all-errors -o "$archive" "https://github.com/cli/cli/releases/download/v${version}/${asset}"
+curl -fsSL --connect-timeout 10 --retry 3 --retry-all-errors --max-time 120 -o "$archive" "https://github.com/cli/cli/releases/download/v${version}/${asset}"
 echo "$sha256  $archive" | sha256sum --check --strict
 tar -xzf "$archive" -C "$install_dir" --strip-components=1 "gh_${version}_linux_${arch}/bin/gh"
 

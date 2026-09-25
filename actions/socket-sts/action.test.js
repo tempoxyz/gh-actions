@@ -37,7 +37,7 @@ test("retries failed HTTP responses with exponential backoff", async () => {
         ? { status: attempts === 1 ? 401 : 505, body: "upstream failure" }
         : { status: 200, body: "recovered" };
     },
-    { sleep: async (delay) => delays.push(delay) },
+    { random: () => 0, sleep: async (delay) => delays.push(delay) },
   );
 
   assert.equal(attempts, 3);
@@ -54,7 +54,7 @@ test("retries transport failures with exponential backoff", async () => {
       if (attempts < 3) throw new Error("connection reset");
       return { status: 200, body: "recovered" };
     },
-    { sleep: async (delay) => delays.push(delay) },
+    { random: () => 0, sleep: async (delay) => delays.push(delay) },
   );
 
   assert.equal(response.status, 200);
@@ -213,7 +213,7 @@ test("honors Socket STS rate-limit metadata before retrying", async () => {
   );
 });
 
-test("fails instead of waiting more than two minutes for a Socket STS rate limit", async () => {
+test("fails instead of waiting past the rate-limit budget", async () => {
   await assert.rejects(
     retryRateLimited(
       async () => ({
@@ -223,7 +223,7 @@ test("fails instead of waiting more than two minutes for a Socket STS rate limit
       }),
       { now: () => 0, sleep: async () => {} },
     ),
-    /exceeds the 2 minute limit/,
+    /exceeds the remaining retry budget \(120s\)/,
   );
 });
 
@@ -334,7 +334,7 @@ test("does not reset the timeout recovery limit after pending polls", async () =
 });
 
 for (const response of [pendingExchange, providerRateLimit]) {
-  test(`bounds repeated ${JSON.parse(response.body).message} responses to two minutes`, async () => {
+  test(`bounds repeated ${JSON.parse(response.body).message} responses to the retry budget`, async () => {
     const assertions = [];
     let issued = 0;
     let now = 0;
@@ -347,12 +347,13 @@ for (const response of [pendingExchange, providerRateLimit]) {
         },
         { now: () => now, sleep: async (delay) => { now += delay; } },
       ),
-      /exceeds the 2 minute limit/,
+      /exceeds the remaining retry budget/,
     );
-    assert.equal(now, 120_000);
+    // The first 60s wait fits the 90s budget; the second does not.
+    assert.equal(now, 60_000);
     assert.deepEqual(assertions, response === providerRateLimit
-      ? ["assertion-1", "assertion-2", "assertion-3"]
-      : ["assertion-1", "assertion-1", "assertion-1"]);
+      ? ["assertion-1", "assertion-2"]
+      : ["assertion-1", "assertion-1"]);
   });
 }
 
@@ -454,4 +455,57 @@ test("post is a no-op when no token was minted", () => {
   } finally {
     fs.rmSync(withoutNode, { force: true, recursive: true });
   }
+});
+
+const { JITTER_RATIO, RETRY_BUDGET_MS } = require("./http.cjs");
+
+test("backoff carries up to 25% jitter", async () => {
+  assert.equal(JITTER_RATIO, 0.25);
+  const delays = [];
+  let attempts = 0;
+  const response = await retry(
+    async () => ({ status: ++attempts < 3 ? 503 : 200, body: "" }),
+    { random: () => 1, sleep: async (delay) => delays.push(delay) },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(delays, [1250, 2500]);
+});
+
+test("one 90-second budget bounds the exchange and shrinks request timeouts to what is left", async () => {
+  assert.equal(RETRY_BUDGET_MS, 90_000);
+  const timeouts = [];
+  const result = await exchangeWithRetry(
+    async () => "assertion-1",
+    async (_assertion, timeoutMs) => {
+      timeouts.push(timeoutMs);
+      return { status: 200, body: "token" };
+    },
+    { now: () => 0, deadline: 4_000, sleep: async () => {} },
+  );
+  assert.equal(result.body, "token");
+  assert.deepEqual(timeouts, [4_000]);
+
+  // Transient retries stop at the deadline and hand back the last response,
+  // with each request's timeout shrunk to the remaining budget.
+  let clock = 0;
+  const bounded = [];
+  const last = await exchangeWithRetry(
+    async () => "assertion-1",
+    async (_assertion, timeoutMs) => {
+      bounded.push(timeoutMs);
+      clock += 10_000;
+      return { status: 503, body: "" };
+    },
+    {
+      now: () => clock,
+      deadline: 15_000,
+      random: () => 0,
+      sleep: async (delay) => {
+        clock += delay;
+      },
+    },
+  );
+  assert.equal(last.status, 503, "the caller reports the final status");
+  assert.deepEqual(bounded, [10_000, 4_000]);
+  assert.equal(clock, 21_000);
 });

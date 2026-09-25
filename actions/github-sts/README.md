@@ -71,7 +71,8 @@ configuration problems easier to diagnose.
 OIDC requests, STS worker exchanges, and token revocations retry transient
 network errors and HTTP `408`, `425`, `429`, or `5xx` responses up to five
 times after the initial attempt, with exponential backoff (1, 2, 4, 8, and
-16 seconds). Other failures are returned immediately.
+16 seconds, each with up to 25% added jitter so parallel jobs do not retry in
+lockstep). Other failures are returned immediately.
 
 OIDC and exchange retries honor `Retry-After` (seconds or HTTP date) and
 `x-ratelimit-reset` when `x-ratelimit-remaining` is zero. These delays are minimums:
