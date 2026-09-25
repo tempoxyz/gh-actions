@@ -58,7 +58,7 @@ jobs:
       vulnerabilities-found: ${{ steps.report.outputs.vulnerabilities-found }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@ddde9bacfffed2574debefdeee00747b3d2c6087 # 2026-09-24T20-02-12Z-ddde9bac
+        uses: tempoxyz/gh-actions/actions/secure-runner@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
 
       - name: Resolve revisions and prepare isolated results directory
         id: prepare
@@ -95,7 +95,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan existing dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@ddde9bacfffed2574debefdeee00747b3d2c6087 # 2026-09-24T20-02-12Z-ddde9bac
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -109,7 +109,7 @@ jobs:
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan proposed dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@ddde9bacfffed2574debefdeee00747b3d2c6087 # 2026-09-24T20-02-12Z-ddde9bac
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -117,7 +117,7 @@ jobs:
 
       - name: Report newly introduced vulnerabilities
         id: report
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@ddde9bacfffed2574debefdeee00747b3d2c6087 # 2026-09-24T20-02-12Z-ddde9bac
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
         with:
           mode: report
           results-directory: ${{ steps.prepare.outputs.results }}
