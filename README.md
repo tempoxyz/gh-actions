@@ -398,6 +398,15 @@ jobs:
 
 For required-check setup and recovery from missing scans, see [Required status checks](actions/scan-github-actions/README.md#required-status-checks). Callers grant `id-token: write` for secure-runner OIDC authentication; no STS URL secret is needed.
 
+To skip the secure-runner presence check entirely, including its annotations and summary, set:
+
+```yaml
+with:
+  ensure-secure-runner: false
+```
+
+This controls the presence checker, not the secure-runner action that protects the scan job.
+
 The secure-runner presence check fails on violations by default. To keep its reports without
 blocking CI, set:
 
@@ -419,6 +428,7 @@ Optional inputs:
 - `paths` (default: `.`) — whitespace-separated paths for zizmor to scan; narrow to e.g. `.github/` to exclude vendored or third-party trees
 - `config` — path to a [zizmor config file](https://docs.zizmor.sh/usage/#configuration) for rule overrides. When empty, zizmor discovers a repository configuration when present.
 - `actionlint` (default: `true`) — run actionlint (syntax, expression, and shellcheck/pyflakes checks) alongside the zizmor scan
+- `ensure-secure-runner` (default: `true`) — set `false` to skip the presence check, including its annotations and summary
 - `secure-runner-fail-on-violation` (default: `true`) — set `false` to report missing/misplaced/conditional secure-runner steps without failing the check
 - `pinact` (default: `false`) — run pinact policy checks alongside zizmor and actionlint
 - `pin-config` (default: `.pinact.yaml`) — path to the caller repo's pinact configuration file; the default is optional when absent

@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: true
+      ensure-secure-runner:
+        description: "Check that jobs start with secure-runner. Set false to skip the presence check and its annotations and summary."
+        required: false
+        type: boolean
+        default: true
       secure-runner-fail-on-violation:
         description: "Fail when a job does not start with secure-runner. Set false to report violations without blocking CI; existing runner protection is unchanged."
         required: false
@@ -78,6 +83,7 @@ jobs:
           persist-credentials: false
 
       - name: Ensure every job starts with secure-runner
+        if: ${{ inputs.ensure-secure-runner }}
         uses: tempoxyz/gh-actions/actions/ensure-secure-runner@ddde9bacfffed2574debefdeee00747b3d2c6087 # 2026-09-24T20-02-12Z-ddde9bac
         with:
           fail-on-violation: ${{ inputs.secure-runner-fail-on-violation }}
