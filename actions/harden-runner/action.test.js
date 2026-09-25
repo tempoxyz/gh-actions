@@ -90,7 +90,7 @@ test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
   const pre = fs.readFileSync(path.join(__dirname, "pre.cjs"), "utf8");
   assert.ok(
     pre.indexOf("await exchange(") <
-      pre.indexOf('run("pre", result.token)'),
+      pre.indexOf("startHardenRunner(run, result.token, env)"),
     "the STS exchange must finish before Harden Runner initializes",
   );
   const env = hardenRunnerEnv("step_test_short_lived_api_key", {
@@ -108,7 +108,7 @@ test("exchanges the STS credential before Harden Runner's pre-job hook", () => {
     ),
     "the pinned Harden Runner pre-job bundle must be vendored",
   );
-  const implementation = ["pre.cjs", "main.cjs", "post.cjs", "run.cjs"]
+  const implementation = ["pre.cjs", "main.cjs", "post.cjs", "run.cjs", "annotations.cjs"]
     .map((filename) => fs.readFileSync(path.join(__dirname, filename), "utf8"))
     .join("\n");
   assert.doesNotMatch(
@@ -520,4 +520,89 @@ test("main and post treat a degraded run like the fork fallback", async () => {
   });
   assert.deepEqual(calls, [["main", null], ["post", null]]);
   assert.equal(revocations, 1);
+});
+
+const startFailure = (phase) => {
+  throw new Error(`Harden Runner ${phase} failed (exit 1)`);
+};
+const startFailedAnnotation =
+  "::warning title=Harden Runner unavailable::Harden Runner did not start " +
+  "(Harden Runner pre failed (exit 1)). This job is running without Harden " +
+  "Runner's runtime monitoring and egress enforcement.";
+
+test("pre degrades when Harden Runner's own pre-job entrypoint fails", async () => {
+  const state = stateFile();
+  const { lines } = await capturedLogs(() =>
+    preMain({
+      env: { ...oidcEnv, GITHUB_STATE: state },
+      run: startFailure,
+      exchange: async () => ({
+        token: "step_test_short_lived_api_key",
+        leaseId: "11111111-1111-4111-8111-111111111111",
+        rawHost: "ss-sts.tempoxyz.net",
+      }),
+    }),
+  );
+  assert.equal(
+    fs.readFileSync(state, "utf8"),
+    "token=step_test_short_lived_api_key\n" +
+      "lease_id=11111111-1111-4111-8111-111111111111\n" +
+      "sts_host=ss-sts.tempoxyz.net\n" +
+      "start_failed=true\n",
+    "the lease must stay recorded so the post hook still revokes it",
+  );
+  assert.deepEqual(lines.filter((line) => line.startsWith("::warning")), [startFailedAnnotation]);
+
+  // The inline-policy fallback degrades the same way.
+  const forkState = stateFile();
+  const fork = await capturedLogs(() =>
+    preMain({
+      env: { GITHUB_EVENT_NAME: "pull_request", GITHUB_STATE: forkState },
+      run: startFailure,
+      exchange: async () => assert.fail("no OIDC token, so no exchange"),
+    }),
+  );
+  assert.equal(fs.readFileSync(forkState, "utf8"), "inline_policy=true\nstart_failed=true\n");
+  const forkWarnings = fork.lines.filter((line) => line.startsWith("::warning"));
+  assert.equal(forkWarnings.length, 2, fork.lines.join("\n"));
+  assert.match(forkWarnings[0], /^::warning::GitHub issued no OIDC token/);
+  assert.equal(forkWarnings[1], startFailedAnnotation);
+});
+
+test("main skips Harden Runner after a failed start", () => {
+  const calls = [];
+  const run = (...args) => calls.push(args);
+  mainMain({ env: { STATE_start_failed: "true", STATE_token: "step_test_short_lived_api_key" }, run });
+  mainMain({ env: { STATE_start_failed: "true", STATE_inline_policy: "true" }, run });
+  assert.deepEqual(calls, []);
+});
+
+test("post cleans up best-effort after a failed start and still revokes the lease", async () => {
+  let revocations = 0;
+  const revoke = async () => {
+    revocations += 1;
+  };
+  const run = (phase) => {
+    throw new Error(`Harden Runner ${phase} failed (exit 1)`);
+  };
+
+  const { lines } = await capturedLogs(() =>
+    postMain({
+      env: { STATE_start_failed: "true", STATE_token: "step_test_short_lived_api_key" },
+      run,
+      revoke,
+    }),
+  );
+  assert.equal(revocations, 1);
+  assert.deepEqual(lines.filter((line) => line.startsWith("::warning")), [
+    "::warning title=Harden Runner unavailable::Harden Runner post-job cleanup failed " +
+      "after Harden Runner did not start (Harden Runner post failed (exit 1)).",
+  ]);
+
+  // A post-job failure after a normal start still fails the job.
+  await assert.rejects(
+    postMain({ env: { STATE_token: "step_test_short_lived_api_key" }, run, revoke }),
+    /Harden Runner post failed/,
+  );
+  assert.equal(revocations, 2, "revocation is attempted even when cleanup fails");
 });

@@ -39,6 +39,14 @@ policies must allow the network access needed to install and use Socket Firewall
 Harden Runner does not support Windows ARM64. On that runner, this action emits a
 warning annotation, skips Harden Runner, and continues to install Socket Firewall.
 
+If Harden Runner's own pre-job entrypoint fails, for example because its agent
+cannot be downloaded or the runner lacks a prerequisite, the action emits a warning
+annotation titled "Harden Runner unavailable" and the job continues without Harden
+Runner's monitoring. The Step Security lease is still revoked at job end, and
+Harden Runner's post-job cleanup runs best-effort. Harden Runner itself reports
+download and checksum failures as error annotations while exiting zero, so those
+already continue without the agent; this covers a crash or a future change.
+
 GitHub never issues an OIDC token to `pull_request` runs from forks, whatever
 permissions the workflow declares. On a `pull_request` run without an OIDC token,
 Harden Runner emits a warning annotation and runs with the inline policy from the

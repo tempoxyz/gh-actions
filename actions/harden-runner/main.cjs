@@ -4,6 +4,9 @@ const { runHardenRunner } = require("./run.cjs");
 function main({ env = process.env, run = runHardenRunner } = {}) {
   if (env.STATE_enforcement_disabled === "true") return;
   if (env.STATE_unsupported_platform === "true") return;
+  // Harden Runner's pre-job entrypoint failed and the pre hook already warned;
+  // its main entrypoint would fail the job for the same reason.
+  if (env.STATE_start_failed === "true") return;
   if (env.STATE_inline_policy === "true") {
     run("main", null);
     return;

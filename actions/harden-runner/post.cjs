@@ -1,4 +1,5 @@
 const { main: revokeLease } = require("../step-security-sts/post.cjs");
+const { warning } = require("./annotations.cjs");
 const { runHardenRunner } = require("./run.cjs");
 
 async function main({
@@ -11,13 +12,23 @@ async function main({
   const errors = [];
   const token = env.STATE_token || "";
   const inlinePolicy = env.STATE_inline_policy === "true";
-  // Run the vendored post hook only when the pre hook started Harden Runner:
-  // either with a minted policy-store key or with the inline-policy fallback.
+  const startFailed = env.STATE_start_failed === "true";
+  // Run the vendored post hook whenever the pre hook attempted to start Harden
+  // Runner, with a minted policy-store key or the inline-policy fallback. After
+  // a failed start it runs best-effort: it may stop a half-started agent, but
+  // its own failure must not turn a job that already ran unprotected red.
   if (inlinePolicy || token !== "") {
     try {
       run("post", inlinePolicy ? null : token);
     } catch (error) {
-      errors.push(error);
+      if (!startFailed) errors.push(error);
+      else {
+        warning(
+          "Harden Runner post-job cleanup failed after Harden Runner did not " +
+            `start (${error instanceof Error ? error.message : String(error)}).`,
+          "Harden Runner unavailable",
+        );
+      }
     }
   }
   try {
