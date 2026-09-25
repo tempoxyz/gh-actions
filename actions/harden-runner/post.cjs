@@ -27,6 +27,7 @@ async function main({
           "Harden Runner post-job cleanup failed after Harden Runner did not " +
             `start (${error instanceof Error ? error.message : String(error)}).`,
           "Harden Runner unavailable",
+          env,
         );
       }
     }
