@@ -113,6 +113,118 @@ jobs:
           sudo systemctl is-active --quiet aegis.service
           node actions/socket-firewall/npm-install.cjs allow
 
+  # Proves the degrade paths in real Actions, which unit tests cannot: with both
+  # STS hostnames pointed at names that never resolve, Secure Runner must still
+  # let the job run, with Harden Runner in audit mode and no Aegis installed,
+  # and the job must say so in its annotations (asserted by the job below).
+  secure-runner-degraded:
+    name: secure-runner degrades without either STS (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # Pinned to the first release whose nested Harden Runner and Socket
+      # Firewall pins carry the degrade paths (#279); earlier wrappers fail here.
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@bf577592e0f8f1401442cfc7004f81a3e737e1d7 # 2026-09-25T07-53-38Z-bf577592
+        with:
+          step-security-sts-host: ss-sts.invalid
+          socket-sts-host: socket-sts.invalid
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify no Aegis was installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const binaries = {
+            linux: "/usr/bin/aegis",
+            darwin: "/usr/local/bin/aegis",
+            win32: path.join(process.env.ProgramFiles || "C:\\Program Files", "Aegis", "aegis.exe"),
+          };
+          const binary = binaries[process.platform];
+          if (fs.existsSync(binary)) {
+            console.error(`::error::Aegis was installed at ${binary} although the Socket STS was unreachable`);
+            process.exit(1);
+          }
+          console.log(`No Aegis binary at ${binary}`);
+          NODE
+
+      # npm's empty security-holding package, which Aegis blocks when installed.
+      # Without a firewall the install must go through untouched.
+      - name: Confirm package downloads are not intercepted
+        run: node actions/socket-firewall/npm-install.cjs block
+
+  secure-runner-degraded-annotations:
+    name: secure-runner degraded runs are annotated
+    needs: secure-runner-degraded
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
+
+      - name: Assert both degrade annotations on every degraded job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          JOB_PREFIX: "secure-runner degrades without either STS ("
+          EXPECTED_JOBS: "3"
+        run: |
+          set -euo pipefail
+          jobs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | "\(.check_run_url)\t\(.conclusion)\t\(.name)"' \
+            | grep -F -- "$JOB_PREFIX" || true)
+          count=$(printf '%s\n' "$jobs" | sed '/^$/d' | wc -l | tr -d ' ')
+          if [ "$count" != "$EXPECTED_JOBS" ]; then
+            echo "::error::expected $EXPECTED_JOBS degraded jobs in this run, found $count"
+            printf '%s\n' "$jobs"
+            exit 1
+          fi
+          failures=0
+          while IFS=$'\t' read -r check_run conclusion name; do
+            [ -n "$check_run" ] || continue
+            if [ "$conclusion" != success ]; then
+              echo "::error::$name concluded $conclusion; a degraded run must still succeed"
+              failures=$((failures + 1))
+              continue
+            fi
+            # Annotations can trail the job's completion briefly.
+            for attempt in 1 2 3 4 5 6; do
+              annotations=$(gh api --paginate "$check_run/annotations" \
+                --jq '.[] | "\(.annotation_level)\t\(.title // "")\t\(.message)"')
+              if printf '%s\n' "$annotations" | grep -q $'^warning\tStepSecurity policy store unavailable\t' \
+                && printf '%s\n' "$annotations" | grep -q $'^warning\tPackage-policy enforcement disabled\tSocket Firewall was not installed: the Socket STS did not issue a Socket API token'; then
+                echo "$name: both degrade annotations present"
+                break
+              fi
+              if [ "$attempt" = 6 ]; then
+                echo "::error::$name is missing a degrade annotation"
+                printf '%s\n' "$annotations"
+                failures=$((failures + 1))
+              else
+                sleep 10
+              fi
+            done
+          done <<< "$jobs"
+          [ "$failures" = 0 ]
+
   setup-foundry-bootstrap:
     name: setup-foundry with ${{ matrix.cli }} GitHub CLI
     runs-on: ubuntu-latest
