@@ -509,3 +509,77 @@ test("one 90-second budget bounds the exchange and shrinks request timeouts to w
   assert.deepEqual(bounded, [10_000, 4_000]);
   assert.equal(clock, 21_000);
 });
+
+const { main: postMain } = require("./post.cjs");
+
+function captureLog(callback) {
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(String(line));
+  return Promise.resolve()
+    .then(callback)
+    .finally(() => {
+      console.log = original;
+    })
+    .then((value) => ({ value, lines }));
+}
+
+test("post reports a failed token revocation as a warning and still uploads the audit log", async () => {
+  const state = {
+    STATE_token: "sktsec_test_short_lived_token_api",
+    STATE_host: "socket-sts.tempoxyz.net",
+    STATE_upload_aegis_report: "true",
+  };
+  const cases = [
+    {
+      name: "5xx after retries",
+      request: async () => ({ status: 503, headers: {}, body: "" }),
+      expected: /^::warning title=Socket STS token revocation failed::The Socket STS answered HTTP 503 when revoking the token\. The STS lease expiration still bounds the token's lifetime\.$/,
+      attempts: 4,
+    },
+    {
+      name: "transport failure after retries",
+      request: async () => {
+        throw new Error("connection reset");
+      },
+      expected: /^::warning title=Socket STS token revocation failed::Could not reach the Socket STS to revoke the token: connection reset\. The STS lease expiration still bounds the token's lifetime\.$/,
+      attempts: 4,
+    },
+  ];
+  for (const { name, request, expected, attempts } of cases) {
+    let calls = 0;
+    let uploads = 0;
+    const { lines } = await captureLog(() =>
+      postMain({
+        env: state,
+        request: async (...args) => {
+          calls += 1;
+          return request(...args);
+        },
+        upload: async () => {
+          uploads += 1;
+        },
+        sleep: async () => {},
+      }),
+    );
+    assert.equal(calls, attempts, name);
+    assert.equal(uploads, 1, `${name}: the audit log still uploads`);
+    const warnings = lines.filter((line) => line.startsWith("::warning"));
+    assert.equal(warnings.length, 1, `${name}: ${lines.join("\n")}`);
+    assert.match(warnings[0], expected, name);
+  }
+
+  const ok = await captureLog(() =>
+    postMain({
+      env: { ...state, STATE_upload_aegis_report: "false" },
+      request: async () => ({ status: 204, headers: {}, body: "" }),
+      upload: async () => assert.fail("upload disabled"),
+    }),
+  );
+  assert.deepEqual(ok.lines, ["Socket API token revoked."]);
+
+  await assert.rejects(
+    postMain({ env: { ...state, STATE_token: "short" }, request: async () => assert.fail("no request") }),
+    /stored Socket token is invalid/,
+  );
+});

@@ -1,4 +1,4 @@
-const { host, request, retry } = require("./http.cjs");
+const { host, request: httpRequest, retry } = require("./http.cjs");
 const { uploadAegisReport } = require("./dist/artifact-upload.cjs");
 
 function buildRevokeRequest(token, endpoint) {
@@ -17,8 +17,29 @@ function buildRevokeRequest(token, endpoint) {
   };
 }
 
-async function main() {
-  const token = process.env.STATE_token || "";
+function escapeAnnotation(value) {
+  return value
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+}
+
+function warning(title, message) {
+  const property = escapeAnnotation(title).replaceAll(":", "%3A").replaceAll(",", "%2C");
+  console.log(`::warning title=${property}::${escapeAnnotation(message)}`);
+}
+
+// Revocation is best-effort. The STS lease expiration bounds the token's
+// lifetime, so a revocation the STS cannot serve after retries must not turn a
+// finished job red; it is reported as a warning instead. Corrupt state is
+// different: it means this action misbehaved earlier, and it stays an error.
+async function main({
+  env = process.env,
+  request = httpRequest,
+  upload = uploadAegisReport,
+  sleep,
+} = {}) {
+  const token = env.STATE_token || "";
   if (token === "") {
     console.log("No Socket token was minted; skipping revocation.");
     return;
@@ -28,21 +49,37 @@ async function main() {
   try {
     const revoke = buildRevokeRequest(
       token,
-      process.env.STATE_host || "socket-sts.tempoxyz.net",
+      env.STATE_host || "socket-sts.tempoxyz.net",
     );
-    const response = await retry(() =>
-      request(revoke.url, revoke.options, revoke.body),
-    );
+    let response;
+    try {
+      response = await retry(
+        (timeoutMs) => request(revoke.url, { ...revoke.options, timeoutMs }, revoke.body),
+        { sleep },
+      );
+    } catch (error) {
+      warning(
+        "Socket STS token revocation failed",
+        `Could not reach the Socket STS to revoke the token: ${error.message}. ` +
+          "The STS lease expiration still bounds the token's lifetime.",
+      );
+      return;
+    }
     if (response.status !== 204) {
-      throw new Error(`Socket STS revocation failed (HTTP ${response.status})`);
+      warning(
+        "Socket STS token revocation failed",
+        `The Socket STS answered HTTP ${response.status} when revoking the token. ` +
+          "The STS lease expiration still bounds the token's lifetime.",
+      );
+      return;
     }
     console.log("Socket API token revoked.");
   } finally {
-    if (process.env.STATE_upload_aegis_report === "true") {
+    if (env.STATE_upload_aegis_report === "true") {
       try {
         await retry(
-          () => uploadAegisReport({ action: process.env.STATE_action || "socket-sts" }),
-          { retryHttpResponses: false },
+          () => upload({ action: env.STATE_action || "socket-sts" }),
+          { retryHttpResponses: false, sleep },
         );
       } catch (error) {
         console.log(`::warning title=Aegis audit-log upload failed::${error.message}`);

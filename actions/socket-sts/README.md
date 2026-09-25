@@ -3,7 +3,9 @@
 Exchange the calling GitHub Actions job's OIDC token for a short-lived Socket
 API token. The token is masked before it is published as an action output and
 is revoked automatically when the job finishes. The Socket STS lease also
-limits the token lifetime.
+limits the token lifetime. Revocation is best-effort: if the STS cannot serve it
+after retries, the post-job handler reports a warning instead of failing the
+job, since the lease expiration still bounds the token.
 
 Socket STS is a `node24` action, so its main and post-job handlers use the
 runner-bundled executable that it exposes as `node-path` for Socket Firewall.

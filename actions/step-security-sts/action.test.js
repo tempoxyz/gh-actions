@@ -433,3 +433,79 @@ test("one 90-second budget bounds the whole exchange, including rate-limit waits
   );
   assert.ok(elapsed <= 25_000 + 10_000, `stopped near the budget, elapsed ${elapsed}ms`);
 });
+
+const { main: postMain } = require("./post.cjs");
+
+function capture(callback) {
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(String(line));
+  return Promise.resolve()
+    .then(callback)
+    .finally(() => {
+      console.log = original;
+    })
+    .then((value) => ({ value, lines }));
+}
+
+test("post reports a failed lease revocation as a warning instead of failing the job", async () => {
+  const state = {
+    STATE_token: "step_test_short_lived_api_key",
+    STATE_lease_id: leaseId,
+    STATE_sts_host: stsHost,
+  };
+  const cases = [
+    {
+      name: "5xx after retries",
+      request: async () => ({ status: 503, headers: {}, body: "" }),
+      expected: /^::warning title=Step Security STS lease revocation failed::The Step Security STS answered HTTP 503 when closing the lease\. The lease expires on its own\.$/,
+      attempts: 4,
+    },
+    {
+      name: "transport failure after retries",
+      request: async () => {
+        throw new Error("HTTPS request timed out");
+      },
+      expected: /^::warning title=Step Security STS lease revocation failed::Could not reach the Step Security STS to close the lease: HTTPS request timed out\. The lease expires on its own\.$/,
+      attempts: 4,
+    },
+    {
+      name: "definitive rejection",
+      request: async () => ({ status: 404, headers: {}, body: "" }),
+      expected: /^::warning title=Step Security STS lease revocation failed::The Step Security STS answered HTTP 404/,
+      attempts: 1,
+    },
+  ];
+  for (const { name, request, expected, attempts } of cases) {
+    let calls = 0;
+    const { lines } = await capture(() =>
+      postMain({
+        env: state,
+        request: async (...args) => {
+          calls += 1;
+          return request(...args);
+        },
+        sleep: async () => {},
+      }),
+    );
+    assert.equal(calls, attempts, name);
+    const warnings = lines.filter((line) => line.startsWith("::warning"));
+    assert.equal(warnings.length, 1, `${name}: ${lines.join("\n")}`);
+    assert.match(warnings[0], expected, name);
+  }
+
+  const ok = await capture(() =>
+    postMain({ env: state, request: async () => ({ status: 204, headers: {}, body: "" }) }),
+  );
+  assert.deepEqual(ok.lines, ["Step Security STS lease closed."]);
+
+  // Corrupt state means this action misbehaved earlier and still fails the job.
+  await assert.rejects(
+    postMain({ env: { ...state, STATE_token: "short" }, request: async () => assert.fail("no request") }),
+    /API key is invalid/,
+  );
+  await assert.rejects(
+    postMain({ env: { ...state, STATE_lease_id: "nope" }, request: async () => assert.fail("no request") }),
+    /lease ID is invalid/,
+  );
+});
