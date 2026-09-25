@@ -320,3 +320,31 @@ test("workflow cleanup does not send a token to a malformed STS host", async () 
 
   assert.deepEqual(calls, ["https://api.github.com/installation/token"]);
 });
+
+test("post reports a revocation that both STS and GitHub refuse as a warning", async () => {
+  const { main: postMain } = require("./post.js");
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(String(line));
+  let requests = 0;
+  try {
+    await postMain({
+      env: { STATE_token: "test-token", STATE_sts_host: "gh-sts.tempoxyz.net" },
+      dependencies: {
+        request: async () => {
+          requests += 1;
+          return 500;
+        },
+        retry: async (operation) => operation(),
+        console: { log: (line) => lines.push(String(line)), warn: (line) => lines.push(String(line)) },
+      },
+    });
+  } finally {
+    console.log = original;
+  }
+  assert.ok(requests >= 2, "STS and then GitHub were both attempted");
+  const warnings = lines.filter((line) => line.startsWith("::warning"));
+  assert.deepEqual(warnings, [
+    "::warning title=GitHub App token revocation failed::Failed to revoke GitHub App token (HTTP 500). The token expires at its requested TTL.",
+  ]);
+});

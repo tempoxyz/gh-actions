@@ -84,6 +84,12 @@ that stage, installs nothing further, and emits a warning annotation titled
 continues without a package firewall, so package downloads are not inspected or
 blocked. See [Socket Firewall](../socket-firewall) for the full stage list.
 
+Credential cleanup at job end is best-effort in the same spirit. If the Step
+Security STS, Socket STS, or GitHub STS cannot revoke its lease or token after
+retries, the post-job step reports a warning rather than failing a job that has
+already finished; every lease and token expires on its own. Corrupt saved state
+still fails, since that indicates a bug rather than an outage.
+
 ## Usage
 
 Pin this action to a full commit SHA in production:

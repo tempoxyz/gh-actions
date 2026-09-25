@@ -86,3 +86,7 @@ wait. Network errors and `5xx` retries reuse the original assertion, preserving
 STS replay protection when a token may already have been minted. This does not
 change post-job revocation retries. Deploy the STS `Retry-After` response support
 before repinning callers; older STS versions use the 60-second `429` fallback.
+
+Post-job revocation is best-effort. If neither the STS nor GitHub can serve the
+revocation after retries, the post-job step reports a warning instead of failing
+the job; the token expires at its requested TTL.

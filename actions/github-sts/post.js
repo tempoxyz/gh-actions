@@ -98,14 +98,32 @@ async function revokeToken(token, stsHost, dependencies = {}) {
   );
 }
 
-async function main() {
-  const token = process.env.STATE_token;
+function escapeAnnotation(value) {
+  return value
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+}
+
+// Revocation is best-effort. The token expires at its requested TTL, so a
+// revocation that neither the STS nor GitHub can serve after retries must not
+// turn a finished job red; it is reported as a warning instead.
+async function main({ env = process.env, dependencies = {} } = {}) {
+  const token = env.STATE_token;
   if (!token) {
     console.log("No GitHub App token was minted; skipping revocation.");
     return;
   }
 
-  await revokeToken(token, process.env.STATE_sts_host);
+  try {
+    await revokeToken(token, env.STATE_sts_host, dependencies);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.log(
+      "::warning title=GitHub App token revocation failed::" +
+        escapeAnnotation(`${reason} The token expires at its requested TTL.`),
+    );
+  }
 }
 
 if (require.main === module) {
@@ -115,4 +133,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { revocationRequestOptions, revokeToken, stsRevocationRequestOptions };
+module.exports = { main, revocationRequestOptions, revokeToken, stsRevocationRequestOptions };

@@ -48,7 +48,8 @@ artifact. Upload failures are warnings and do not hide the original job result.
 On dedicated Linux runners, the handler first uninstalls any previous managed
 installation with its incumbent binary. A new installation uses this job's token
 provider. At job shutdown, logs upload before the owned installation is removed,
-and Socket STS then revokes the token. Cleanup errors fail the job. This supports
+and Socket STS then revokes the token. Cleanup errors fail the job on self-hosted
+runners and are warnings on GitHub-hosted runners. This supports
 sequential reuse of persistent runners; simultaneous jobs on the same host are
 not supported. Partial recovery state is preserved rather than forcibly deleted.
 
