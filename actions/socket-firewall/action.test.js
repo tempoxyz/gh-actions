@@ -49,8 +49,9 @@ test("downloads the latest stable release and verifies its checksums and provena
   assert.match(downloader, /GH_API_TIMEOUT_MS = 10 \* 1000/);
   assert.match(downloader, /RELEASE_DOWNLOAD_TIMEOUT_MS = 120 \* 1000/);
   assert.match(downloader, /ATTESTATION_TIMEOUT_MS = 60 \* 1000/);
-  assert.match(downloader, /"Aegis release download", \{\n\s+execOptions: \{ stdio: "inherit", timeout: RELEASE_DOWNLOAD_TIMEOUT_MS \},/);
-  assert.match(downloader, /"Aegis provenance verification", \{\n\s+execOptions: \{ stdio: "inherit", timeout: ATTESTATION_TIMEOUT_MS \},/);
+  // \s+ rather than \n: Windows checkouts use CRLF.
+  assert.match(downloader, /"Aegis release download", \{\s+execOptions: \{ stdio: "inherit", timeout: RELEASE_DOWNLOAD_TIMEOUT_MS \},/);
+  assert.match(downloader, /"Aegis provenance verification", \{\s+execOptions: \{ stdio: "inherit", timeout: ATTESTATION_TIMEOUT_MS \},/);
   assert.match(downloader, /Aegis provenance verification/);
 });
 
