@@ -129,11 +129,10 @@ jobs:
       id-token: write
       contents: read
     steps:
-      # TODO(#279): bump to the merge commit and tag of the nested-pin refresh.
-      # Until then the wrapper below still carries the pre-degrade Harden Runner
-      # and Socket Firewall pins, and this job fails.
+      # Pinned to the first release whose nested Harden Runner and Socket
+      # Firewall pins carry the degrade paths (#279); earlier wrappers fail here.
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@cfdaf2e39309260bff640fb06cf1ab2f9f57386b # 2026-09-25T04-44-11Z-cfdaf2e3
+        uses: tempoxyz/gh-actions/actions/secure-runner@bf577592e0f8f1401442cfc7004f81a3e737e1d7 # 2026-09-25T07-53-38Z-bf577592
         with:
           step-security-sts-host: ss-sts.invalid
           socket-sts-host: socket-sts.invalid
