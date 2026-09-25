@@ -65,7 +65,9 @@ credential can be obtained, Harden Runner degrades instead of failing the job.
 That covers connection failures and timeouts, transient responses (HTTP 408,
 425, 429, and 5xx) that persist through every retry, an exhausted rate-limit
 wait budget, malformed responses, and definitive rejections such as HTTP 401 or
-403, whether from the Step Security STS or from GitHub's OIDC issuer. The action
+403, whether from the Step Security STS or from GitHub's OIDC issuer. Each
+exchange has a 90-second budget covering requests, retries, and rate-limit
+waits, so a degraded job loses at most that long per credential. The action
 emits a warning annotation titled "StepSecurity policy store unavailable" that
 names the failure, then starts Harden Runner without the policy store, so the
 inline `egress-policy` applies: audit mode by default, which observes and reports

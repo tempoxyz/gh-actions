@@ -103,6 +103,7 @@ test("retries transient results five times with exponential backoff", async () =
     {
       label: "test",
       isTransient: (response) => isTransientStatus(response.status),
+      random: () => 0,
       sleep: async (milliseconds) => delays.push(milliseconds),
     },
   );
@@ -139,4 +140,33 @@ test("retries rejected requests and throws after the retry bound", async () => {
     /network down/,
   );
   assert.equal(attempts, 6);
+});
+
+test("backoff carries up to 25% jitter without touching server-specified delays", async () => {
+  const { JITTER_RATIO } = require("./retry.js");
+  assert.equal(JITTER_RATIO, 0.25);
+  const delays = [];
+  let attempts = 0;
+  await retry(
+    async () => (++attempts < 6 ? { status: 503 } : { status: 204 }),
+    {
+      isTransient: (response) => isTransientStatus(response.status),
+      random: () => 1,
+      sleep: async (milliseconds) => delays.push(milliseconds),
+    },
+  );
+  assert.deepEqual(delays, [1250, 2500, 5000, 10000, 20000]);
+
+  const served = [];
+  attempts = 0;
+  await retry(
+    async () => (++attempts < 2 ? { status: 429, headers: { "retry-after": "3" } } : { status: 204 }),
+    {
+      isTransient: (response) => isTransientStatus(response.status),
+      getDelayMs: (response) => retryAfterMs(response, 0),
+      random: () => 1,
+      sleep: async (milliseconds) => served.push(milliseconds),
+    },
+  );
+  assert.deepEqual(served, [3000]);
 });

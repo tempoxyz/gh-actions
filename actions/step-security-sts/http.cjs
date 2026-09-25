@@ -1,5 +1,15 @@
 const https = require("node:https");
 const MAX_RESPONSE_BYTES = 128 * 1024;
+const REQUEST_TIMEOUT_MS = 10_000;
+const RETRY_ATTEMPTS = 4;
+// One budget covers a whole credential exchange: the OIDC and STS requests,
+// their retries, and rate-limit waits. It matches the GitHub STS default, so
+// every STS a job depends on gives up, and lets the caller degrade, at the
+// same pace.
+const RETRY_BUDGET_MS = 90_000;
+// Backoff grows by up to a quarter at random, so a matrix of jobs that failed
+// together retries spread out instead of hitting the STS in lockstep.
+const JITTER_RATIO = 0.25;
 
 function isTransientStatus(status) {
   return status === 408 || status === 425 || status === 429 || (status >= 500 && status < 600);
@@ -21,7 +31,7 @@ function endpoint(value) {
 }
 
 function request(url, options = {}, body) {
-  const { timeoutMs = 10_000, ...requestOptions } = options;
+  const { timeoutMs = REQUEST_TIMEOUT_MS, ...requestOptions } = options;
   return new Promise((resolve, reject) => {
     let call;
     let incoming;
@@ -71,6 +81,12 @@ function request(url, options = {}, body) {
       fail();
     }
   });
+}
+
+const defaultSleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay));
+
+function jittered(delay, random = Math.random) {
+  return Math.round(delay * (1 + JITTER_RATIO * random()));
 }
 
 const MAX_RATE_LIMIT_DELAY_MS = 2 * 60 * 1000;
@@ -127,11 +143,12 @@ function rateLimitDelay(response, now = Date.now()) {
   return null;
 }
 
+// Waits out 429 responses for at most `maxDelay` in total. A server-specified
+// delay is honored as given; the fallback backoff is jittered.
 async function retryRateLimited(operation, options = {}) {
-  const sleep =
-    options.sleep ||
-    ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
+  const sleep = options.sleep || defaultSleep;
   const now = options.now || Date.now;
+  const random = options.random || Math.random;
   const maxDelay = options.maxDelay ?? MAX_RATE_LIMIT_DELAY_MS;
   const deadline = now() + maxDelay;
   let attempt = 0;
@@ -143,19 +160,17 @@ async function retryRateLimited(operation, options = {}) {
     const requestedDelay = rateLimitDelay(response, now());
     const remaining = deadline - now();
     if (remaining < 100) {
-      throw new Error("Rate limit retry delay exceeds the 2 minute limit");
+      throw new Error("Rate limit retries exhausted the retry budget");
     }
-    if (
-      requestedDelay !== null &&
-      (requestedDelay > maxDelay || requestedDelay > remaining)
-    ) {
+    if (requestedDelay !== null && requestedDelay > remaining) {
       throw new Error(
-        `Rate limit retry delay (${Math.ceil(requestedDelay / 1000)}s) exceeds the 2 minute limit`,
+        `Rate limit retry delay (${Math.ceil(requestedDelay / 1000)}s) exceeds the remaining retry budget (${Math.ceil(remaining / 1000)}s)`,
       );
     }
     const delay = Math.max(
       100,
-      requestedDelay ?? Math.min(1000 * 2 ** Math.min(attempt, 5), 30_000, remaining),
+      requestedDelay ??
+        Math.min(jittered(1000 * 2 ** Math.min(attempt, 5), random), 30_000, remaining),
     );
 
     console.log(`STS exchange rate limited; retrying in ${Math.ceil(delay / 1000)}s`);
@@ -164,36 +179,53 @@ async function retryRateLimited(operation, options = {}) {
   }
 }
 
+// Retries transient failures with jittered exponential backoff, never past
+// `deadline`. The operation receives the request timeout to use: the smaller
+// of the per-request timeout and what is left of the budget, so a stalled
+// connection cannot outlive the budget either. When the budget runs out after
+// a transient response, that response is returned so the caller can report
+// its status; after a transport failure, that failure is thrown.
 async function retry(operation, options = {}) {
   const retryHttpResponses = options.retryHttpResponses !== false;
   const shouldRetryResponse = options.shouldRetryResponse ||
     ((response) => isTransientStatus(response.status));
-  const sleep =
-    options.sleep ||
-    ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
+  const sleep = options.sleep || defaultSleep;
+  const now = options.now || Date.now;
+  const random = options.random || Math.random;
+  const deadline = options.deadline ?? Infinity;
+  const attempts = options.attempts ?? RETRY_ATTEMPTS;
   let last;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const remaining = deadline - now();
+    if (remaining <= 0) break;
     try {
-      last = await operation();
-      if (
-        !retryHttpResponses ||
-        !shouldRetryResponse(last) ||
-        attempt === 3
-      ) {
-        return last;
-      }
+      last = await operation(Math.min(REQUEST_TIMEOUT_MS, remaining));
+      lastError = undefined;
+      if (!retryHttpResponses || !shouldRetryResponse(last)) return last;
     } catch (error) {
-      if (attempt === 3) throw error;
+      last = undefined;
+      lastError = error;
     }
-    await sleep(2 ** attempt * 1000);
+    if (attempt === attempts - 1) break;
+    const delay = jittered(1000 * 2 ** attempt, random);
+    if (delay >= deadline - now()) break;
+    await sleep(delay);
   }
-  return last;
+  if (lastError !== undefined) throw lastError;
+  if (last !== undefined) return last;
+  throw new Error("Retry budget exhausted before a request could be made");
 }
 
 module.exports = {
+  JITTER_RATIO,
   MAX_RATE_LIMIT_DELAY_MS,
+  REQUEST_TIMEOUT_MS,
+  RETRY_ATTEMPTS,
+  RETRY_BUDGET_MS,
   endpoint,
   isTransientStatus,
+  jittered,
   rateLimitDelay,
   request,
   retry,

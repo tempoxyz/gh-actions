@@ -7,7 +7,13 @@ const { execFileSync } = require("node:child_process");
 
 const DOWNLOAD_ATTEMPTS = 3;
 const DOWNLOAD_RETRY_DELAY_MS = 1_000;
+const DOWNLOAD_JITTER_RATIO = 0.25;
 const GH_API_TIMEOUT_MS = 10 * 1000;
+// A healthy artifact transfer can take well over ten seconds, but a stalled
+// one must not hold the job until the job's own timeout: bound each attempt
+// and let the retry replace it.
+const RELEASE_DOWNLOAD_TIMEOUT_MS = 120 * 1000;
+const ATTESTATION_TIMEOUT_MS = 60 * 1000;
 
 function sleep(delay) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
@@ -16,6 +22,7 @@ function sleep(delay) {
 function retrySync(operation, description, options = {}) {
   const attempts = options.attempts ?? DOWNLOAD_ATTEMPTS;
   const wait = options.sleep || sleep;
+  const random = options.random || Math.random;
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -24,7 +31,7 @@ function retrySync(operation, description, options = {}) {
       lastError = error;
       if (attempt === attempts) break;
       console.warn(`${description} failed (attempt ${attempt}/${attempts}); retrying.`);
-      wait(DOWNLOAD_RETRY_DELAY_MS * 2 ** (attempt - 1));
+      wait(Math.round(DOWNLOAD_RETRY_DELAY_MS * 2 ** (attempt - 1) * (1 + DOWNLOAD_JITTER_RATIO * random())));
     }
   }
   throw lastError;
@@ -108,9 +115,11 @@ function downloadReleaseAssets(tag, directory, asset) {
     "--pattern", "SHA256SUMS",
     "--pattern", "provenance.sigstore.json",
   ];
-  // Do not impose a whole-process 10s timeout here: a healthy artifact
-  // transfer can legitimately take longer. Each failed transfer is retried.
-  runGh(args, "Aegis release download", { execOptions: { stdio: "inherit" } });
+  // The API timeout is too short for an artifact transfer; a stalled transfer
+  // is killed at the download bound and retried like any other failure.
+  runGh(args, "Aegis release download", {
+    execOptions: { stdio: "inherit", timeout: RELEASE_DOWNLOAD_TIMEOUT_MS },
+  });
 }
 
 function main() {
@@ -134,7 +143,9 @@ function main() {
     "--source-digest", commit,
     "--source-ref", "refs/heads/main",
     "--deny-self-hosted-runners",
-  ], "Aegis provenance verification", { execOptions: { stdio: "inherit" } });
+  ], "Aegis provenance verification", {
+    execOptions: { stdio: "inherit", timeout: ATTESTATION_TIMEOUT_MS },
+  });
 
   appendOutput("package", artifact);
   appendOutput("directory", directory);
@@ -150,7 +161,10 @@ if (require.main === module) {
 }
 
 module.exports = {
+  ATTESTATION_TIMEOUT_MS,
+  DOWNLOAD_JITTER_RATIO,
   GH_API_TIMEOUT_MS,
+  RELEASE_DOWNLOAD_TIMEOUT_MS,
   assetName,
   expectedDigest,
   downloadReleaseAssets,

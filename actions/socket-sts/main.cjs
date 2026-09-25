@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const {
+  RETRY_BUDGET_MS,
   host,
   isProviderRateLimited,
   request,
@@ -38,7 +39,12 @@ async function exchangeWithFreshAssertion(getAssertion, exchange) {
   throw lastError;
 }
 
+// One deadline bounds every assertion attempt, transient retry, and
+// rate-limit wait, so the whole exchange stays inside the budget however the
+// failures are mixed. Each request is bounded by the remaining budget too.
 function exchangeWithRetry(getAssertion, exchange, options = {}) {
+  const now = options.now || Date.now;
+  const deadline = options.deadline ?? now() + RETRY_BUDGET_MS;
   return exchangeWithFreshAssertion(getAssertion, (initialAssertion) => {
     let assertion = initialAssertion;
     let refresh = false;
@@ -50,8 +56,11 @@ function exchangeWithRetry(getAssertion, exchange, options = {}) {
         refresh = false;
       }
       const response = await retryExchangeInProgress(() =>
-        retry(() => exchange(assertion), {
+        retry((timeoutMs) => exchange(assertion, timeoutMs), {
           sleep: options.sleep,
+          now,
+          random: options.random,
+          deadline,
           // Let the outer handlers pace 429s and refresh after definite mint
           // timeouts, legacy in-progress responses, or transport timeouts.
           shouldRetryResponse: (response) =>
@@ -62,7 +71,12 @@ function exchangeWithRetry(getAssertion, exchange, options = {}) {
       );
       refresh = isProviderRateLimited(response);
       return response;
-    }, options);
+    }, {
+      sleep: options.sleep,
+      now,
+      random: options.random,
+      maxDelay: Math.max(0, deadline - now()),
+    });
   });
 }
 
@@ -102,12 +116,17 @@ async function main() {
   if (oidcUrl.protocol !== "https:")
     throw new Error("GitHub OIDC URL is invalid");
   oidcUrl.searchParams.set("audience", endpoint);
+  const now = Date.now;
+  const deadline = now() + RETRY_BUDGET_MS;
 
   const getAssertion = async () => {
-    const oidcResponse = await retry(() =>
-      request(oidcUrl, {
-        headers: { authorization: `Bearer ${oidcRequestToken}` },
-      }),
+    const oidcResponse = await retry(
+      (timeoutMs) =>
+        request(oidcUrl, {
+          headers: { authorization: `Bearer ${oidcRequestToken}` },
+          timeoutMs,
+        }),
+      { now, deadline },
     );
     if (oidcResponse.status < 200 || oidcResponse.status >= 300) {
       throw new Error(`GitHub OIDC request failed (HTTP ${oidcResponse.status})`);
@@ -121,7 +140,7 @@ async function main() {
 
   const exchange = await exchangeWithRetry(
     getAssertion,
-    (oidc) =>
+    (oidc, timeoutMs) =>
       request(`https://${endpoint}/sts/exchange`, {
         method: "POST",
         headers: {
@@ -129,7 +148,9 @@ async function main() {
           "content-length": "0",
           "user-agent": "tempoxyz-socket-sts-action",
         },
+        timeoutMs,
       }),
+    { now, deadline },
   );
   let result = {};
   try {

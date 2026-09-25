@@ -46,7 +46,7 @@ test("retries every 5xx exchange response with exponential backoff", async () =>
     let attempts = 0;
     const response = await retryExchange(
       async () => ({ status: ++attempts < 4 ? status : 200 }),
-      { sleep: async (delay) => delays.push(delay) },
+      { random: () => 0, sleep: async (delay) => delays.push(delay) },
     );
     assert.equal(response.status, 200);
     assert.equal(attempts, 4);
@@ -103,7 +103,7 @@ test("honors an STS Retry-After response before retrying", async () => {
   );
 });
 
-test("fails instead of waiting more than two minutes for an STS rate limit", async () => {
+test("fails instead of waiting past the rate-limit budget", async () => {
   await assert.rejects(
     retryRateLimited(
       async () => ({
@@ -113,7 +113,7 @@ test("fails instead of waiting more than two minutes for an STS rate limit", asy
       }),
       { now: () => 0, sleep: async () => {} },
     ),
-    /exceeds the 2 minute limit/,
+    /exceeds the remaining retry budget \(120s\)/,
   );
 });
 
@@ -231,6 +231,7 @@ function scriptedExchange({ oidc = [oidcIssued], sts = [] }) {
         request,
         sleep: async () => {},
         now: () => 0,
+        random: () => 0,
       }),
   };
 }
@@ -270,7 +271,7 @@ test("STS failures that persist through every retry name the final failure", asy
       name: "429 whose Retry-After exceeds the wait budget",
       sts: [{ status: 429, headers: { "retry-after": "121" }, body: "" }],
       message:
-        "Step Security STS exchange failed: Rate limit retry delay (121s) exceeds the 2 minute limit",
+        "Step Security STS exchange failed: Rate limit retry delay (121s) exceeds the remaining retry budget (90s)",
       attempts: 1,
     },
     {
@@ -355,4 +356,80 @@ test("GitHub OIDC issuer failures name the issuer and stop before the STS", asyn
     await assert.rejects(exchange(), { name: "Error", message }, name);
     assert.deepEqual(attempts, { oidc: expected, sts: 0 }, name);
   }
+});
+
+const { JITTER_RATIO, RETRY_BUDGET_MS } = require("./http.cjs");
+
+test("backoff carries up to 25% jitter", async () => {
+  assert.equal(JITTER_RATIO, 0.25);
+  const delays = [];
+  let attempts = 0;
+  const response = await retryExchange(
+    async () => ({ status: ++attempts < 4 ? 503 : 200 }),
+    { random: () => 1, sleep: async (delay) => delays.push(delay) },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(delays, [1250, 2500, 5000]);
+});
+
+test("one 90-second budget bounds the whole exchange, including rate-limit waits and request timeouts", async () => {
+  assert.equal(RETRY_BUDGET_MS, 90_000);
+  let clock = 0;
+  const timeouts = [];
+  let attempts = 0;
+  const rateLimited = async (url, options) => {
+    if (String(url).startsWith(oidcEnv.ACTIONS_ID_TOKEN_REQUEST_URL)) return oidcIssued;
+    attempts += 1;
+    timeouts.push(options.timeoutMs);
+    return { status: 429, headers: { "retry-after": "60" }, body: "" };
+  };
+  await assert.rejects(
+    exchangeToken(stsHost, {
+      env: oidcEnv,
+      request: rateLimited,
+      now: () => clock,
+      sleep: async (delay) => {
+        clock += delay;
+      },
+      random: () => 0,
+    }),
+    {
+      name: "Error",
+      message:
+        "Step Security STS exchange failed: Rate limit retry delay (60s) exceeds the remaining retry budget (30s)",
+    },
+  );
+  assert.equal(attempts, 2, "the first 60s wait fits the budget; the second does not");
+  assert.equal(clock, 60_000);
+  assert.deepEqual(timeouts, [10_000, 10_000]);
+
+  // Each request's timeout shrinks to whatever budget is left.
+  const shortTimeouts = [];
+  const quick = async (url, options) => {
+    shortTimeouts.push(options.timeoutMs);
+    return String(url).startsWith(oidcEnv.ACTIONS_ID_TOKEN_REQUEST_URL) ? oidcIssued : leaseIssued;
+  };
+  await exchangeToken(stsHost, { env: oidcEnv, request: quick, now: () => 0, sleep: async () => {}, budgetMs: 4_000 });
+  assert.deepEqual(shortTimeouts, [4_000, 4_000]);
+
+  // Transport failures that outlast the budget surface as the transport failure.
+  let elapsed = 0;
+  await assert.rejects(
+    exchangeToken(stsHost, {
+      env: oidcEnv,
+      request: async (url) => {
+        if (String(url).startsWith(oidcEnv.ACTIONS_ID_TOKEN_REQUEST_URL)) return oidcIssued;
+        elapsed += 10_000;
+        throw new Error("HTTPS request timed out");
+      },
+      now: () => elapsed,
+      sleep: async (delay) => {
+        elapsed += delay;
+      },
+      random: () => 0,
+      budgetMs: 25_000,
+    }),
+    { message: "Step Security STS exchange failed: HTTPS request timed out" },
+  );
+  assert.ok(elapsed <= 25_000 + 10_000, `stopped near the budget, elapsed ${elapsed}ms`);
 });

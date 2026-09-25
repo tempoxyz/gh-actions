@@ -1,5 +1,8 @@
 const MAX_RETRIES = 5;
 const INITIAL_DELAY_MS = 1000;
+// Backoff grows by up to a quarter at random, so a matrix of jobs that failed
+// together retries spread out instead of hitting the STS in lockstep.
+const JITTER_RATIO = 0.25;
 
 class RetryTimeoutError extends Error {}
 
@@ -38,6 +41,7 @@ async function retry(operation, {
   deadlineMs = Infinity,
   now = Date.now,
   getDelayMs = () => 0,
+  random = Math.random,
 } = {}) {
   for (let retryCount = 0; ; retryCount += 1) {
     if (now() >= deadlineMs) throw new RetryTimeoutError(`${label || "Request"} retry timeout exceeded.`);
@@ -50,7 +54,8 @@ async function retry(operation, {
       requestError = error;
     }
     if (!requestError && (!isTransient(result) || retryCount >= maxRetries)) return result;
-    const waitMs = Math.max(initialDelayMs * 2 ** retryCount, requestError ? 0 : getDelayMs(result));
+    const backoffMs = Math.round(initialDelayMs * 2 ** retryCount * (1 + JITTER_RATIO * random()));
+    const waitMs = Math.max(backoffMs, requestError ? 0 : getDelayMs(result));
     if (now() + waitMs >= deadlineMs) {
       const date = new Date(now() + waitMs);
       const retryAt = Number.isNaN(date.getTime()) ? "beyond the supported date range" : date.toISOString();
@@ -61,4 +66,4 @@ async function retry(operation, {
   }
 }
 
-module.exports = { isTransientStatus, retry, retryAfterMs };
+module.exports = { JITTER_RATIO, isTransientStatus, retry, retryAfterMs };

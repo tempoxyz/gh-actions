@@ -20,6 +20,9 @@ draft and prerelease releases. Before installation, the action verifies the
 artifact against `SHA256SUMS` and the release's Sigstore provenance bundle,
 including the signer workflow, release-tag source commit, and `refs/heads/main`
 source ref. Releases built from pull-request or feature-branch refs are rejected.
+Each release download attempt is bounded to two minutes and each provenance
+verification to one minute; a stalled transfer is killed and retried rather than
+holding the job. Retries back off exponentially with up to 25% jitter.
 
 Supported runners are Linux, Windows, and macOS on X64 or ARM64. Aegis v0.4.0
 restores Intel macOS artifacts; macOS X64 runners use the `macos-amd64.tar.gz`

@@ -13,9 +13,13 @@ on `PATH`; this is the same self-hosted-runner-safe runtime model introduced in
 
 The caller must grant `id-token: write`.
 
-The action waits and retries HTTP 429 responses for up to two minutes per
-exchange attempt. An explicit `Socket API rate limit exceeded` response consumes
-the OIDC assertion, so the next retry obtains a fresh assertion after waiting.
+One 90-second budget, matching the GitHub STS default, covers the whole
+exchange: OIDC requests, STS requests, their retries, assertion refreshes, and
+rate-limit waits. Each request is bounded by ten seconds or the remaining budget,
+whichever is smaller, and exponential backoff carries up to 25% jitter so
+parallel jobs do not retry in lockstep. An explicit `Socket API rate limit
+exceeded` response consumes the OIDC assertion, so the next retry obtains a
+fresh assertion after waiting.
 An `exchange is already in progress` 429 retains the assertion to retrieve the
 original token when creation completes. Other 429 responses also retain it.
 Transport timeouts and explicit token-creation timeouts retain the existing

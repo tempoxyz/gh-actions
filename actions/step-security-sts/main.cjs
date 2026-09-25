@@ -1,5 +1,7 @@
 const fs = require("node:fs");
 const {
+  MAX_RATE_LIMIT_DELAY_MS,
+  RETRY_BUDGET_MS,
   endpoint,
   isTransientStatus,
   request: httpRequest,
@@ -34,15 +36,27 @@ function publishToken(token, expiresAt, leaseId) {
   append(required("GITHUB_STATE"), "lease_id", leaseId);
 }
 
+// Rate-limit waits and transient retries share one deadline, so the whole
+// exchange stays inside the budget however the failures are mixed.
 function retryExchange(operation, options = {}) {
+  const now = options.now || Date.now;
+  const deadline = options.deadline ?? Infinity;
   return retryRateLimited(
     () => retry(operation, {
       // The outer handler honors Retry-After for rate limits.
       shouldRetryResponse: (response) =>
         response.status !== 429 && isTransientStatus(response.status),
       sleep: options.sleep,
+      now,
+      random: options.random,
+      deadline,
     }),
-    options,
+    {
+      sleep: options.sleep,
+      now,
+      random: options.random,
+      maxDelay: Math.min(MAX_RATE_LIMIT_DELAY_MS, deadline - now()),
+    },
   );
 }
 
@@ -59,8 +73,16 @@ function parseJson(body) {
 // instead of failing can report exactly why no credential was obtained.
 async function exchangeToken(
   rawHost,
-  { env = process.env, request = httpRequest, sleep, now } = {},
+  {
+    env = process.env,
+    request = httpRequest,
+    sleep,
+    now = Date.now,
+    random,
+    budgetMs = RETRY_BUDGET_MS,
+  } = {},
 ) {
+  const deadline = now() + budgetMs;
   const host = rawHost === undefined ? required("INPUT_HOST", env) : rawHost;
   const sts = endpoint(host);
   const oidcRequestToken = required("ACTIONS_ID_TOKEN_REQUEST_TOKEN", env);
@@ -73,11 +95,12 @@ async function exchangeToken(
   let oidcResponse;
   try {
     oidcResponse = await retry(
-      () =>
+      (timeoutMs) =>
         request(oidcUrl, {
           headers: { authorization: `Bearer ${oidcRequestToken}` },
+          timeoutMs,
         }),
-      { sleep },
+      { sleep, now, random, deadline },
     );
   } catch (error) {
     throw new Error(`GitHub OIDC request failed: ${error.message}`, {
@@ -97,7 +120,7 @@ async function exchangeToken(
   let exchange;
   try {
     exchange = await retryExchange(
-      () =>
+      (timeoutMs) =>
         request(`${sts.origin}/sts/exchange`, {
           method: "POST",
           headers: {
@@ -105,8 +128,9 @@ async function exchangeToken(
             "content-length": "0",
             "user-agent": "tempoxyz-step-security-sts-action",
           },
+          timeoutMs,
         }),
-      { sleep, now },
+      { sleep, now, random, deadline },
     );
   } catch (error) {
     throw new Error(`Step Security STS exchange failed: ${error.message}`, {
