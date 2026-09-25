@@ -20,8 +20,8 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
-    - uses: tempoxyz/gh-actions/vendor/astral-sh/setup-uv@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+    - uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@bd66336ead0e97e3939428f526dc61fb43db0996 # 2026-09-25T20-13-44Z-bd66336e
+    - uses: tempoxyz/gh-actions/vendor/astral-sh/setup-uv@bd66336ead0e97e3939428f526dc61fb43db0996 # 2026-09-25T20-13-44Z-bd66336e
     - run: |
         cd $GITHUB_ACTION_PATH \
         && ./ct.sh \

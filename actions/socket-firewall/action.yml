@@ -56,7 +56,7 @@ runs:
       if: steps.oidc.outputs.available == 'true'
       id: socket-token
       continue-on-error: true
-      uses: tempoxyz/gh-actions/actions/socket-sts@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+      uses: tempoxyz/gh-actions/actions/socket-sts@bd66336ead0e97e3939428f526dc61fb43db0996 # 2026-09-25T20-13-44Z-bd66336e
       with:
         host: ${{ inputs.socket-sts-host }}
         upload-aegis-report: "false"
@@ -65,7 +65,7 @@ runs:
       if: steps.socket-token.outcome == 'success'
       id: release-token
       continue-on-error: true
-      uses: tempoxyz/gh-actions/actions/github-sts@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+      uses: tempoxyz/gh-actions/actions/github-sts@bd66336ead0e97e3939428f526dc61fb43db0996 # 2026-09-25T20-13-44Z-bd66336e
       with:
         scope: tempoxyz/aegis
         policy: download-releases
@@ -126,7 +126,7 @@ runs:
       id: lifecycle
       continue-on-error: true
       # Linux lifecycle
-      uses: tempoxyz/gh-actions/actions/aegis-report@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+      uses: tempoxyz/gh-actions/actions/aegis-report@bd66336ead0e97e3939428f526dc61fb43db0996 # 2026-09-25T20-13-44Z-bd66336e
       with:
         linux-installation-config: ${{ runner.os == 'Linux' && steps.config.outputs.path || '' }}
 
