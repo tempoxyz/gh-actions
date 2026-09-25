@@ -5,6 +5,7 @@ const {
   required,
 } = require("../step-security-sts/main.cjs");
 const { endpoint } = require("../step-security-sts/http.cjs");
+const { warning } = require("./annotations.cjs");
 const { runHardenRunner } = require("./run.cjs");
 
 // GitHub state key recorded when Harden Runner runs without the policy store,
@@ -14,6 +15,10 @@ const { runHardenRunner } = require("./run.cjs");
 const INLINE_POLICY_STATE = "inline_policy";
 const ENFORCEMENT_DISABLED_STATE = "enforcement_disabled";
 const UNSUPPORTED_PLATFORM_STATE = "unsupported_platform";
+// Recorded when Harden Runner's own pre-job entrypoint exited non-zero. The
+// main entrypoint then skips Harden Runner and the post entrypoint runs its
+// cleanup best-effort.
+const START_FAILED_STATE = "start_failed";
 
 function stsHost(value = "ss-sts.tempoxyz.net") {
   return endpoint(value).audience;
@@ -49,19 +54,23 @@ function enforcementDisabled(env = process.env) {
   throw new Error("disable-enforcement must be true or false");
 }
 
-function escapeAnnotation(value) {
-  return value
-    .replaceAll("%", "%25")
-    .replaceAll("\r", "%0D")
-    .replaceAll("\n", "%0A");
-}
-
-function warning(message, title) {
-  const properties =
-    title === undefined
-      ? ""
-      : ` title=${escapeAnnotation(title).replaceAll(":", "%3A").replaceAll(",", "%2C")}`;
-  console.log(`::warning${properties}::${escapeAnnotation(message)}`);
+// Starts Harden Runner's vendored pre-job entrypoint. Its failure degrades the
+// job instead of failing it. The vendored code reports its own errors as
+// annotations and exits zero even then, but a crash, a future upstream change,
+// or a runner missing a prerequisite must not halt CI either. The job then runs
+// without Harden Runner, which the warning says plainly.
+function startHardenRunner(run, token, env) {
+  try {
+    run("pre", token);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    warning(
+      `Harden Runner did not start (${reason}). This job is running without ` +
+        "Harden Runner's runtime monitoring and egress enforcement.",
+      "Harden Runner unavailable",
+    );
+    append(required("GITHUB_STATE", env), START_FAILED_STATE, "true");
+  }
 }
 
 async function main({
@@ -100,7 +109,7 @@ async function main({
         "workflow's inline egress policy instead of the StepSecurity policy store.",
     );
     append(required("GITHUB_STATE", env), INLINE_POLICY_STATE, "true");
-    run("pre", null);
+    startHardenRunner(run, null, env);
     return;
   }
 
@@ -129,14 +138,14 @@ async function main({
       "StepSecurity policy store unavailable",
     );
     append(required("GITHUB_STATE", env), INLINE_POLICY_STATE, "true");
-    run("pre", null);
+    startHardenRunner(run, null, env);
     return;
   }
   maskSecret(result.token);
   append(required("GITHUB_STATE", env), "token", result.token);
   append(required("GITHUB_STATE", env), "lease_id", result.leaseId);
   append(required("GITHUB_STATE", env), "sts_host", result.rawHost);
-  run("pre", result.token);
+  startHardenRunner(run, result.token, env);
 }
 
 if (require.main === module) {
@@ -149,6 +158,7 @@ if (require.main === module) {
 module.exports = {
   ENFORCEMENT_DISABLED_STATE,
   INLINE_POLICY_STATE,
+  START_FAILED_STATE,
   UNSUPPORTED_PLATFORM_STATE,
   enforcementDisabled,
   inlineEgressPolicy,
