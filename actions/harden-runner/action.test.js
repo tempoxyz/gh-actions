@@ -407,3 +407,98 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
   assert.ok(runnableJobs > 0, "expected at least one runnable workflow job");
   assert.equal(protectedJobs, runnableJobs);
 });
+
+const { StsUnavailableError } = require("../step-security-sts/main.cjs");
+
+test("pre degrades to the inline policy when the STS is unavailable after retries", async () => {
+  for (const event of ["push", "pull_request", "workflow_dispatch"]) {
+    const calls = [];
+    const state = stateFile();
+    const { lines } = await capturedLogs(() =>
+      preMain({
+        env: {
+          ...oidcEnv,
+          GITHUB_EVENT_NAME: event,
+          GITHUB_STATE: state,
+          "INPUT_STEP-SECURITY-STS-HOST": "ss-sts.tempoxyz.dev",
+        },
+        run: (...args) => calls.push(args),
+        exchange: async () => {
+          throw new StsUnavailableError(
+            "Step Security STS exchange failed (HTTP 503): upstream\nunavailable",
+          );
+        },
+      }),
+    );
+
+    assert.deepEqual(calls, [["pre", null]], event);
+    assert.equal(fs.readFileSync(state, "utf8"), "inline_policy=true\n", event);
+    const annotation = lines.find((line) => line.startsWith("::warning"));
+    assert.ok(annotation, lines.join("\n"));
+    assert.match(
+      annotation,
+      /^::warning title=StepSecurity policy store unavailable::Could not obtain a StepSecurity policy-store credential from ss-sts\.tempoxyz\.dev after retrying \(Step Security STS exchange failed \(HTTP 503\): upstream%0Aunavailable\)\. Harden Runner is running in audit mode from the workflow's inline egress policy, without the StepSecurity policy store/,
+    );
+    assert.doesNotMatch(annotation, /\n/);
+    assert.ok(!lines.some((line) => line.startsWith("::add-mask::")), event);
+  }
+});
+
+test("the degraded annotation names the caller's inline egress policy", async () => {
+  const state = stateFile();
+  const { lines } = await capturedLogs(() =>
+    preMain({
+      env: {
+        ...oidcEnv,
+        GITHUB_STATE: state,
+        "INPUT_EGRESS-POLICY": "block",
+      },
+      run: () => {},
+      exchange: async () => {
+        throw new StsUnavailableError("GitHub OIDC request failed: HTTPS request timed out");
+      },
+    }),
+  );
+  assert.ok(
+    lines.some((line) =>
+      /^::warning title=StepSecurity policy store unavailable::.*HTTPS request timed out.*running in block mode/.test(line),
+    ),
+    lines.join("\n"),
+  );
+});
+
+test("pre still fails closed when the STS definitively rejects the exchange", async () => {
+  const calls = [];
+  const state = stateFile();
+  const { lines } = await capturedLogs(() =>
+    assert.rejects(
+      preMain({
+        env: { ...oidcEnv, GITHUB_EVENT_NAME: "push", GITHUB_STATE: state },
+        run: (...args) => calls.push(args),
+        exchange: async () => {
+          throw new Error("Step Security STS exchange failed (HTTP 403): repository is not authorized");
+        },
+      }),
+      /HTTP 403.*repository is not authorized/,
+    ),
+  );
+  assert.deepEqual(calls, []);
+  assert.ok(!fs.existsSync(state));
+  assert.ok(!lines.some((line) => line.startsWith("::warning")), lines.join("\n"));
+});
+
+test("main and post treat an STS-unavailable run like the fork fallback", async () => {
+  const calls = [];
+  const run = (...args) => calls.push(args);
+  mainMain({ env: { STATE_inline_policy: "true" }, run });
+  let revocations = 0;
+  await postMain({
+    env: { STATE_inline_policy: "true", STATE_token: "" },
+    run,
+    revoke: async () => {
+      revocations += 1;
+    },
+  });
+  assert.deepEqual(calls, [["main", null], ["post", null]]);
+  assert.equal(revocations, 1);
+});

@@ -1,7 +1,8 @@
 name: "Harden Runner"
 description: >-
   Start Harden Runner with authenticated StepSecurity policy-store access,
-  falling back to the inline policy on fork pull requests
+  falling back to the inline policy on fork pull requests or when the
+  Step Security STS is unavailable
 
 inputs:
   step-security-sts-host:
