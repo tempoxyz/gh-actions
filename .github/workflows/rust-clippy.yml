@@ -34,7 +34,7 @@ permissions: {}
 jobs:
   clippy:
     # Call the reusable workflow at the published, pinned commit.
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
     permissions:
       contents: read
       id-token: write

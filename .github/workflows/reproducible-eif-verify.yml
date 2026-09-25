@@ -81,7 +81,7 @@ jobs:
       source_date_epoch: ${{ steps.inputs.outputs.source_date_epoch }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -132,7 +132,7 @@ jobs:
         working-directory: source
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
 
       - name: Check out resolved source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -177,10 +177,10 @@ jobs:
 
       - name: Set up Depot
         if: matrix.backend == 'depot'
-        uses: tempoxyz/gh-actions/vendor/depot/setup-action@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/vendor/depot/setup-action@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
 
       - name: Log in to toolchain registry
-        uses: tempoxyz/gh-actions/vendor/docker/login-action@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -241,7 +241,7 @@ jobs:
       pcr2: ${{ steps.compare.outputs.pcr2 }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
 
       - name: Download Depot EIF
         if: ${{ !cancelled() }}
@@ -259,7 +259,7 @@ jobs:
 
       - name: Log in to toolchain registry
         if: ${{ !cancelled() }}
-        uses: tempoxyz/gh-actions/vendor/docker/login-action@d0bd3f715fb4efadb78897db98fe87e7c94a6d95 # 2026-09-25T07-58-59Z-d0bd3f71
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
