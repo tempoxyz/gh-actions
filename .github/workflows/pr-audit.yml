@@ -157,7 +157,9 @@ jobs:
             http_proxy https_proxy no_proxy all_proxy \
             SSL_CERT_FILE SSL_CERT_DIR CURL_CA_BUNDLE
           do
-            if [[ -v "$name" ]]; then
+            # ${!name+x} is set-but-possibly-empty detection that bash 3.2 (the
+            # macOS system bash used by the local test) understands; -v needs 4.2.
+            if [[ -n "${!name+x}" ]]; then
               child_env+=("$name=${!name}")
             fi
           done
