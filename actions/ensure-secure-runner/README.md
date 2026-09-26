@@ -2,7 +2,7 @@
 
 Scans every workflow under `.github/workflows` and fails unless every job runs
 [`secure-runner`](../secure-runner) as its **first step**. Use it as a guard so no job
-runs without Harden Runner and Socket Firewall. The check is strict by design: a job passes
+runs without Harden Runner and Aegis. The check is strict by design: a job passes
 only when it is `ok`, when it calls a reusable workflow (`reusable`), or when it is the job
 that runs this check and nothing else (`checker`). There is no other exemption mechanism.
 

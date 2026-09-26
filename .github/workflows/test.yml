@@ -20,7 +20,7 @@ permissions:
   id-token: write
 
 jobs:
-  socket-firewall-aegis:
+  aegis-install:
     name: secure-runner installs Aegis (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -46,8 +46,8 @@ jobs:
           npm ci --ignore-scripts
           npm run check
 
-      - name: Test Socket Firewall action helpers
-        run: node --test actions/socket-firewall/action.test.js actions/socket-sts/action.test.js actions/aegis-report/*.test.js
+      - name: Test Aegis action helpers
+        run: node --test actions/aegis/action.test.js actions/socket-sts/action.test.js actions/aegis-report/*.test.js
 
       - name: Verify secure-runner installed Aegis
         id: aegis
@@ -68,12 +68,12 @@ jobs:
           NODE
 
       - name: Allow isnumber@1.0.0
-        run: node actions/socket-firewall/npm-install.cjs allow
+        run: node actions/aegis/npm-install.cjs allow
 
       - name: Block lodahs@0.0.1-security
         id: blocked-package
         continue-on-error: true
-        run: node actions/socket-firewall/npm-install.cjs block
+        run: node actions/aegis/npm-install.cjs block
 
       - name: Verify the block and Aegis audit decisions
         if: always()
@@ -91,7 +91,7 @@ jobs:
           else
             AEGIS_REPORT="$AEGIS_REPORT" AEGIS_LOG_COPY="$copy" node -e 'require("fs").copyFileSync(process.env.AEGIS_REPORT, process.env.AEGIS_LOG_COPY)'
           fi
-          node actions/socket-firewall/verify-log.cjs "$copy"
+          node actions/aegis/verify-log.cjs "$copy"
 
       - name: Record the installed Linux credential provider
         if: runner.os == 'Linux'
@@ -99,9 +99,12 @@ jobs:
         run: |
           sudo sha256sum /etc/aegis/config.json | cut -d ' ' -f 1 > "$RUNNER_TEMP/aegis-config-before.sha256"
 
+      # The composite from this checkout, so the reinstall exercises the code
+      # under review rather than a pinned release. actionlint does not accept
+      # the `$/` self-repository form yet, so the local form stays.
       - name: Reinstall Aegis on the same Linux runner
         if: runner.os == 'Linux'
-        uses: tempoxyz/gh-actions/actions/socket-firewall@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: ./actions/aegis # zizmor: ignore[self-repository]
 
       - name: Verify fresh credentials and active service after reinstall
         if: runner.os == 'Linux'
@@ -111,7 +114,7 @@ jobs:
           after=$(sudo sha256sum /etc/aegis/config.json | cut -d ' ' -f 1)
           test "$before" != "$after"
           sudo systemctl is-active --quiet aegis.service
-          node actions/socket-firewall/npm-install.cjs allow
+          node actions/aegis/npm-install.cjs allow
 
   # Proves the degrade paths in real Actions, which unit tests cannot: with both
   # STS hostnames pointed at names that never resolve, Secure Runner must still
@@ -165,7 +168,7 @@ jobs:
       # npm's empty security-holding package, which Aegis blocks when installed.
       # Without a firewall the install must go through untouched.
       - name: Confirm package downloads are not intercepted
-        run: node actions/socket-firewall/npm-install.cjs block
+        run: node actions/aegis/npm-install.cjs block
 
   secure-runner-degraded-annotations:
     name: secure-runner degraded runs are annotated
@@ -205,12 +208,13 @@ jobs:
               failures=$((failures + 1))
               continue
             fi
-            # Annotations can trail the job's completion briefly.
+            # Annotations can trail the job's completion briefly. Both wordings are
+            # accepted until the pin refresh moves the wrapper to the node action.
             for attempt in 1 2 3 4 5 6; do
               annotations=$(gh api --paginate "$check_run/annotations" \
                 --jq '.[] | "\(.annotation_level)\t\(.title // "")\t\(.message)"')
               if printf '%s\n' "$annotations" | grep -q $'^warning\tStepSecurity policy store unavailable\t' \
-                && printf '%s\n' "$annotations" | grep -q $'^warning\tPackage-policy enforcement disabled\tSocket Firewall was not installed: the Socket STS did not issue a Socket API token'; then
+                && printf '%s\n' "$annotations" | grep -qE $'^warning\tPackage-policy enforcement disabled\t(Aegis|Socket Firewall) was not installed: the Socket STS did not issue a Socket API token'; then
                 echo "$name: both degrade annotations present"
                 break
               fi

@@ -50,12 +50,12 @@ test("downloads the latest stable release and verifies its checksums and provena
   assert.match(downloader, /RELEASE_DOWNLOAD_TIMEOUT_MS = 120 \* 1000/);
   assert.match(downloader, /ATTESTATION_TIMEOUT_MS = 60 \* 1000/);
   // \s+ rather than \n: Windows checkouts use CRLF.
-  assert.match(downloader, /"Aegis release download", \{\s+execOptions: \{ stdio: "inherit", timeout: RELEASE_DOWNLOAD_TIMEOUT_MS \},/);
-  assert.match(downloader, /"Aegis provenance verification", \{\s+execOptions: \{ stdio: "inherit", timeout: ATTESTATION_TIMEOUT_MS \},/);
+  assert.match(downloader, /"Aegis release download", \{[^}]*execOptions: \{ stdio: "inherit", timeout: RELEASE_DOWNLOAD_TIMEOUT_MS, env: gh\.env \},/);
+  assert.match(downloader, /"Aegis provenance verification", \{[^}]*execOptions: \{ stdio: "inherit", timeout: ATTESTATION_TIMEOUT_MS, env: gh\.env \},/);
   assert.match(downloader, /Aegis provenance verification/);
 });
 
-test("bounds connection waits and retries every Socket Firewall outbound command", () => {
+test("bounds connection waits and retries every Aegis outbound command", () => {
   const bootstrap = fs.readFileSync(
     path.join(__dirname, "..", "setup-foundry", "ensure-gh.sh"),
     "utf8",
@@ -154,7 +154,7 @@ test("setup uses the STS runtime without installing Node or modifying PATH", () 
 test("download works without node on PATH and fails closed on verification errors", {
   skip: process.platform === "win32" && "POSIX shell fixture; Windows is covered by the live action matrix",
 }, () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "socket-no-node-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-no-node-"));
   const digest = crypto.createHash("sha256").update("artifact").digest("hex");
   try {
     const bin = path.join(directory, "bin with spaces");
@@ -367,7 +367,7 @@ test("the report step names the first failed stage in a warning annotation", {
   ];
   for (const [stage, reason] of expectations) {
     assert.deepEqual(run(chainOutcomes(stage)), [
-      "::warning title=Package-policy enforcement disabled::Socket Firewall was not installed: " +
+      "::warning title=Package-policy enforcement disabled::Aegis was not installed: " +
         `${reason}. See the failed step's log for details. No package firewall is running for ` +
         "this job, so package downloads are not inspected or blocked.",
     ], stage);
@@ -379,12 +379,12 @@ test("the report step names the first failed stage in a warning annotation", {
 
   for (const installStage of ["INSTALL_LINUX", "INSTALL_MACOS", "INSTALL_WINDOWS"]) {
     const lines = run(chainOutcomes(null, installStage));
-    assert.deepEqual(lines, ["Socket Firewall installed Aegis at /usr/bin/aegis; package downloads are inspected and enforced."], installStage);
+    assert.deepEqual(lines, ["Aegis installed at /usr/bin/aegis; package downloads are inspected and enforced."], installStage);
   }
 
   // Nothing failed but nothing installed either: still never silent.
   const everythingSkipped = Object.fromEntries(REPORT_STAGES.map((stage) => [`${stage}_OUTCOME`, "skipped"]));
-  assert.match(run(everythingSkipped)[0], /^::warning title=Package-policy enforcement disabled::Socket Firewall was not installed: Socket Firewall setup did not complete\./);
+  assert.match(run(everythingSkipped)[0], /^::warning title=Package-policy enforcement disabled::Aegis was not installed: Aegis setup did not complete\./);
 });
 
 function detectScript() {
@@ -401,7 +401,7 @@ function detectScript() {
 test("degrade warnings are mirrored into the step summary", {
   skip: process.platform === "win32" && "POSIX shell fixture; Windows is covered by the live action matrix",
 }, () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "socket-firewall-summary-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-summary-"));
   const run = (script, env) => {
     const summary = path.join(directory, `${crypto.randomUUID()}.md`);
     const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", script], {
@@ -461,4 +461,130 @@ test("GitHub CLI retries carry up to 25% jitter", () => {
     sleep: (delay) => delays.push(delay),
   });
   assert.deepEqual(delays, [1250, 2500]);
+});
+
+const { installAegis } = require("./install.cjs");
+const { downloadAndVerify, ghEnvironment } = require("./download.cjs");
+const { prepareConfiguration } = require("./token-provider.cjs");
+
+function fakeSpawn(failures = {}) {
+  const calls = [];
+  const remaining = { ...failures };
+  return {
+    calls,
+    spawn: (command, args, options) => {
+      const key = `${command} ${args[0] ?? ""}`.trim();
+      calls.push({ command, args, env: options?.env });
+      if (remaining[key] > 0) {
+        remaining[key] -= 1;
+        return { status: 1 };
+      }
+      return { status: 0 };
+    },
+  };
+}
+
+test("installAegis runs each platform's install sequence and retries where the shell steps did", async () => {
+  const env = { RUNNER_TEMP: "/runner/temp", ProgramFiles: "C:\\Program Files", ProgramData: "C:\\ProgramData" };
+  const delays = [];
+  const sleep = async (delay) => delays.push(delay);
+  const made = [];
+  const mkdir = (directory) => made.push(directory);
+
+  const linux = fakeSpawn({ "sudo apt-get": 2 });
+  const linuxLayout = await installAegis({ platform: "linux", packagePath: "/tmp/aegis.deb", configPath: "/tmp/install.json", env, spawn: linux.spawn, sleep, mkdir });
+  assert.deepEqual(linuxLayout, { binary: "/usr/bin/aegis", report: "/var/log/aegis/service.jsonl" });
+  assert.deepEqual(linux.calls.map((call) => [call.command, ...call.args]), [
+    ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
+    ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
+    ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
+    ["/usr/bin/aegis", "install", "--config", "/tmp/install.json"],
+  ]);
+  assert.deepEqual(delays, [1000, 2000]);
+
+  const darwin = fakeSpawn();
+  const darwinLayout = await installAegis({ platform: "darwin", packagePath: "/tmp/aegis.tar.gz", configPath: "/tmp/install.json", env, spawn: darwin.spawn, sleep, mkdir });
+  assert.deepEqual(darwinLayout, { binary: "/usr/local/bin/aegis", report: "/Library/Application Support/Aegis/service.jsonl" });
+  const extracted = path.join("/runner/temp", "aegis-extracted");
+  assert.deepEqual(darwin.calls.map((call) => [call.command, ...call.args]), [
+    ["tar", "-xzf", "/tmp/aegis.tar.gz", "-C", extracted],
+    ["sudo", "install", "-m", "0755", path.join(extracted, "aegis"), "/usr/local/bin/aegis"],
+    ["/usr/local/bin/aegis", "install", "--config", "/tmp/install.json"],
+  ]);
+
+  const windows = fakeSpawn();
+  const windowsLayout = await installAegis({ platform: "win32", packagePath: "C:\\t\\aegis.zip", configPath: "C:\\t\\install.json", env, spawn: windows.spawn, sleep, mkdir });
+  assert.deepEqual(windowsLayout, { binary: "C:\\Program Files\\Aegis\\aegis.exe", report: "C:\\ProgramData\\Aegis\\service.jsonl" });
+  assert.equal(windows.calls[0].command, "powershell");
+  assert.match(windows.calls[0].args.at(-1), /Expand-Archive -LiteralPath \$env:AEGIS_PACKAGE -DestinationPath \$env:AEGIS_DIRECTORY -Force/);
+  assert.equal(windows.calls[0].env.AEGIS_PACKAGE, "C:\\t\\aegis.zip");
+  assert.equal(windows.calls[0].env.AEGIS_DIRECTORY, "C:\\Program Files\\Aegis");
+  assert.deepEqual(windows.calls[1], { command: "C:\\Program Files\\Aegis\\aegis.exe", args: ["install", "--config", "C:\\t\\install.json"], env: undefined });
+  assert.deepEqual(made, [extracted, "C:\\Program Files\\Aegis"]);
+
+  // A command that keeps failing surfaces after the third attempt.
+  const stuck = fakeSpawn({ "/usr/bin/aegis install": 3 });
+  await assert.rejects(
+    installAegis({ platform: "linux", packagePath: "/tmp/aegis.deb", configPath: "/tmp/install.json", env, spawn: stuck.spawn, sleep, mkdir }),
+    /\/usr\/bin\/aegis install exited with status 1/,
+  );
+  await assert.rejects(installAegis({ platform: "plan9", packagePath: "p", configPath: "c", env }), /Unsupported platform/);
+});
+
+test("downloadAndVerify runs gh with the release token and any bootstrapped PATH entries", () => {
+  const digest = crypto.createHash("sha256").update("artifact").digest("hex");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-download-unit-"));
+  const calls = [];
+  const execute = (command, args, options) => {
+    calls.push({ command, args, env: options.env });
+    if (args[0] === "api" && args[1].endsWith("releases/latest")) return JSON.stringify({ tag_name: "v1.2.3", draft: false, prerelease: false });
+    if (args[0] === "api") return `${"a".repeat(40)}\n`;
+    if (args[0] === "release") {
+      const target = args[args.indexOf("--dir") + 1];
+      fs.writeFileSync(path.join(target, "aegis-1.2.3-linux-amd64.deb"), "artifact");
+      fs.writeFileSync(path.join(target, "SHA256SUMS"), `${digest}  aegis-1.2.3-linux-amd64.deb\n`);
+      fs.writeFileSync(path.join(target, "provenance.sigstore.json"), "{}");
+      return "";
+    }
+    return "";
+  };
+  try {
+    const result = downloadAndVerify({
+      token: "release-token",
+      runnerOS: "Linux",
+      runnerArch: "X64",
+      env: { PATH: "/usr/bin", RUNNER_TEMP: directory },
+      pathEntries: ["/bootstrap/gh/bin"],
+      execute,
+      sleep: () => {},
+    });
+    assert.match(result.package, /aegis-1\.2\.3-linux-amd64\.deb$/);
+    assert.ok(result.directory.startsWith(directory));
+    assert.deepEqual(calls.map((call) => call.args[0]), ["api", "api", "release", "attestation"]);
+    for (const call of calls) {
+      assert.equal(call.command, "gh");
+      assert.equal(call.env.GH_TOKEN, "release-token");
+      assert.equal(call.env.PATH, ["/bootstrap/gh/bin", "/usr/bin"].join(path.delimiter));
+    }
+    assert.throws(() => downloadAndVerify({ token: "", runnerOS: "Linux", runnerArch: "X64" }), /release token is missing/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+  assert.equal(ghEnvironment("t", { PATH: "/a" }).PATH, "/a");
+});
+
+test("prepareConfiguration starts the provider and writes a private configuration", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-config-unit-"));
+  try {
+    const config = await prepareConfiguration("socket-token-" + "a".repeat(32), { env: { RUNNER_TEMP: directory }, oidc: {} });
+    assert.ok(config.startsWith(directory));
+    const parsed = JSON.parse(fs.readFileSync(config, "utf8"));
+    assert.deepEqual(parsed.managers, MANAGERS);
+    assert.match(parsed.test_token_url, /^http:\/\/127\.0\.0\.1:\d+\//);
+    if (process.platform !== "win32") assert.equal(fs.statSync(config).mode & 0o777, 0o600);
+    const response = await fetch(parsed.test_token_url, { method: "POST" });
+    assert.equal(response.status, 200);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

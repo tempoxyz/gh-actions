@@ -3,7 +3,7 @@ const {
   RETRY_BUDGET_MS,
   host,
   isProviderRateLimited,
-  request,
+  request: httpRequest,
   retry,
   retryExchangeInProgress,
   retryRateLimited,
@@ -80,6 +80,57 @@ function exchangeWithRetry(getAssertion, exchange, options = {}) {
   });
 }
 
+// Exchanges GitHub OIDC assertions from `getAssertion` for a Socket API token
+// at `endpoint`. `getAssertion` is called again whenever the STS consumed the
+// previous assertion, so it must return a fresh one on repeat calls.
+async function exchange({
+  endpoint,
+  getAssertion,
+  request = httpRequest,
+  now = Date.now,
+  deadline = now() + RETRY_BUDGET_MS,
+  sleep,
+  random,
+}) {
+  const response = await exchangeWithRetry(
+    getAssertion,
+    (oidc, timeoutMs) =>
+      request(`https://${endpoint}/sts/exchange`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${oidc}`,
+          "content-length": "0",
+          "user-agent": "tempoxyz-socket-sts-action",
+        },
+        timeoutMs,
+      }),
+    { now, deadline, sleep, random },
+  );
+  let result = {};
+  try {
+    result = JSON.parse(response.body);
+  } catch {}
+  if (result === null || typeof result !== "object") result = {};
+  if (response.status < 200 || response.status >= 300) {
+    const message =
+      typeof result.message === "string"
+        ? `: ${result.message.replace(/[\r\n]+/g, " ").slice(0, 500)}`
+        : "";
+    throw new Error(
+      `Socket STS exchange failed (HTTP ${response.status})${message}`,
+    );
+  }
+  if (
+    typeof result.token !== "string" ||
+    !/^\S{20,4096}$/.test(result.token) ||
+    typeof result.expires_at !== "string" ||
+    !Number.isFinite(Date.parse(result.expires_at))
+  ) {
+    throw new Error("Socket STS response is invalid");
+  }
+  return { token: result.token, expiresAt: result.expires_at };
+}
+
 function append(file, name, value) {
   if (/\r|\n/.test(value)) throw new Error(`${name} contains a newline`);
   fs.appendFileSync(file, `${name}=${value}\n`);
@@ -122,7 +173,7 @@ async function main() {
   const getAssertion = async () => {
     const oidcResponse = await retry(
       (timeoutMs) =>
-        request(oidcUrl, {
+        httpRequest(oidcUrl, {
           headers: { authorization: `Bearer ${oidcRequestToken}` },
           timeoutMs,
         }),
@@ -138,42 +189,8 @@ async function main() {
     return oidc;
   };
 
-  const exchange = await exchangeWithRetry(
-    getAssertion,
-    (oidc, timeoutMs) =>
-      request(`https://${endpoint}/sts/exchange`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${oidc}`,
-          "content-length": "0",
-          "user-agent": "tempoxyz-socket-sts-action",
-        },
-        timeoutMs,
-      }),
-    { now, deadline },
-  );
-  let result = {};
-  try {
-    result = JSON.parse(exchange.body);
-  } catch {}
-  if (exchange.status < 200 || exchange.status >= 300) {
-    const message =
-      typeof result.message === "string"
-        ? `: ${result.message.replace(/[\r\n]+/g, " ").slice(0, 500)}`
-        : "";
-    throw new Error(
-      `Socket STS exchange failed (HTTP ${exchange.status})${message}`,
-    );
-  }
-  if (
-    typeof result.token !== "string" ||
-    !/^\S{20,4096}$/.test(result.token) ||
-    typeof result.expires_at !== "string" ||
-    !Number.isFinite(Date.parse(result.expires_at))
-  ) {
-    throw new Error("Socket STS response is invalid");
-  }
-  publishToken(result.token, result.expires_at);
+  const result = await exchange({ endpoint, getAssertion, now, deadline });
+  publishToken(result.token, result.expiresAt);
   append(required("GITHUB_STATE"), "host", endpoint);
   append(required("GITHUB_STATE"), "upload_aegis_report", uploadAegisReport);
   append(required("GITHUB_STATE"), "action", process.env.GITHUB_ACTION || "socket-sts");
@@ -188,6 +205,7 @@ if (require.main === module) {
 
 module.exports = {
   ASSERTION_ATTEMPTS,
+  exchange,
   exchangeWithFreshAssertion,
   exchangeWithRetry,
   main,

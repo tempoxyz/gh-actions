@@ -509,3 +509,29 @@ test("post reports a failed lease revocation as a warning instead of failing the
     /lease ID is invalid/,
   );
 });
+
+test("exchangeToken uses an injected OIDC provider for the STS audience instead of fetching its own", async () => {
+  const audiences = [];
+  const calls = [];
+  const result = await exchangeToken(stsHost, {
+    env: {},
+    getOidc: async (audience) => {
+      audiences.push(audience);
+      return "injected-assertion";
+    },
+    request: async (url, options) => {
+      calls.push([String(url), options.headers.authorization]);
+      return leaseIssued;
+    },
+    sleep: async () => {},
+    now: () => 0,
+  });
+  assert.equal(result.token, "step_test_short_lived_api_key");
+  assert.deepEqual(audiences, [stsHost]);
+  assert.deepEqual(calls, [[`https://${stsHost}/sts/exchange`, "Bearer injected-assertion"]]);
+
+  await assert.rejects(
+    exchangeToken(stsHost, { env: {}, getOidc: async () => "", request: async () => leaseIssued }),
+    /GitHub OIDC response is invalid/,
+  );
+});

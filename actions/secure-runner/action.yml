@@ -1,6 +1,7 @@
 name: "Secure Runner"
 description: >-
-  Start Harden Runner with StepSecurity policy-store access, then install Socket Firewall
+  Start Harden Runner with StepSecurity policy-store access, then install Aegis,
+  running without either when its service cannot be reached
 
 inputs:
   step-security-sts-host:
@@ -40,7 +41,7 @@ inputs:
     required: false
     default: "false"
   disable-enforcement:
-    description: "Skip Harden Runner and Socket Firewall with a warning annotation"
+    description: "Skip Harden Runner and Aegis with a warning annotation"
     required: false
     default: "false"
   token:
@@ -49,24 +50,7 @@ inputs:
     default: ${{ github.token }}
 
 runs:
-  using: "composite"
-  steps:
-    - name: Harden the runner with the StepSecurity policy store
-      uses: tempoxyz/gh-actions/actions/harden-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
-      with:
-        step-security-sts-host: ${{ inputs.step-security-sts-host }}
-        egress-policy: ${{ inputs.egress-policy }}
-        allowed-endpoints: ${{ inputs.allowed-endpoints }}
-        denied-endpoints: ${{ inputs.denied-endpoints }}
-        disable-telemetry: ${{ inputs.disable-telemetry }}
-        disable-sudo-and-containers: ${{ inputs.disable-sudo-and-containers }}
-        disable-file-monitoring: ${{ inputs.disable-file-monitoring }}
-        deploy-on-self-hosted-vm: ${{ inputs.deploy-on-self-hosted-vm }}
-        disable-enforcement: ${{ inputs.disable-enforcement }}
-        token: ${{ inputs.token }}
-
-    - name: Install Socket Firewall
-      if: inputs.disable-enforcement != 'true'
-      uses: tempoxyz/gh-actions/actions/socket-firewall@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
-      with:
-        socket-sts-host: ${{ inputs.socket-sts-host }}
+  using: "node24"
+  pre: "pre.cjs"
+  main: "main.cjs"
+  post: "post.cjs"

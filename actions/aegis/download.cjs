@@ -76,13 +76,24 @@ function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
-function latestRelease() {
+// The environment for every `gh` call: the release token, and any PATH
+// entries the GitHub CLI bootstrap published for later steps, which this
+// process would not otherwise see.
+function ghEnvironment(token, env = process.env, pathEntries = []) {
+  return {
+    ...env,
+    GH_TOKEN: token,
+    PATH: [...pathEntries, env.PATH || ""].filter(Boolean).join(path.delimiter),
+  };
+}
+
+function latestRelease(gh) {
   // GitHub's `/releases/latest` endpoint excludes draft and prerelease
   // releases, unlike the general releases list.
   const response = JSON.parse(runGh(
     ["api", "repos/tempoxyz/aegis/releases/latest"],
     "GitHub latest-release request",
-    { execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS } },
+    { ...gh, execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS, env: gh.env } },
   ));
   if (response.draft || response.prerelease || typeof response.tag_name !== "string") {
     throw new Error("GitHub latest Aegis release is not a stable published release");
@@ -92,17 +103,17 @@ function latestRelease() {
   return { tag: response.tag_name, version: match[1] };
 }
 
-function releaseCommit(tag) {
+function releaseCommit(tag, gh) {
   const commit = runGh(
     ["api", `repos/tempoxyz/aegis/git/ref/tags/${tag}`, "--jq", ".object.sha"],
     "GitHub release-commit request",
-    { execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS } },
+    { ...gh, execOptions: { encoding: "utf8", timeout: GH_API_TIMEOUT_MS, env: gh.env } },
   ).trim();
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`Aegis release ${tag} has an invalid source commit`);
   return commit;
 }
 
-function downloadReleaseAssets(tag, directory, asset) {
+function downloadReleaseAssets(tag, directory, asset, gh = {}) {
   const args = [
     "release", "download", tag,
     "--repo", "tempoxyz/aegis",
@@ -118,17 +129,30 @@ function downloadReleaseAssets(tag, directory, asset) {
   // The API timeout is too short for an artifact transfer; a stalled transfer
   // is killed at the download bound and retried like any other failure.
   runGh(args, "Aegis release download", {
-    execOptions: { stdio: "inherit", timeout: RELEASE_DOWNLOAD_TIMEOUT_MS },
+    ...gh,
+    execOptions: { stdio: "inherit", timeout: RELEASE_DOWNLOAD_TIMEOUT_MS, env: gh.env },
   });
 }
 
-function main() {
-  if (!process.env.GH_TOKEN) throw new Error("Aegis release token is missing");
-  const release = latestRelease();
-  const asset = assetName(release.version, process.env.RUNNER_OPERATING_SYSTEM, process.env.RUNNER_ARCHITECTURE);
-  const commit = releaseCommit(release.tag);
-  const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), "aegis-release-"));
-  downloadReleaseAssets(release.tag, directory, asset);
+// Downloads the latest stable Aegis release for the runner and verifies it
+// against SHA256SUMS and its Sigstore provenance. Returns the verified package
+// path and the directory holding it. `execute` and `sleep` are test seams.
+function downloadAndVerify({
+  token,
+  runnerOS,
+  runnerArch,
+  env = process.env,
+  pathEntries = [],
+  execute,
+  sleep,
+} = {}) {
+  if (!token) throw new Error("Aegis release token is missing");
+  const gh = { env: ghEnvironment(token, env, pathEntries), execute, sleep };
+  const release = latestRelease(gh);
+  const asset = assetName(release.version, runnerOS, runnerArch);
+  const commit = releaseCommit(release.tag, gh);
+  const directory = fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), "aegis-release-"));
+  downloadReleaseAssets(release.tag, directory, asset, gh);
 
   const artifact = path.join(directory, asset);
   const bundle = path.join(directory, "provenance.sigstore.json");
@@ -144,11 +168,21 @@ function main() {
     "--source-ref", "refs/heads/main",
     "--deny-self-hosted-runners",
   ], "Aegis provenance verification", {
-    execOptions: { stdio: "inherit", timeout: ATTESTATION_TIMEOUT_MS },
+    ...gh,
+    execOptions: { stdio: "inherit", timeout: ATTESTATION_TIMEOUT_MS, env: gh.env },
   });
 
-  appendOutput("package", artifact);
-  appendOutput("directory", directory);
+  return { package: artifact, directory };
+}
+
+function main() {
+  const result = downloadAndVerify({
+    token: process.env.GH_TOKEN,
+    runnerOS: process.env.RUNNER_OPERATING_SYSTEM,
+    runnerArch: process.env.RUNNER_ARCHITECTURE,
+  });
+  appendOutput("package", result.package);
+  appendOutput("directory", result.directory);
 }
 
 if (require.main === module) {
@@ -166,8 +200,10 @@ module.exports = {
   GH_API_TIMEOUT_MS,
   RELEASE_DOWNLOAD_TIMEOUT_MS,
   assetName,
+  downloadAndVerify,
   expectedDigest,
   downloadReleaseAssets,
+  ghEnvironment,
   retrySync,
   runGh,
 };

@@ -348,3 +348,41 @@ test("post reports a revocation that both STS and GitHub refuse as a warning", a
     "::warning title=GitHub App token revocation failed::Failed to revoke GitHub App token (HTTP 500). The token expires at its requested TTL.",
   ]);
 });
+
+test("exchange mints a token under the requested policy and reports failures by status", async () => {
+  const { exchange } = require("./main.js");
+  const calls = [];
+  const result = await exchange({
+    host: "gh-sts.tempoxyz.net",
+    scope: "tempoxyz/aegis",
+    policy: "download-releases",
+    ttl: "15m",
+    getOidc: async () => "assertion-1",
+    request: async (url, options, timeoutMs) => {
+      calls.push([String(url), options.headers.Authorization, timeoutMs]);
+      return { status: 200, body: JSON.stringify({ token: "ghs_test_token", expires_at: "2026-09-26T00:15:00Z" }), headers: {} };
+    },
+    now: () => 0,
+  });
+  assert.deepEqual(result, { token: "ghs_test_token", expiresAt: "2026-09-26T00:15:00Z" });
+  assert.equal(calls.length, 1);
+  const url = new URL(calls[0][0]);
+  assert.equal(url.host, "gh-sts.tempoxyz.net");
+  assert.equal(url.searchParams.get("scope"), "tempoxyz/aegis");
+  assert.equal(url.searchParams.get("identity"), "download-releases");
+  assert.equal(url.searchParams.get("ttl"), "15m");
+  assert.equal(calls[0][1], "Bearer assertion-1");
+  assert.equal(calls[0][2], 10_000);
+
+  await assert.rejects(
+    exchange({
+      host: "gh-sts.tempoxyz.net",
+      scope: "tempoxyz/aegis",
+      policy: "download-releases",
+      getOidc: async () => "assertion-1",
+      request: async () => ({ status: 403, body: '{"message":"trust policy: subject did not match"}', headers: {} }),
+      now: () => 0,
+    }),
+    { message: "GitHub STS exchange failed (HTTP 403): trust policy: subject did not match" },
+  );
+});

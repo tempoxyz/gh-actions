@@ -1,4 +1,7 @@
-# Socket Firewall
+# Aegis
+
+[Secure Runner](../secure-runner) runs this same pipeline in-process as a node
+action; this composite remains for callers that want Aegis alone.
 
 Install Aegis with a short-lived Socket API token derived from the calling
 job's GitHub OIDC identity. The Socket STS associates the token with the
@@ -110,7 +113,7 @@ permissions:
   id-token: write
 
 steps:
-  - uses: tempoxyz/gh-actions/actions/socket-firewall@<commit-sha>
+  - uses: tempoxyz/gh-actions/actions/aegis@<commit-sha>
 
   # Supported package-manager downloads are now routed through Aegis.
   - run: pnpm install --frozen-lockfile
@@ -146,7 +149,7 @@ compatible but will not request runner identity. Identity consumers must verify
 the JWT signature, issuer, audience, and lifetime before trusting its claims;
 the provider's claim parsing only manages freshness and audience selection.
 
-Run `node --test actions/socket-firewall/*.test.js` for local coverage. Trusted
+Run `node --test actions/aegis/*.test.js` for local coverage. Trusted
 CI additionally enables `AEGIS_LIVE_GITHUB_OIDC=true` for the provider test to
 exercise real runner acquisition through the detached process and HTTP handoff
 without printing credentials or claims.
