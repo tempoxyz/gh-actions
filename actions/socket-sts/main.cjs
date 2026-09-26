@@ -9,6 +9,7 @@ const {
   retryRateLimited,
   requiresFreshAssertion,
 } = require("./http.cjs");
+const { disabledWarning, isServiceDisabled, requireServiceEnabled } = require("./status.cjs");
 
 const ASSERTION_ATTEMPTS = 2;
 
@@ -91,7 +92,11 @@ async function exchange({
   deadline = now() + RETRY_BUDGET_MS,
   sleep,
   random,
+  checkStatus = requireServiceEnabled,
 }) {
+  // A paused STS says so up front. That fails here with its reason instead of
+  // retrying against its rejections for the rest of the budget.
+  await checkStatus(endpoint, { request, now, deadline });
   const response = await exchangeWithRetry(
     getAssertion,
     (oidc, timeoutMs) =>
@@ -155,7 +160,7 @@ function publishToken(token, expiresAt) {
   append(required("GITHUB_OUTPUT"), "node-path", process.execPath);
 }
 
-async function main() {
+async function main({ exchange: exchangeToken = exchange } = {}) {
   const uploadAegisReport = process.env["INPUT_UPLOAD-AEGIS-REPORT"] || "true";
   if (uploadAegisReport !== "true" && uploadAegisReport !== "false") {
     throw new Error("upload-aegis-report must be either true or false");
@@ -189,7 +194,17 @@ async function main() {
     return oidc;
   };
 
-  const result = await exchange({ endpoint, getAssertion, now, deadline });
+  let result;
+  try {
+    result = await exchangeToken({ endpoint, getAssertion, now, deadline });
+  } catch (error) {
+    // The standalone action has no fallback: the job needs the token. The
+    // annotation says why none was issued before the step fails.
+    if (isServiceDisabled(error)) {
+      disabledWarning(error, "No Socket API token was issued to this job.");
+    }
+    throw error;
+  }
   publishToken(result.token, result.expiresAt);
   append(required("GITHUB_STATE"), "host", endpoint);
   append(required("GITHUB_STATE"), "upload_aegis_report", uploadAegisReport);

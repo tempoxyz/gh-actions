@@ -6,6 +6,7 @@ const { warning } = require("../harden-runner/annotations.cjs");
 const { enforcementDisabled, oidcAvailable } = require("../harden-runner/pre.cjs");
 const socketSts = require("../socket-sts/main.cjs");
 const { host: socketHost } = require("../socket-sts/http.cjs");
+const { disabledMessage, isServiceDisabled } = require("../socket-sts/status.cjs");
 const githubSts = require("../github-sts/main.js");
 const { downloadAndVerify } = require("../aegis/download.cjs");
 const { installAegis, retrying, runCommand } = require("../aegis/install.cjs");
@@ -179,12 +180,19 @@ async function main({ env = process.env, platform = process.platform, deps = {} 
     if (!(error instanceof StageError)) throw error;
     // Any failure to set the firewall up leaves the job running without one
     // rather than failing it; the annotation names the stage and the error.
-    warning(
-      `Aegis was not installed: ${error.reason} (${error.cause.message}). ` +
-        "No package firewall is running for this job, so package downloads are not inspected or blocked.",
-      TITLE,
-      env,
-    );
+    // An STS an operator paused is reported as disabled, with their reason,
+    // rather than as an outage.
+    const consequence =
+      "No package firewall is running for this job, so package downloads are not inspected or blocked.";
+    if (isServiceDisabled(error.cause)) {
+      warning(
+        disabledMessage(error.cause, `Aegis was not installed: ${error.reason}. ${consequence}`),
+        `${error.cause.service} disabled`,
+        env,
+      );
+    } else {
+      warning(`Aegis was not installed: ${error.reason} (${error.cause.message}). ${consequence}`, TITLE, env);
+    }
   }
 }
 

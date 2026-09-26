@@ -584,7 +584,13 @@ test("post reports a failed token revocation as a warning and still uploads the 
   );
 });
 
-const { exchange: socketExchange } = require("./main.cjs");
+const { exchange: socketExchange, main: socketMain } = require("./main.cjs");
+const { ServiceDisabledError: SocketDisabledError } = require("./status.cjs");
+const socketStatus = (status, reason) => ({
+  status: 200,
+  headers: {},
+  body: JSON.stringify(reason === undefined ? { status } : { status, reason }),
+});
 
 test("exchange returns the minted token and reports failures by status", async () => {
   const calls = [];
@@ -597,6 +603,7 @@ test("exchange returns the minted token and reports failures by status", async (
     },
     request: async (url, options) => {
       calls.push([url, options.method, options.headers.authorization, options.timeoutMs]);
+      if (url.endsWith("/status")) return socketStatus("enabled");
       return {
         status: 200,
         headers: {},
@@ -607,7 +614,11 @@ test("exchange returns the minted token and reports failures by status", async (
     sleep: async () => {},
   });
   assert.deepEqual(result, { token: "sktsec_test_short_lived_token_api", expiresAt: "2026-09-26T00:00:00Z" });
-  assert.deepEqual(calls, [["https://socket-sts.tempoxyz.net/sts/exchange", "POST", "Bearer assertion-1", 10_000]]);
+  assert.deepEqual(calls, [
+    ["https://socket-sts.tempoxyz.net/status", "POST", undefined, 10_000],
+    ["https://socket-sts.tempoxyz.net/sts/exchange", "POST", "Bearer assertion-1", 10_000],
+  ]);
+  assert.deepEqual(assertions, ["assertion-1"], "the probe needs no assertion");
 
   for (const [response, message] of [
     [{ status: 403, headers: {}, body: JSON.stringify({ message: "repository not\nallowed" }) }, "Socket STS exchange failed (HTTP 403): repository not allowed"],
@@ -623,5 +634,82 @@ test("exchange returns the minted token and reports failures by status", async (
       }),
       { message },
     );
+  }
+});
+
+test("a disabled Socket STS fails the exchange with its reason before any assertion is requested", async () => {
+  const calls = [];
+  await assert.rejects(
+    socketExchange({
+      endpoint: "socket-sts.tempoxyz.net",
+      getAssertion: async () => assert.fail("no assertion is requested for a disabled STS"),
+      request: async (url) => {
+        calls.push(url);
+        return socketStatus("disabled", "Paused");
+      },
+      now: () => 0,
+      sleep: async () => {},
+    }),
+    (error) => {
+      assert.equal(error.code, "ESTS_SERVICE_DISABLED");
+      assert.deepEqual([error.service, error.host, error.reason], ["Socket STS", "socket-sts.tempoxyz.net", "Paused"]);
+      assert.equal(error.message, "Socket STS at socket-sts.tempoxyz.net is disabled: Paused");
+      return true;
+    },
+  );
+  assert.deepEqual(calls, ["https://socket-sts.tempoxyz.net/status"]);
+
+  // Anything but a recognized answer is inconclusive and the exchange proceeds.
+  for (const probe of [
+    { status: 404, headers: {}, body: "Not found" },
+    { status: 302, headers: {}, body: "" },
+    { status: 200, headers: {}, body: "<html>" },
+    new Error("request timed out after 10000ms"),
+  ]) {
+    const { value, lines } = await captureLog(() =>
+      socketExchange({
+        endpoint: "socket-sts.tempoxyz.net",
+        getAssertion: async () => "assertion",
+        request: async (url) => {
+          if (url.endsWith("/status")) {
+            if (probe instanceof Error) throw probe;
+            return probe;
+          }
+          return { status: 200, headers: {}, body: JSON.stringify({ token: "sktsec_test_short_lived_token_api", expires_at: "2026-09-26T00:00:00Z" }) };
+        },
+        now: () => 0,
+        sleep: async () => {},
+      }),
+    );
+    assert.equal(value.token, "sktsec_test_short_lived_token_api");
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /^Socket STS status check was inconclusive \(.+\); continuing with the exchange\.$/);
+  }
+});
+
+test("main reports a disabled Socket STS as a warning and still fails", async () => {
+  const previous = { ...process.env };
+  Object.assign(process.env, {
+    INPUT_HOST: "socket-sts.tempoxyz.net",
+    "INPUT_UPLOAD-AEGIS-REPORT": "true",
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-token",
+    ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/oidc",
+  });
+  delete process.env.GITHUB_STEP_SUMMARY;
+  try {
+    const disabled = new SocketDisabledError("Socket STS", "socket-sts.tempoxyz.net", "Paused");
+    const { lines } = await captureLog(async () => {
+      await assert.rejects(socketMain({ exchange: async () => { throw disabled; } }), disabled);
+    });
+    assert.deepEqual(lines, [
+      "::warning title=Socket STS disabled::The Socket STS at socket-sts.tempoxyz.net is disabled: Paused. No Socket API token was issued to this job.",
+    ]);
+    const { lines: quiet } = await captureLog(async () => {
+      await assert.rejects(socketMain({ exchange: async () => { throw new Error("Socket STS exchange failed (HTTP 503)"); } }), /HTTP 503/);
+    });
+    assert.deepEqual(quiet, []);
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
+    Object.assign(process.env, previous);
   }
 });

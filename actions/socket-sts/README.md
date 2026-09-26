@@ -27,6 +27,13 @@ original token when creation completes. Other 429 responses also retain it.
 Transport timeouts and explicit token-creation timeouts retain the existing
 limit of one fresh-assertion recovery attempt.
 
+Before exchanging, the action asks the STS whether it is serving exchanges with
+one empty `POST /status`. A paused STS answers
+`{"status":"disabled","reason":"Paused"}`; the action then emits a warning
+annotation titled "Socket STS disabled" naming the reason and fails at once,
+since the job needs the token, rather than retrying for the rest of the budget.
+Any other answer to the probe, or none, is inconclusive and the exchange proceeds.
+
 ## Inputs
 
 | Name | Description | Required | Default |

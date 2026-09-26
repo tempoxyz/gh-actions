@@ -8,6 +8,7 @@ const {
   retry,
   retryRateLimited,
 } = require("./http.cjs");
+const { disabledWarning, isServiceDisabled, requireServiceEnabled } = require("./status.cjs");
 
 function required(name, env = process.env) {
   const value = env[name] || "";
@@ -113,11 +114,15 @@ async function exchangeToken(
     random,
     budgetMs = RETRY_BUDGET_MS,
     getOidc,
+    checkStatus = requireServiceEnabled,
   } = {},
 ) {
   const deadline = now() + budgetMs;
   const host = rawHost === undefined ? required("INPUT_HOST", env) : rawHost;
   const sts = endpoint(host);
+  // A paused STS says so up front. That fails here with its reason instead of
+  // retrying against its rejections for the rest of the budget.
+  await checkStatus(sts.audience, { request, now, deadline });
   const oidc = getOidc
     ? await getOidc(sts.audience)
     : await githubAssertion(sts.audience, { env, request, sleep, now, random, deadline });
@@ -177,10 +182,20 @@ async function exchangeToken(
   };
 }
 
-async function main() {
-  const result = await exchangeToken();
+async function main({ env = process.env, exchange = exchangeToken } = {}) {
+  let result;
+  try {
+    result = await exchange(undefined, { env });
+  } catch (error) {
+    // The standalone action has no fallback: the job needs the credential. The
+    // annotation says why none was issued before the step fails.
+    if (isServiceDisabled(error)) {
+      disabledWarning(error, "No policy-store credential was issued to this job.", env);
+    }
+    throw error;
+  }
   publishToken(result.token, result.expiresAt, result.leaseId);
-  append(required("GITHUB_STATE"), "sts_host", result.rawHost);
+  append(required("GITHUB_STATE", env), "sts_host", result.rawHost);
 }
 
 if (require.main === module) {

@@ -65,6 +65,13 @@ a 10-second wall-clock timeout, shortened to fit the remaining budget. A `429`
 response's `Retry-After` (seconds or HTTP date) is honored; if it cannot fit in the
 budget, the action fails without retrying early. Retries reuse the OIDC assertion.
 
+Before requesting OIDC, the action asks the STS whether it is serving exchanges
+with one empty `POST /status`. A paused STS answers
+`{"status":"disabled","reason":"Paused"}`; the action then emits a warning
+annotation titled "Cloudflare STS disabled" naming the reason and fails at once,
+since the job needs the token, rather than retrying for the rest of the budget.
+Any other answer to the probe, or none, is inconclusive and the exchange proceeds.
+
 ## Tests
 
 ```sh

@@ -188,7 +188,20 @@ test("post is a no-op when no API key was minted", () => {
   assert.match(`${result.stdout}${result.stderr}`, /skipping revocation/);
 });
 
-const { exchangeToken } = require("./main.cjs");
+const { exchangeToken, main: stsMain } = require("./main.cjs");
+
+function capture(callback) {
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(String(line));
+  return Promise.resolve()
+    .then(callback)
+    .finally(() => {
+      console.log = original;
+    })
+    .then((value) => ({ value, lines }));
+}
+const { ServiceDisabledError, isServiceDisabled, parseStatus, serviceStatus } = require("./status.cjs");
 
 const oidcEnv = {
   ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-token",
@@ -208,11 +221,18 @@ const leaseIssued = {
     lease_id: leaseId,
   }),
 };
+const statusEnabled = { status: 200, headers: {}, body: JSON.stringify({ status: "enabled" }) };
+const statusDisabled = {
+  status: 200,
+  headers: {},
+  body: JSON.stringify({ status: "disabled", reason: "Paused" }),
+};
+const isStatusProbe = (url) => String(url).endsWith("/status");
 
 // Drives exchangeToken against scripted responses. Each leg replays its final
 // entry once the script runs out, so a single 503 means "503 on every retry".
-function scriptedExchange({ oidc = [oidcIssued], sts = [] }) {
-  const attempts = { oidc: 0, sts: 0 };
+function scriptedExchange({ oidc = [oidcIssued], status = [statusEnabled], sts = [] }) {
+  const attempts = { oidc: 0, status: 0, sts: 0 };
   const next = (leg, script) => {
     const entry = script[Math.min(attempts[leg], script.length - 1)];
     attempts[leg] += 1;
@@ -222,7 +242,9 @@ function scriptedExchange({ oidc = [oidcIssued], sts = [] }) {
   const request = async (url) =>
     String(url).startsWith(oidcEnv.ACTIONS_ID_TOKEN_REQUEST_URL)
       ? next("oidc", oidc)
-      : next("sts", sts);
+      : isStatusProbe(url)
+        ? next("status", status)
+        : next("sts", sts);
   return {
     attempts,
     exchange: () =>
@@ -244,7 +266,94 @@ test("exchangeToken returns the minted lease", async () => {
     leaseId,
     rawHost: stsHost,
   });
-  assert.deepEqual(attempts, { oidc: 1, sts: 1 });
+  assert.deepEqual(attempts, { oidc: 1, status: 1, sts: 1 });
+});
+
+test("a disabled STS fails the exchange with its reason before any OIDC or exchange request", async () => {
+  const { attempts, exchange } = scriptedExchange({ status: [statusDisabled], sts: [leaseIssued] });
+  await assert.rejects(exchange(), (error) => {
+    assert.equal(error.name, "ServiceDisabledError");
+    assert.equal(error.code, "ESTS_SERVICE_DISABLED");
+    assert.equal(isServiceDisabled(error), true);
+    assert.deepEqual([error.service, error.host, error.reason], ["Step Security STS", stsHost, "Paused"]);
+    assert.equal(error.message, `Step Security STS at ${stsHost} is disabled: Paused`);
+    return true;
+  });
+  assert.deepEqual(attempts, { oidc: 0, status: 1, sts: 0 });
+});
+
+test("an inconclusive status probe never blocks the exchange", async () => {
+  const inconclusive = [
+    ["HTTP 404", { status: 404, headers: {}, body: "Not found" }],
+    ["Access redirect", { status: 302, headers: { location: "https://access.example/login" }, body: "" }],
+    ["HTTP 503", { status: 503, headers: {}, body: JSON.stringify({ message: "service unavailable" }) }],
+    ["invalid JSON", { status: 200, headers: {}, body: "<html>" }],
+    ["unknown status", { status: 200, headers: {}, body: JSON.stringify({ status: "draining" }) }],
+    ["array body", { status: 200, headers: {}, body: "[]" }],
+    ["transport failure", new Error("HTTPS request failed")],
+    ["timeout", new Error("HTTPS request timed out")],
+  ];
+  for (const [name, response] of inconclusive) {
+    const { attempts, exchange } = scriptedExchange({ status: [response], sts: [leaseIssued] });
+    const { value, lines } = await capture(exchange);
+    assert.equal(value.token, "step_test_short_lived_api_key", name);
+    assert.deepEqual(attempts, { oidc: 1, status: 1, sts: 1 }, name);
+    assert.equal(lines.length, 1, name);
+    assert.match(lines[0], /^Step Security STS status check was inconclusive \(.+\); continuing with the exchange\.$/, name);
+    assert.doesNotMatch(lines[0], /^::/, name);
+  }
+  // A recognized answer says nothing.
+  const { lines } = await capture(scriptedExchange({ sts: [leaseIssued] }).exchange);
+  assert.deepEqual(lines, []);
+});
+
+test("the status probe is one empty POST bounded by the remaining budget", async () => {
+  const calls = [];
+  const record = async (url, options) => {
+    calls.push([String(url), options.method, options.headers, options.timeoutMs]);
+    return statusEnabled;
+  };
+  assert.deepEqual(await serviceStatus(`https://${stsHost}`, { request: record, now: () => 0 }), { status: "enabled" });
+  assert.deepEqual(calls, [[
+    `https://${stsHost}/status`,
+    "POST",
+    { accept: "application/json", "content-length": "0", "user-agent": "tempoxyz-step-security-sts-action" },
+    10_000,
+  ]]);
+  calls.length = 0;
+  await serviceStatus(`https://${stsHost}`, { request: record, now: () => 86_000, deadline: 90_000 });
+  assert.equal(calls[0][3], 4_000, "shrinks to what is left of the budget");
+  calls.length = 0;
+  assert.equal(await serviceStatus(`https://${stsHost}`, { request: record, now: () => 90_000, deadline: 90_000 }), null);
+  assert.deepEqual(calls, [], "no request once the budget is spent");
+
+  // The reason is reduced to one printable line for the annotation.
+  assert.deepEqual(parseStatus(JSON.stringify({ status: "disabled", reason: " Paused\r\n by  ops\u0000 " })), { status: "disabled", reason: "Paused by ops" });
+  assert.deepEqual(parseStatus(JSON.stringify({ status: "disabled" })), { status: "disabled", reason: "no reason given" });
+  assert.deepEqual(parseStatus(JSON.stringify({ status: "disabled", reason: "x".repeat(300) })), { status: "disabled", reason: "x".repeat(200) });
+  assert.deepEqual(parseStatus(JSON.stringify({ status: "enabled", reason: "ignored" })), { status: "enabled" });
+  for (const body of ["null", "1", '"enabled"', "{}", '{"status":"ENABLED"}', "not json"]) {
+    assert.equal(parseStatus(body), null, body);
+  }
+});
+
+test("main reports a disabled STS as a warning, mirrors it to the step summary, and still fails", async () => {
+  const summary = path.join(fs.mkdtempSync(path.join(require("node:os").tmpdir(), "sts-status-")), "summary");
+  const env = { ...oidcEnv, INPUT_HOST: stsHost, GITHUB_STEP_SUMMARY: summary };
+  const disabled = new ServiceDisabledError("Step Security STS", stsHost, "Paused");
+  const { lines } = await capture(async () => {
+    await assert.rejects(stsMain({ env, exchange: async () => { throw disabled; } }), disabled);
+  });
+  const message =
+    `The Step Security STS at ${stsHost} is disabled: Paused. No policy-store credential was issued to this job.`;
+  assert.deepEqual(lines, [`::warning title=Step Security STS disabled::${message}`]);
+  assert.equal(fs.readFileSync(summary, "utf8"), `> ⚠️ **Step Security STS disabled:** ${message}\n`);
+
+  // Other failures are not annotated here; they fail the step as before.
+  const { lines: quiet } = await capture(async () => {
+    await assert.rejects(stsMain({ env, exchange: async () => { throw new Error("Step Security STS exchange failed (HTTP 503)"); } }), /HTTP 503/);
+  });
+  assert.deepEqual(quiet, []);
 });
 
 test("STS failures that persist through every retry name the final failure", async () => {
@@ -354,7 +463,7 @@ test("GitHub OIDC issuer failures name the issuer and stop before the STS", asyn
   for (const { name, oidc, message, attempts: expected } of cases) {
     const { attempts, exchange } = scriptedExchange({ oidc });
     await assert.rejects(exchange(), { name: "Error", message }, name);
-    assert.deepEqual(attempts, { oidc: expected, sts: 0 }, name);
+    assert.deepEqual(attempts, { oidc: expected, status: 1, sts: 0 }, name);
   }
 });
 
@@ -379,6 +488,7 @@ test("one 90-second budget bounds the whole exchange, including rate-limit waits
   let attempts = 0;
   const rateLimited = async (url, options) => {
     if (String(url).startsWith(oidcEnv.ACTIONS_ID_TOKEN_REQUEST_URL)) return oidcIssued;
+    if (isStatusProbe(url)) return statusEnabled;
     attempts += 1;
     timeouts.push(options.timeoutMs);
     return { status: 429, headers: { "retry-after": "60" }, body: "" };
@@ -403,14 +513,16 @@ test("one 90-second budget bounds the whole exchange, including rate-limit waits
   assert.equal(clock, 60_000);
   assert.deepEqual(timeouts, [10_000, 10_000]);
 
-  // Each request's timeout shrinks to whatever budget is left.
+  // Each request's timeout, the status probe's included, shrinks to whatever
+  // budget is left.
   const shortTimeouts = [];
   const quick = async (url, options) => {
     shortTimeouts.push(options.timeoutMs);
+    if (isStatusProbe(url)) return statusEnabled;
     return String(url).startsWith(oidcEnv.ACTIONS_ID_TOKEN_REQUEST_URL) ? oidcIssued : leaseIssued;
   };
   await exchangeToken(stsHost, { env: oidcEnv, request: quick, now: () => 0, sleep: async () => {}, budgetMs: 4_000 });
-  assert.deepEqual(shortTimeouts, [4_000, 4_000]);
+  assert.deepEqual(shortTimeouts, [4_000, 4_000, 4_000]);
 
   // Transport failures that outlast the budget surface as the transport failure.
   let elapsed = 0;
@@ -435,18 +547,6 @@ test("one 90-second budget bounds the whole exchange, including rate-limit waits
 });
 
 const { main: postMain } = require("./post.cjs");
-
-function capture(callback) {
-  const lines = [];
-  const original = console.log;
-  console.log = (line) => lines.push(String(line));
-  return Promise.resolve()
-    .then(callback)
-    .finally(() => {
-      console.log = original;
-    })
-    .then((value) => ({ value, lines }));
-}
 
 test("post reports a failed lease revocation as a warning instead of failing the job", async () => {
   const state = {
@@ -521,14 +621,17 @@ test("exchangeToken uses an injected OIDC provider for the STS audience instead 
     },
     request: async (url, options) => {
       calls.push([String(url), options.headers.authorization]);
-      return leaseIssued;
+      return isStatusProbe(url) ? statusEnabled : leaseIssued;
     },
     sleep: async () => {},
     now: () => 0,
   });
   assert.equal(result.token, "step_test_short_lived_api_key");
   assert.deepEqual(audiences, [stsHost]);
-  assert.deepEqual(calls, [[`https://${stsHost}/sts/exchange`, "Bearer injected-assertion"]]);
+  assert.deepEqual(calls, [
+    [`https://${stsHost}/status`, undefined],
+    [`https://${stsHost}/sts/exchange`, "Bearer injected-assertion"],
+  ]);
 
   await assert.rejects(
     exchangeToken(stsHost, { env: {}, getOidc: async () => "", request: async () => leaseIssued }),
