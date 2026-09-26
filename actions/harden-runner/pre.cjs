@@ -5,6 +5,7 @@ const {
   required,
 } = require("../step-security-sts/main.cjs");
 const { endpoint } = require("../step-security-sts/http.cjs");
+const { disabledMessage, isServiceDisabled } = require("../step-security-sts/status.cjs");
 const { warning } = require("./annotations.cjs");
 const { runHardenRunner } = require("./run.cjs");
 
@@ -135,16 +136,22 @@ async function main({
     // budget, returned an unusable response, or rejected the exchange
     // outright. Without a credential, Harden Runner applies the inline egress
     // policy, which defaults to audit.
-    const reason = error instanceof Error ? error.message : String(error);
-    warning(
-      `Could not obtain a StepSecurity policy-store credential from ${host}: ` +
-        `${reason}. Harden Runner is running in ${inlineEgressPolicy(env)} ` +
-        "mode from the workflow's inline egress policy, without the " +
-        "StepSecurity policy store, so stored egress policies are not " +
-        "applied to this job.",
-      "StepSecurity policy store unavailable",
-      env,
-    );
+    const consequence =
+      `Harden Runner is running in ${inlineEgressPolicy(env)} mode from the ` +
+      "workflow's inline egress policy, without the StepSecurity policy " +
+      "store, so stored egress policies are not applied to this job.";
+    if (isServiceDisabled(error)) {
+      // An operator paused the STS. Say so, with their stated reason, rather
+      // than reporting it as an outage.
+      warning(disabledMessage(error, consequence), `${error.service} disabled`, env);
+    } else {
+      const reason = error instanceof Error ? error.message : String(error);
+      warning(
+        `Could not obtain a StepSecurity policy-store credential from ${host}: ${reason}. ${consequence}`,
+        "StepSecurity policy store unavailable",
+        env,
+      );
+    }
     append(required("GITHUB_STATE", env), INLINE_POLICY_STATE, "true");
     startHardenRunner(run, null, env);
     return;

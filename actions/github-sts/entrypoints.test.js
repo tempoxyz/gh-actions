@@ -199,15 +199,16 @@ for (const status of [200, 403, 429]) {
     const calls = [];
     t.mock.method(https, "request", (url, options, callback) => {
       calls.push({ url: new URL(url), options });
-      const oidc = calls.length === 1;
+      const probe = calls.length === 1;
+      const oidc = calls.length === 2;
       const response = new EventEmitter();
-      response.statusCode = oidc ? 200 : status;
-      response.headers = status === 429 && !oidc ? { "retry-after": "3600" } : {};
+      response.statusCode = probe || oidc ? 200 : status;
+      response.headers = status === 429 && !probe && !oidc ? { "retry-after": "3600" } : {};
       response.setEncoding = () => {};
       const request = new EventEmitter();
       request.end = () => {
         callback(response);
-        response.emit("data", JSON.stringify(oidc ? { value: "test-oidc" } : status === 200
+        response.emit("data", JSON.stringify(probe ? { status: "enabled" } : oidc ? { value: "test-oidc" } : status === 200
           ? { token: "test-installation-token", expires_at: "2030-01-01T00:00:00Z" }
           : { message: "caller organization is not permitted by this service" }));
         response.emit("end");
@@ -236,14 +237,67 @@ for (const status of [200, 403, 429]) {
       assert.equal(writes.mock.callCount(), 0);
       assert.equal(logs.mock.callCount(), 0);
     }
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0].url.searchParams.get("audience"), "gh-sts.tempoxyz.net");
-    assert.equal(calls[0].options.headers.Authorization, "Bearer test-request-token");
-    assert.equal(calls[1].url.href, "https://gh-sts.tempoxyz.net/sts/exchange?scope=tempoxyz%2Faegis&identity=download-releases&ttl=15m");
-    assert.equal(calls[1].options.method, "POST");
-    assert.equal(calls[1].options.headers.Authorization, "Bearer test-oidc");
+    assert.equal(calls.length, 3);
+    assert.equal(calls[0].url.href, "https://gh-sts.tempoxyz.net/status");
+    assert.equal(calls[0].options.method, "POST");
+    assert.equal(calls[0].options.headers.Authorization, undefined);
+    assert.equal(calls[1].url.searchParams.get("audience"), "gh-sts.tempoxyz.net");
+    assert.equal(calls[1].options.headers.Authorization, "Bearer test-request-token");
+    assert.equal(calls[2].url.href, "https://gh-sts.tempoxyz.net/sts/exchange?scope=tempoxyz%2Faegis&identity=download-releases&ttl=15m");
+    assert.equal(calls[2].options.method, "POST");
+    assert.equal(calls[2].options.headers.Authorization, "Bearer test-oidc");
   });
 }
+
+test("main reports a paused GitHub STS as disabled with its reason and requests nothing else", async (t) => {
+  const env = {
+    GITHUB_REPOSITORY_OWNER: "tempoxyz",
+    GITHUB_REPOSITORY: "tempoxyz/example",
+    INPUT_HOST: "gh-sts.tempoxyz.net",
+    INPUT_SCOPE: "tempoxyz/aegis",
+    INPUT_POLICY: "download-releases",
+    INPUT_TTL: "",
+    INPUT_RETRY_TIMEOUT: "",
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "test-request-token",
+    ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token",
+    GITHUB_OUTPUT: "test-output",
+    GITHUB_STATE: "test-state",
+  };
+  const previous = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, env);
+  delete process.env.GITHUB_STEP_SUMMARY;
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  const calls = [];
+  t.mock.method(https, "request", (url, options, callback) => {
+    calls.push({ url: new URL(url), options });
+    const response = new EventEmitter();
+    response.statusCode = 200;
+    response.headers = {};
+    response.setEncoding = () => {};
+    const request = new EventEmitter();
+    request.end = () => {
+      callback(response);
+      response.emit("data", JSON.stringify({ status: "disabled", reason: "Paused" }));
+      response.emit("end");
+    };
+    return request;
+  });
+  const writes = t.mock.method(fs, "appendFileSync", () => {});
+  const logs = t.mock.method(console, "log", () => {});
+
+  await assert.rejects(main(), { message: "GitHub STS at gh-sts.tempoxyz.net is disabled: Paused" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url.href, "https://gh-sts.tempoxyz.net/status");
+  assert.equal(writes.mock.callCount(), 0);
+  assert.deepEqual(logs.mock.calls.map(({ arguments: args }) => args), [
+    ["::warning title=GitHub STS disabled::The GitHub STS is disabled: Paused. No GitHub App token was issued to this job."],
+  ]);
+});
 
 test("post entrypoint executes as CommonJS without a token", () => {
   const result = spawnSync(process.execPath, [path.join(actionDirectory, "post.js")], {
@@ -359,20 +413,23 @@ test("exchange mints a token under the requested policy and reports failures by 
     ttl: "15m",
     getOidc: async () => "assertion-1",
     request: async (url, options, timeoutMs) => {
-      calls.push([String(url), options.headers.Authorization, timeoutMs]);
+      calls.push([String(url), options.headers.Authorization, timeoutMs, options.method]);
+      if (String(url).endsWith("/status")) return { status: 200, body: JSON.stringify({ status: "enabled" }), headers: {} };
       return { status: 200, body: JSON.stringify({ token: "ghs_test_token", expires_at: "2026-09-26T00:15:00Z" }), headers: {} };
     },
     now: () => 0,
   });
   assert.deepEqual(result, { token: "ghs_test_token", expiresAt: "2026-09-26T00:15:00Z" });
-  assert.equal(calls.length, 1);
-  const url = new URL(calls[0][0]);
+  assert.equal(calls.length, 2);
+  // The status probe comes first: one empty POST with no assertion.
+  assert.deepEqual(calls[0], ["https://gh-sts.tempoxyz.net/status", undefined, 10_000, "POST"]);
+  const url = new URL(calls[1][0]);
   assert.equal(url.host, "gh-sts.tempoxyz.net");
   assert.equal(url.searchParams.get("scope"), "tempoxyz/aegis");
   assert.equal(url.searchParams.get("identity"), "download-releases");
   assert.equal(url.searchParams.get("ttl"), "15m");
-  assert.equal(calls[0][1], "Bearer assertion-1");
-  assert.equal(calls[0][2], 10_000);
+  assert.equal(calls[1][1], "Bearer assertion-1");
+  assert.equal(calls[1][2], 10_000);
 
   await assert.rejects(
     exchange({

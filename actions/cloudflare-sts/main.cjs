@@ -3,6 +3,7 @@ const { request } = require("./http.cjs");
 const { validateHost } = require("./host.cjs");
 const { isTransientStatus, retry } = require("./retry.cjs");
 const { parseTtl } = require("./ttl.cjs");
+const { disabledWarning, isServiceDisabled, requireServiceEnabled } = require("./status.cjs");
 
 function input(name) {
   const key = name.toUpperCase();
@@ -56,6 +57,18 @@ async function main() {
     throw new Error("id-token: write permission is required");
   if (!oidcRequestUrl)
     throw new Error("GitHub OIDC request URL is unavailable");
+
+  // A paused STS says so up front. The standalone action has no fallback, so
+  // the annotation says why no token was issued before the step fails, instead
+  // of retrying against the STS's rejections for the rest of the budget.
+  try {
+    await requireServiceEnabled(host);
+  } catch (error) {
+    if (isServiceDisabled(error)) {
+      disabledWarning(error, "No Cloudflare API token was issued to this job.");
+    }
+    throw error;
+  }
 
   const oidcUrl = new URL(oidcRequestUrl);
   oidcUrl.searchParams.set("audience", host);

@@ -90,3 +90,11 @@ before repinning callers; older STS versions use the 60-second `429` fallback.
 Post-job revocation is best-effort. If neither the STS nor GitHub can serve the
 revocation after retries, the post-job step reports a warning instead of failing
 the job; the token expires at its requested TTL.
+
+Before exchanging, the action asks the STS whether it is serving exchanges with
+one empty `POST /status`. A paused STS answers
+`{"status":"disabled","reason":"Paused"}`; the action then emits a warning
+annotation titled "GitHub STS disabled" naming the reason and fails at once,
+since the job needs the token, rather than retrying for the rest of
+`retry-timeout`. Any other answer to the probe, or none, is inconclusive and the
+exchange proceeds.

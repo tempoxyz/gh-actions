@@ -94,6 +94,16 @@ defaults to audit mode whenever it has no policy-store credential or finds no
 stored policy. Only an invalid `step-security-sts-host` or `socket-sts-host`
 input still fails the job, since both are validated before any request is made.
 
+Before each exchange, the action asks the STS whether it is serving exchanges
+with one empty `POST /status`. An STS an operator has paused answers
+`{"status":"disabled","reason":"Paused"}`, and the action degrades at once
+instead of retrying against its rejections for the rest of the budget. The
+warning annotation is then titled "Step Security STS disabled", "Socket STS
+disabled", or "GitHub STS disabled" and carries the reason the service gave, so
+a deliberate pause reads differently from an outage. Any other answer to the
+probe, including none at all, is inconclusive: the exchange proceeds and
+reports its own failures as above.
+
 Aegis setup degrades the same way. Its stages run in order, and if one fails
 after its own retries, nothing after it runs: the Socket STS exchange, the
 GitHub STS exchange for the release token, the GitHub CLI bootstrap, the Aegis

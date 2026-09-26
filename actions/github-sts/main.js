@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const https = require("node:https");
 const { host } = require("./host.js");
 const { isTransientStatus, retry, retryAfterMs } = require("./retry.js");
+const { disabledWarning, isServiceDisabled, requireServiceEnabled } = require("./status.js");
 
 const REQUEST_TIMEOUT_MS = 10 * 1000;
 
@@ -71,12 +72,16 @@ async function exchange({
   request: send = request,
   now = Date.now,
   deadlineMs = now() + retryTimeoutMs(""),
+  checkStatus = requireServiceEnabled,
 }) {
   const bounded = (url, options) => {
     const remaining = deadlineMs - now();
     if (remaining <= 0) throw new Error("GitHub STS retry timeout exceeded.");
     return send(url, options, Math.min(REQUEST_TIMEOUT_MS, remaining));
   };
+  // A paused STS says so up front. That fails here with its reason instead of
+  // retrying against its rejections for the rest of the budget.
+  await checkStatus(stsHost, { request: send, now, deadline: deadlineMs });
   const retryOptions = {
     deadlineMs,
     now,
@@ -144,14 +149,25 @@ async function main() {
   };
 
   const scope = input("scope") || process.env.GITHUB_REPOSITORY;
-  const { token, expiresAt } = await exchange({
-    host: stsHost,
-    scope,
-    policy: input("policy"),
-    ttl: input("ttl"),
-    getOidc,
-    deadlineMs,
-  });
+  let minted;
+  try {
+    minted = await exchange({
+      host: stsHost,
+      scope,
+      policy: input("policy"),
+      ttl: input("ttl"),
+      getOidc,
+      deadlineMs,
+    });
+  } catch (error) {
+    // The standalone action has no fallback: the job needs the token. The
+    // annotation says why none was issued before the step fails.
+    if (isServiceDisabled(error)) {
+      disabledWarning(error, "No GitHub App token was issued to this job.");
+    }
+    throw error;
+  }
+  const { token, expiresAt } = minted;
 
   console.log(`::add-mask::${token}`);
   output("token", token);

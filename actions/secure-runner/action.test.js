@@ -293,6 +293,32 @@ test("main degrades at the failing stage, installs nothing after it, and says wh
   }
 });
 
+test("main reports a paused STS as disabled with its reason instead of as an outage", async () => {
+  const { ServiceDisabledError } = require("../socket-sts/status.cjs");
+  const cases = [
+    ["exchangeSocket", "Socket STS", "socket-sts.tempoxyz.dev", STAGES.socket, ["socket"]],
+    ["exchangeGitHub", "GitHub STS", GITHUB_STS_HOST, STAGES.release, ["socket", "release"]],
+  ];
+  for (const [dep, service, host, reason, expectedCalls] of cases) {
+    const { env, config, directory } = pipelineEnv({ "INPUT_SOCKET-STS-HOST": "socket-sts.tempoxyz.dev" });
+    const { calls, deps } = pipelineDeps({
+      prepareConfig: async () => config,
+      [dep]: (...args) => {
+        calls.push([dep === "exchangeSocket" ? "socket" : "release", ...args]);
+        throw new ServiceDisabledError(service, host, "Paused");
+      },
+    });
+    const { lines } = await captured(() => mainMain({ env, platform: "linux", deps }));
+    assert.deepEqual(calls.map((call) => call[0]), expectedCalls, service);
+    const message =
+      `The ${service} is disabled: Paused. Aegis was not installed: ${reason}. ` +
+      "No package firewall is running for this job, so package downloads are not inspected or blocked.";
+    assert.deepEqual(lines.filter((line) => line.startsWith("::warning")), [`::warning title=${service} disabled::${message}`], service);
+    assert.equal(fs.readFileSync(env.GITHUB_STEP_SUMMARY, "utf8"), `> ⚠️ **${service} disabled:** ${message}\n`, service);
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("main skips the firewall when enforcement is disabled and handles runs without OIDC as the composite did", async () => {
   const disabled = pipelineEnv({ "INPUT_DISABLE-ENFORCEMENT": "true" });
   const { calls, deps } = pipelineDeps();

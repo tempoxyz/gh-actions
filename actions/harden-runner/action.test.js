@@ -455,6 +455,39 @@ test("pre degrades to the inline policy whenever no STS credential can be obtain
   }
 });
 
+test("pre reports a paused Step Security STS as disabled with its reason", async () => {
+  const { ServiceDisabledError } = require("../step-security-sts/status.cjs");
+  const calls = [];
+  const state = stateFile();
+  const summary = summaryFile();
+  const { lines } = await capturedLogs(() =>
+    preMain({
+      env: {
+        ...oidcEnv,
+        GITHUB_STATE: state,
+        GITHUB_STEP_SUMMARY: summary,
+        "INPUT_STEP-SECURITY-STS-HOST": "ss-sts.tempoxyz.dev",
+        "INPUT_EGRESS-POLICY": "block",
+      },
+      run: (...args) => calls.push(args),
+      exchange: async () => {
+        throw new ServiceDisabledError("Step Security STS", "ss-sts.tempoxyz.dev", "Paused");
+      },
+    }),
+  );
+  assert.deepEqual(calls, [["pre", null]]);
+  assert.equal(fs.readFileSync(state, "utf8"), "inline_policy=true\n");
+  const message =
+    "The Step Security STS is disabled: Paused. Harden Runner is running in block mode " +
+    "from the workflow's inline egress policy, without the StepSecurity policy store, so stored egress " +
+    "policies are not applied to this job.";
+  assert.deepEqual(
+    lines.filter((line) => line.startsWith("::")),
+    [`::warning title=Step Security STS disabled::${message}`],
+  );
+  assert.equal(fs.readFileSync(summary, "utf8"), `> ⚠️ **Step Security STS disabled:** ${message}\n`);
+});
+
 test("the degraded annotation names the caller's inline egress policy", async () => {
   const state = stateFile();
   const { lines } = await capturedLogs(() =>
@@ -658,6 +691,15 @@ test("every pre-job warning is mirrored into the step summary", async () => {
         rawHost: "ss-sts.tempoxyz.net",
       }),
       run: startFailure,
+    },
+    {
+      name: "STS disabled",
+      env: { ...oidcEnv },
+      exchange: async () => {
+        const { ServiceDisabledError } = require("../step-security-sts/status.cjs");
+        throw new ServiceDisabledError("Step Security STS", "ss-sts.tempoxyz.net", "Paused");
+      },
+      run: () => {},
     },
   ];
   for (const scenario of scenarios) {
