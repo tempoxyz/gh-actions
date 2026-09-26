@@ -278,7 +278,7 @@ test("main reports a paused Cloudflare STS as disabled with its reason and reque
   assert.equal(calls[0].url.href, "https://cf-sts.tempoxyz.net/status");
   assert.deepEqual(writes, []);
   assert.deepEqual(logs, [
-    "::warning title=Cloudflare STS disabled::The Cloudflare STS at cf-sts.tempoxyz.net is disabled: Paused. No Cloudflare API token was issued to this job.",
+    "::warning title=Cloudflare STS disabled::The Cloudflare STS is disabled: Paused. No Cloudflare API token was issued to this job.",
   ]);
 });
 

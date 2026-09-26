@@ -345,7 +345,7 @@ test("main reports a disabled STS as a warning, mirrors it to the step summary, 
     await assert.rejects(stsMain({ env, exchange: async () => { throw disabled; } }), disabled);
   });
   const message =
-    `The Step Security STS at ${stsHost} is disabled: Paused. No policy-store credential was issued to this job.`;
+    "The Step Security STS is disabled: Paused. No policy-store credential was issued to this job.";
   assert.deepEqual(lines, [`::warning title=Step Security STS disabled::${message}`]);
   assert.equal(fs.readFileSync(summary, "utf8"), `> ⚠️ **Step Security STS disabled:** ${message}\n`);
 

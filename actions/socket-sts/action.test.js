@@ -702,7 +702,7 @@ test("main reports a disabled Socket STS as a warning and still fails", async ()
       await assert.rejects(socketMain({ exchange: async () => { throw disabled; } }), disabled);
     });
     assert.deepEqual(lines, [
-      "::warning title=Socket STS disabled::The Socket STS at socket-sts.tempoxyz.net is disabled: Paused. No Socket API token was issued to this job.",
+      "::warning title=Socket STS disabled::The Socket STS is disabled: Paused. No Socket API token was issued to this job.",
     ]);
     const { lines: quiet } = await captureLog(async () => {
       await assert.rejects(socketMain({ exchange: async () => { throw new Error("Socket STS exchange failed (HTTP 503)"); } }), /HTTP 503/);

@@ -478,7 +478,7 @@ test("pre reports a paused Step Security STS as disabled with its reason", async
   assert.deepEqual(calls, [["pre", null]]);
   assert.equal(fs.readFileSync(state, "utf8"), "inline_policy=true\n");
   const message =
-    "The Step Security STS at ss-sts.tempoxyz.dev is disabled: Paused. Harden Runner is running in block mode " +
+    "The Step Security STS is disabled: Paused. Harden Runner is running in block mode " +
     "from the workflow's inline egress policy, without the StepSecurity policy store, so stored egress " +
     "policies are not applied to this job.";
   assert.deepEqual(

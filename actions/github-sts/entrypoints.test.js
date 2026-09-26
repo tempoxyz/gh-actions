@@ -295,7 +295,7 @@ test("main reports a paused GitHub STS as disabled with its reason and requests 
   assert.equal(calls[0].url.href, "https://gh-sts.tempoxyz.net/status");
   assert.equal(writes.mock.callCount(), 0);
   assert.deepEqual(logs.mock.calls.map(({ arguments: args }) => args), [
-    ["::warning title=GitHub STS disabled::The GitHub STS at gh-sts.tempoxyz.net is disabled: Paused. No GitHub App token was issued to this job."],
+    ["::warning title=GitHub STS disabled::The GitHub STS is disabled: Paused. No GitHub App token was issued to this job."],
   ]);
 });
 

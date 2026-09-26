@@ -311,7 +311,7 @@ test("main reports a paused STS as disabled with its reason instead of as an out
     const { lines } = await captured(() => mainMain({ env, platform: "linux", deps }));
     assert.deepEqual(calls.map((call) => call[0]), expectedCalls, service);
     const message =
-      `The ${service} at ${host} is disabled: Paused. Aegis was not installed: ${reason}. ` +
+      `The ${service} is disabled: Paused. Aegis was not installed: ${reason}. ` +
       "No package firewall is running for this job, so package downloads are not inspected or blocked.";
     assert.deepEqual(lines.filter((line) => line.startsWith("::warning")), [`::warning title=${service} disabled::${message}`], service);
     assert.equal(fs.readFileSync(env.GITHUB_STEP_SUMMARY, "utf8"), `> ⚠️ **${service} disabled:** ${message}\n`, service);

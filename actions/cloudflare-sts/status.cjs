@@ -98,7 +98,7 @@ async function requireServiceEnabled(host, options = {}) {
 // The annotation text for a disabled STS: what is disabled, why, and what
 // that means for this job.
 function disabledMessage(error, consequence) {
-  return `The ${error.service} at ${error.host} is disabled: ${error.reason}. ${consequence}`;
+  return `The ${error.service} is disabled: ${error.reason}. ${consequence}`;
 }
 
 function escapeAnnotation(value) {
