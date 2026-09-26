@@ -208,13 +208,12 @@ jobs:
               failures=$((failures + 1))
               continue
             fi
-            # Annotations can trail the job's completion briefly. Both wordings are
-            # accepted until the pin refresh moves the wrapper to the node action.
+            # Annotations can trail the job's completion briefly.
             for attempt in 1 2 3 4 5 6; do
               annotations=$(gh api --paginate "$check_run/annotations" \
                 --jq '.[] | "\(.annotation_level)\t\(.title // "")\t\(.message)"')
               if printf '%s\n' "$annotations" | grep -q $'^warning\tStepSecurity policy store unavailable\t' \
-                && printf '%s\n' "$annotations" | grep -qE $'^warning\tPackage-policy enforcement disabled\t(Aegis|Socket Firewall) was not installed: the Socket STS did not issue a Socket API token'; then
+                && printf '%s\n' "$annotations" | grep -qE $'^warning\tPackage-policy enforcement disabled\tAegis was not installed: the Socket STS did not issue a Socket API token'; then
                 echo "$name: both degrade annotations present"
                 break
               fi
