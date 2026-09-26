@@ -33,7 +33,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -135,7 +135,7 @@ jobs:
       # Pinned to the first release whose nested Harden Runner and Socket
       # Firewall pins carry the degrade paths (#279); earlier wrappers fail here.
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           step-security-sts-host: ss-sts.invalid
           socket-sts-host: socket-sts.invalid
@@ -181,7 +181,7 @@ jobs:
       checks: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
 
       - name: Assert both degrade annotations on every degraded job
         env:
@@ -241,7 +241,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -264,7 +264,7 @@ jobs:
             echo "$RUNNER_TEMP/old-gh" >> "$GITHUB_PATH"
           fi
       - name: Install attested Foundry with bootstrapped GitHub CLI
-        uses: tempoxyz/gh-actions/actions/setup-foundry@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-foundry@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           version: nightly
           cache: "false"
@@ -287,7 +287,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -296,11 +296,11 @@ jobs:
       # Invoke unconditionally, as release workflows do in cross-platform matrices.
       # The action itself must skip the Linux-only installer on these runners.
       - name: Smoke test setup-mold on non-Linux runners
-        uses: tempoxyz/gh-actions/actions/setup-mold@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-mold@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
 
   rust-lint-disabled:
     name: Rust lint with all checks disabled
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
     permissions:
       id-token: write
       contents: read
@@ -312,7 +312,7 @@ jobs:
 
   rust-fmt-wrapper:
     name: Rust fmt wrapper
-    uses: tempoxyz/gh-actions/.github/workflows/rust-fmt.yml@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+    uses: tempoxyz/gh-actions/.github/workflows/rust-fmt.yml@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
     permissions:
       id-token: write
       contents: read
@@ -321,7 +321,7 @@ jobs:
 
   rust-clippy-wrapper:
     name: Rust clippy wrapper
-    uses: tempoxyz/gh-actions/.github/workflows/rust-clippy.yml@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+    uses: tempoxyz/gh-actions/.github/workflows/rust-clippy.yml@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
     permissions:
       id-token: write
       contents: read
@@ -337,7 +337,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -355,7 +355,7 @@ jobs:
           reusable=.github/workflows/scan-github-actions.yml
           composite=actions/scan-github-actions/action.yml
           status=0
-          tool='tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@9714ff353c4199ff9f498205ef7b3319869dd51d'
+          tool='tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@ee2960a6cc25d99bda45614135bfe1197d879bac'
           r=$(grep -oF "$tool" "$reusable" || true)
           c=$(grep -oF "$tool" "$composite" || true)
           if [ -z "$r" ] || [ -z "$c" ]; then
@@ -451,7 +451,7 @@ jobs:
       - name: Stage clean fixture
         run: cp testdata/fixtures/clean.yml .github/workflows/zz-clean-fixture.yml
       - name: Run composite on clean fixture (expected to pass)
-        uses: tempoxyz/gh-actions/actions/scan-github-actions@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/scan-github-actions@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           paths: ".github actions"
 
@@ -463,7 +463,7 @@ jobs:
       - name: Run composite on broken fixture (expected to fail)
         id: scan
         continue-on-error: true
-        uses: tempoxyz/gh-actions/actions/scan-github-actions@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/scan-github-actions@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           paths: ".github actions"
       - name: Assert the scan failed
@@ -506,7 +506,7 @@ jobs:
           echo "include=^${ACTION_NAME}$" >> "$GITHUB_OUTPUT"
           echo "policy=$policy" >> "$GITHUB_OUTPUT"
       - name: Install pinact
-        uses: tempoxyz/gh-actions/actions/setup-pinact@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-pinact@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
       - name: Verify timestamp tag comment
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -566,38 +566,38 @@ jobs:
       # a rotated Argo key, a changed Foundry release layout, or a broken attestation lookup
       # should fail here, not in a consumer.
       - name: Smoke test setup-argo-cli (cosign key signature)
-        uses: tempoxyz/gh-actions/actions/setup-argo-cli@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-argo-cli@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
       - name: Smoke test setup-foundry stable (SLSA attestation)
         id: foundry-stable
-        uses: tempoxyz/gh-actions/actions/setup-foundry@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-foundry@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           cache: "false"
       - name: Smoke test setup-foundry nightly (SLSA attestation, nightly-<commit> resolution)
         id: foundry-nightly
-        uses: tempoxyz/gh-actions/actions/setup-foundry@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-foundry@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           version: nightly
           cache: "false"
       - name: Smoke test setup-terraform (HashiCorp GPG signature)
-        uses: tempoxyz/gh-actions/actions/setup-terraform@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-terraform@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
       - name: Smoke test setup-helm default (maintainer GPG signature)
-        uses: tempoxyz/gh-actions/actions/setup-helm@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-helm@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
       - name: Smoke test setup-helm v4.1.1 (a release signed by a different maintainer key)
-        uses: tempoxyz/gh-actions/actions/setup-helm@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-helm@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           version: v4.1.1
       - name: Smoke test setup-mold (digest-pinned install)
-        uses: tempoxyz/gh-actions/actions/setup-mold@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/setup-mold@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           make-default: "false"
       # Scoped to the new first-party actions: older files in actions/ contain test fixtures and
       # identifiers that typos flags, and adopting typos repo-wide is a separate decision.
       - name: Smoke test actionlint (digest-pinned image) on this repository's workflows
-        uses: tempoxyz/gh-actions/actions/actionlint@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/actionlint@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
       - name: Shellcheck cargo-cooldown script
         run: shellcheck actions/cargo-cooldown/check.sh
       - name: Smoke test typos (release attestation) on the first-party action sources
-        uses: tempoxyz/gh-actions/actions/typos@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/typos@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           files: actions/check-needs actions/pr-comment actions/typos actions/gh-release actions/changed-paths actions/cargo-cooldown actions/cargo-install actions/slack-notify actions/setup-mold
       - name: Create cargo-cooldown fixture
@@ -623,7 +623,7 @@ jobs:
           COOLDOWN_NOW: invalid
           COOLDOWN_SKIP_REGISTRIES: "["
           COOLDOWN_TTL_SECONDS: invalid
-        uses: tempoxyz/gh-actions/actions/cargo-cooldown@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/cargo-cooldown@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           cooldown-days: 7
           strict-project-config: true
@@ -652,7 +652,7 @@ jobs:
         continue-on-error: true
         env:
           CARGO_HOME: ${{ runner.temp }}/cargo-cooldown-user-home
-        uses: tempoxyz/gh-actions/actions/cargo-cooldown@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/cargo-cooldown@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
       - name: Assert untrusted user policy was rejected
@@ -661,7 +661,7 @@ jobs:
           OUTCOME: ${{ steps.cargo-cooldown-user-policy.outcome }}
         run: test "$OUTCOME" = failure
       - name: Smoke test cargo-cooldown check mode
-        uses: tempoxyz/gh-actions/actions/cargo-cooldown@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/cargo-cooldown@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           cooldown-days: 7
           mode: check
@@ -673,7 +673,7 @@ jobs:
       - name: Reject dirty strict cargo-cooldown policy
         id: cargo-cooldown-dirty-policy
         continue-on-error: true
-        uses: tempoxyz/gh-actions/actions/cargo-cooldown@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/cargo-cooldown@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           strict-project-config: true
           working-directory: ${{ runner.temp }}/cargo-cooldown-fixture
@@ -701,7 +701,7 @@ jobs:
       - name: Reject a fresh dependency in a non-default member
         id: cargo-cooldown-nondefault
         continue-on-error: true
-        uses: tempoxyz/gh-actions/actions/cargo-cooldown@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/cargo-cooldown@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           cooldown-days: 36500
           working-directory: ${{ runner.temp }}/cargo-cooldown-nondefault-fixture
@@ -727,7 +727,7 @@ jobs:
       - name: Reject and restore a safe dependency downgrade
         id: cargo-cooldown-downgrade
         continue-on-error: true
-        uses: tempoxyz/gh-actions/actions/cargo-cooldown@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/cargo-cooldown@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           cooldown-days: 7
           working-directory: ${{ runner.temp }}/cargo-cooldown-downgrade-fixture
@@ -742,12 +742,12 @@ jobs:
           test "$(cat "$FIXTURE/Cargo.lock.sha256")" = "$(sha256sum "$FIXTURE/Cargo.lock" | cut -d ' ' -f 1)"
           git -C "$FIXTURE" diff --exit-code HEAD -- Cargo.lock
       - name: Smoke test cargo-install (cached binary)
-        uses: tempoxyz/gh-actions/actions/cargo-install@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/cargo-install@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           tool: cargo-hack
       - name: Smoke test changed-paths (compare API)
         id: changed
-        uses: tempoxyz/gh-actions/actions/changed-paths@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/changed-paths@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           filters: |
             workflows:
@@ -756,14 +756,14 @@ jobs:
               - 'actions/**'
               - '!actions/**/*.md'
       - name: "Smoke test check-needs (fixture: passes with an allowed skip)"
-        uses: tempoxyz/gh-actions/actions/check-needs@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/check-needs@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           jobs: '{"build":{"result":"success"},"lint":{"result":"skipped"}}'
           allowed-skips: lint
       - name: "Smoke test check-needs (fixture: must fail on a failure)"
         id: check-needs-fail
         continue-on-error: true
-        uses: tempoxyz/gh-actions/actions/check-needs@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/check-needs@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           jobs: '{"build":{"result":"failure"}}'
       - name: Assert composite smoke results
@@ -794,14 +794,14 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install Rust
-        uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
       - name: Create Windows cargo-cooldown fixture and user policy
         shell: pwsh
         run: |
@@ -828,7 +828,7 @@ jobs:
         continue-on-error: true
         env:
           CARGO_HOME: ${{ runner.temp }}\cargo-cooldown-windows-home
-        uses: tempoxyz/gh-actions/actions/cargo-cooldown@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
+        uses: tempoxyz/gh-actions/actions/cargo-cooldown@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
         with:
           working-directory: ${{ runner.temp }}\cargo-cooldown-windows-fixture
       - name: Assert native Windows user policy was rejected
