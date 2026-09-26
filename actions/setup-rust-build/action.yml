@@ -27,7 +27,7 @@ runs:
   using: "composite"
   steps:
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+      uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@9714ff353c4199ff9f498205ef7b3319869dd51d # 2026-09-25T18-10-33Z-9714ff35
       with:
         toolchain: ${{ inputs.toolchain }}
         components: ${{ inputs.components }}
