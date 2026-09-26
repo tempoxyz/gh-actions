@@ -8,7 +8,7 @@ after retries, the post-job handler reports a warning instead of failing the
 job, since the lease expiration still bounds the token.
 
 Socket STS is a `node24` action, so its main and post-job handlers use the
-runner-bundled executable that it exposes as `node-path` for Socket Firewall.
+runner-bundled executable that it exposes as `node-path` for Aegis.
 They do not rely on a system `node` installation or on `node` being available
 on `PATH`; this is the same self-hosted-runner-safe runtime model introduced in
 [#199](https://github.com/tempoxyz/gh-actions/pull/199).

@@ -55,12 +55,18 @@ async function startProvider(token, oidc = runnerOIDCEnvironment()) {
   return { child, url };
 }
 
-async function main() {
-  const { url } = await startProvider(process.env.INPUT_SOCKET_TOKEN || "");
-  const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), "aegis-config-"));
+// Starts the detached token provider for `token` and writes the Aegis
+// installation configuration that points at it. Returns the configuration path.
+async function prepareConfiguration(token, { env = process.env, oidc = runnerOIDCEnvironment(env) } = {}) {
+  const { url } = await startProvider(token, oidc);
+  const directory = fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), "aegis-config-"));
   const config = path.join(directory, "install.json");
   fs.writeFileSync(config, JSON.stringify({ managers: MANAGERS, test_token_url: url }), { mode: 0o600, flag: "wx" });
-  appendOutput("path", config);
+  return config;
+}
+
+async function main() {
+  appendOutput("path", await prepareConfiguration(process.env.INPUT_SOCKET_TOKEN || ""));
 }
 
 if (require.main === module) {
@@ -70,4 +76,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { MANAGERS, childEnvironment, startProvider };
+module.exports = { MANAGERS, childEnvironment, prepareConfiguration, startProvider };

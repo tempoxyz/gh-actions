@@ -5,7 +5,7 @@ seven-day GitHub Actions artifact. Invoke this action after Aegis has been
 installed. Upload failures are warnings, so they do not hide the original job
 result.
 
-This is the lifecycle companion for `socket-firewall`; it does not mint or
+This is the lifecycle companion for `aegis`; it does not mint or
 revoke Socket API tokens.
 
 On dedicated Linux CI runners, pass `linux-installation-config` with the new

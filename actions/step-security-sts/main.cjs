@@ -68,29 +68,14 @@ function parseJson(body) {
   return {};
 }
 
-// Every failure surfaces as an Error whose message names the leg that failed
-// and either the HTTP status or the transport cause, so callers that degrade
-// instead of failing can report exactly why no credential was obtained.
-async function exchangeToken(
-  rawHost,
-  {
-    env = process.env,
-    request = httpRequest,
-    sleep,
-    now = Date.now,
-    random,
-    budgetMs = RETRY_BUDGET_MS,
-  } = {},
-) {
-  const deadline = now() + budgetMs;
-  const host = rawHost === undefined ? required("INPUT_HOST", env) : rawHost;
-  const sts = endpoint(host);
+// Fetches a GitHub OIDC assertion for `audience` from the runner's issuer.
+async function githubAssertion(audience, { env, request, sleep, now, random, deadline }) {
   const oidcRequestToken = required("ACTIONS_ID_TOKEN_REQUEST_TOKEN", env);
   const rawOidcUrl = required("ACTIONS_ID_TOKEN_REQUEST_URL", env);
   const oidcUrl = new URL(rawOidcUrl);
   if (oidcUrl.protocol !== "https:")
     throw new Error("GitHub OIDC URL is invalid");
-  oidcUrl.searchParams.set("audience", sts.audience);
+  oidcUrl.searchParams.set("audience", audience);
 
   let oidcResponse;
   try {
@@ -110,7 +95,32 @@ async function exchangeToken(
   if (oidcResponse.status < 200 || oidcResponse.status >= 300) {
     throw new Error(`GitHub OIDC request failed (HTTP ${oidcResponse.status})`);
   }
-  const oidc = parseJson(oidcResponse.body).value;
+  return parseJson(oidcResponse.body).value;
+}
+
+// Every failure surfaces as an Error whose message names the leg that failed
+// and either the HTTP status or the transport cause, so callers that degrade
+// instead of failing can report exactly why no credential was obtained.
+// `getOidc(audience)` lets a caller that already holds an OIDC client, such as
+// Secure Runner, supply the assertion instead of this action fetching its own.
+async function exchangeToken(
+  rawHost,
+  {
+    env = process.env,
+    request = httpRequest,
+    sleep,
+    now = Date.now,
+    random,
+    budgetMs = RETRY_BUDGET_MS,
+    getOidc,
+  } = {},
+) {
+  const deadline = now() + budgetMs;
+  const host = rawHost === undefined ? required("INPUT_HOST", env) : rawHost;
+  const sts = endpoint(host);
+  const oidc = getOidc
+    ? await getOidc(sts.audience)
+    : await githubAssertion(sts.audience, { env, request, sleep, now, random, deadline });
   if (typeof oidc !== "string" || !/^\S+$/.test(oidc)) {
     throw new Error("GitHub OIDC response is invalid");
   }

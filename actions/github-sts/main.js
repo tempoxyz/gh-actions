@@ -59,6 +59,54 @@ function exchangeRequestOptions(oidc) {
   };
 }
 
+// Exchanges a GitHub OIDC assertion from `getOidc` for a GitHub App token at
+// `host`, under the trust policy `policy` for `scope`. `getOidc` is called
+// again after a confirmed rate limit, so it must return a fresh assertion.
+async function exchange({
+  host: stsHost,
+  scope,
+  policy,
+  ttl = "",
+  getOidc,
+  request: send = request,
+  now = Date.now,
+  deadlineMs = now() + retryTimeoutMs(""),
+}) {
+  const bounded = (url, options) => {
+    const remaining = deadlineMs - now();
+    if (remaining <= 0) throw new Error("GitHub STS retry timeout exceeded.");
+    return send(url, options, Math.min(REQUEST_TIMEOUT_MS, remaining));
+  };
+  const retryOptions = {
+    deadlineMs,
+    now,
+    isTransient: (response) => isTransientStatus(response.status),
+    getDelayMs: retryAfterMs,
+  };
+  // TTL parsing and bounds enforcement are deliberately server-side so a
+  // modified or older action cannot bypass policy constraints.
+  const exchangeUrl = buildExchangeUrl(stsHost, scope, policy, ttl);
+  const exchangeResponse = await exchangeWithRetry(exchangeUrl, getOidc, bounded, retryOptions);
+
+  let exchangeBody;
+  try {
+    exchangeBody = JSON.parse(exchangeResponse.body);
+  } catch {
+    exchangeBody = {};
+  }
+  if (exchangeBody === null || typeof exchangeBody !== "object") exchangeBody = {};
+  if (exchangeResponse.status < 200 || exchangeResponse.status >= 300) {
+    const message = typeof exchangeBody.message === "string" ? `: ${exchangeBody.message.replace(/[\r\n]+/g, " ").slice(0, 500)}` : "";
+    throw new Error(`GitHub STS exchange failed (HTTP ${exchangeResponse.status})${message}`);
+  }
+  const token = exchangeBody.token;
+  const expiresAt = exchangeBody.expires_at;
+  if (typeof token !== "string" || typeof expiresAt !== "string") {
+    throw new Error("GitHub STS exchange response did not contain token and expires_at");
+  }
+  return { token, expiresAt };
+}
+
 async function main() {
   const stsHost = host(input("host") || "gh-sts.tempoxyz.net");
 
@@ -96,27 +144,14 @@ async function main() {
   };
 
   const scope = input("scope") || process.env.GITHUB_REPOSITORY;
-  // TTL parsing and bounds enforcement are deliberately server-side so a
-  // modified or older action cannot bypass policy constraints.
-  const exchangeUrl = buildExchangeUrl(stsHost, scope, input("policy"), input("ttl"));
-  const exchangeResponse = await exchangeWithRetry(exchangeUrl, getOidc, send, retryOptions);
-
-  let exchangeBody;
-  try {
-    exchangeBody = JSON.parse(exchangeResponse.body);
-  } catch {
-    exchangeBody = {};
-  }
-  if (exchangeResponse.status < 200 || exchangeResponse.status >= 300) {
-    const message = typeof exchangeBody.message === "string" ? `: ${exchangeBody.message.replace(/[\r\n]+/g, " ").slice(0, 500)}` : "";
-    throw new Error(`GitHub STS exchange failed (HTTP ${exchangeResponse.status})${message}`);
-  }
-
-  const token = exchangeBody.token;
-  const expiresAt = exchangeBody.expires_at;
-  if (typeof token !== "string" || typeof expiresAt !== "string") {
-    throw new Error("GitHub STS exchange response did not contain token and expires_at");
-  }
+  const { token, expiresAt } = await exchange({
+    host: stsHost,
+    scope,
+    policy: input("policy"),
+    ttl: input("ttl"),
+    getOidc,
+    deadlineMs,
+  });
 
   console.log(`::add-mask::${token}`);
   output("token", token);
@@ -156,4 +191,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { REQUEST_TIMEOUT_MS, buildExchangeUrl, exchangeRequestOptions, exchangeWithRetry, main, request, retryTimeoutMs };
+module.exports = { REQUEST_TIMEOUT_MS, buildExchangeUrl, exchange, exchangeRequestOptions, exchangeWithRetry, main, request, retryTimeoutMs };

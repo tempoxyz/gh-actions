@@ -1,4 +1,4 @@
-name: "Socket Firewall"
+name: "Aegis"
 description: >-
   Install Aegis with a short-lived Socket API token when enforcement is
   available, skipping installation with a warning when any setup stage fails
@@ -238,10 +238,10 @@ runs:
           if [ "$outcome" != skipped ]; then install=$outcome; fi
         done
         if [ "$install" = success ]; then
-          echo "Socket Firewall installed Aegis at $AEGIS_BINARY; package downloads are inspected and enforced."
+          echo "Aegis installed at $AEGIS_BINARY; package downloads are inspected and enforced."
           exit 0
         fi
-        reason="Socket Firewall setup did not complete"
+        reason="Aegis setup did not complete"
         for stage in \
           "$SOCKET_TOKEN_OUTCOME|the Socket STS did not issue a Socket API token" \
           "$RELEASE_TOKEN_OUTCOME|the GitHub STS did not issue an Aegis release download token" \
@@ -255,7 +255,7 @@ runs:
             break
           fi
         done
-        message="Socket Firewall was not installed: ${reason}. See the failed step's log for details. No package firewall is running for this job, so package downloads are not inspected or blocked."
+        message="Aegis was not installed: ${reason}. See the failed step's log for details. No package firewall is running for this job, so package downloads are not inspected or blocked."
         echo "::warning title=Package-policy enforcement disabled::$message"
         # Mirror the annotation into the step summary so the degraded state is
         # visible on the job's summary page too.

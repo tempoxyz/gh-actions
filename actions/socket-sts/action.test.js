@@ -583,3 +583,45 @@ test("post reports a failed token revocation as a warning and still uploads the 
     /stored Socket token is invalid/,
   );
 });
+
+const { exchange: socketExchange } = require("./main.cjs");
+
+test("exchange returns the minted token and reports failures by status", async () => {
+  const calls = [];
+  const assertions = [];
+  const result = await socketExchange({
+    endpoint: "socket-sts.tempoxyz.net",
+    getAssertion: async () => {
+      assertions.push(`assertion-${assertions.length + 1}`);
+      return assertions.at(-1);
+    },
+    request: async (url, options) => {
+      calls.push([url, options.method, options.headers.authorization, options.timeoutMs]);
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ token: "sktsec_test_short_lived_token_api", expires_at: "2026-09-26T00:00:00Z" }),
+      };
+    },
+    now: () => 0,
+    sleep: async () => {},
+  });
+  assert.deepEqual(result, { token: "sktsec_test_short_lived_token_api", expiresAt: "2026-09-26T00:00:00Z" });
+  assert.deepEqual(calls, [["https://socket-sts.tempoxyz.net/sts/exchange", "POST", "Bearer assertion-1", 10_000]]);
+
+  for (const [response, message] of [
+    [{ status: 403, headers: {}, body: JSON.stringify({ message: "repository not\nallowed" }) }, "Socket STS exchange failed (HTTP 403): repository not allowed"],
+    [{ status: 200, headers: {}, body: "not json" }, "Socket STS response is invalid"],
+  ]) {
+    await assert.rejects(
+      socketExchange({
+        endpoint: "socket-sts.tempoxyz.net",
+        getAssertion: async () => "assertion",
+        request: async () => response,
+        now: () => 0,
+        sleep: async () => {},
+      }),
+      { message },
+    );
+  }
+});
