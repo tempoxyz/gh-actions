@@ -83,16 +83,15 @@ jobs:
           BLOCK_OUTCOME: ${{ steps.blocked-package.outcome }}
         run: |
           set -euo pipefail
+          test "$BLOCK_OUTCOME" = failure
           copy="$RUNNER_TEMP/aegis-service.jsonl"
           if [ "$RUNNER_OS" = Linux ]; then
             sudo cp "$AEGIS_REPORT" "$copy"
             sudo chown "$(id -u):$(id -g)" "$copy"
-            AEGIS_VERSION=$(dpkg-query -W -f='${Version}' aegis)
           else
             AEGIS_REPORT="$AEGIS_REPORT" AEGIS_LOG_COPY="$copy" node -e 'require("fs").copyFileSync(process.env.AEGIS_REPORT, process.env.AEGIS_LOG_COPY)'
-            AEGIS_VERSION=
           fi
-          AEGIS_VERSION="$AEGIS_VERSION" node actions/aegis/verify-log.cjs "$copy"
+          node actions/aegis/verify-log.cjs "$copy"
 
       - name: Record the installed Linux credential provider
         if: runner.os == 'Linux'

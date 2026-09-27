@@ -11,41 +11,6 @@ const { MANAGERS, childEnvironment, startProvider } = require("./token-provider.
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
-test("audit verifier accepts only the known v0.14.0 Linux fail-open and still requires a real block otherwise", (t) => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-verify-test-"));
-  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
-  const log = path.join(temp, "service.jsonl");
-  const allowed = "pkg:npm/isnumber@1.0.0";
-  const blocked = "pkg:npm/lodahs@0.0.1-security";
-  const run = (events, env) => {
-    fs.writeFileSync(log, events.map((event) => JSON.stringify(event)).join("\n"));
-    return spawnSync(process.execPath, [path.join(__dirname, "verify-log.cjs"), log], {
-      encoding: "utf8",
-      env: { ...process.env, ...env },
-    });
-  };
-  const offline = [allowed, blocked].flatMap((purl) => [
-    { msg: "socket lookup complete", purl, action: "warn", attempts: 0 },
-    { msg: "package decision", purl, action: "warn", reason: "Not connected to internet", lookup: { result: "warn" } },
-  ]);
-  const linux = { RUNNER_OS: "Linux", AEGIS_VERSION: "0.14.0", BLOCK_OUTCOME: "success" };
-  const accepted = run(offline, linux);
-  assert.equal(accepted.status, 0, accepted.stderr);
-  assert.match(accepted.stdout, /::warning title=Aegis v0\.14\.0 Linux fail-open::/);
-  assert.notEqual(run(offline, { ...linux, AEGIS_VERSION: "0.14.1" }).status, 0);
-  assert.notEqual(run(offline, { ...linux, RUNNER_OS: "macOS" }).status, 0);
-  assert.notEqual(run(offline.slice(1), linux).status, 0);
-  assert.notEqual(run([
-    { msg: "package decision", purl: allowed, action: "allow" },
-    { msg: "package decision", purl: blocked, action: "warn", reason: "Not connected to internet" },
-  ], { ...linux, BLOCK_OUTCOME: "failure" }).status, 0);
-  const enforced = run([
-    { msg: "package decision", purl: allowed, action: "allow" },
-    { msg: "package decision", purl: blocked, action: "block" },
-  ], { ...linux, BLOCK_OUTCOME: "failure", AEGIS_VERSION: "0.14.1" });
-  assert.equal(enforced.status, 0, enforced.stderr);
-});
-
 test("uses both STS exchanges and the aegis download policy", () => {
   assert.match(manifest, /tempoxyz\/gh-actions\/actions\/socket-sts@[0-9a-f]{40}/);
   assert.match(manifest, /upload-aegis-report: "false"/);
