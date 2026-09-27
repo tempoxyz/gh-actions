@@ -151,6 +151,7 @@ runs:
           done
         }
         retry sudo apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 install -y "$AEGIS_PACKAGE"
+        sudo bash "$GITHUB_ACTION_PATH/allow-netlink.sh"
         retry /usr/bin/aegis install --config "$AEGIS_CONFIG"
         echo "path=/usr/bin/aegis" >> "$GITHUB_OUTPUT"
         echo "report=/var/log/aegis/service.jsonl" >> "$GITHUB_OUTPUT"

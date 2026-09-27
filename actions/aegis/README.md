@@ -3,6 +3,10 @@
 [Secure Runner](../secure-runner) runs this same pipeline in-process as a node
 action; this composite remains for callers that want Aegis alone.
 
+On Linux, installation temporarily corrects the v0.14.0 service unit's address
+family list so Aegis can use netlink to detect an active network interface.
+Newer releases with the upstream fix need no correction.
+
 Install Aegis with a short-lived Socket API token derived from the calling
 job's GitHub OIDC identity. The Socket STS associates the token with the
 caller's repository and records its workflow, run, attempt, and initiating

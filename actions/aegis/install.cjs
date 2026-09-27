@@ -68,6 +68,7 @@ async function installAegis({
         "-o", "Acquire::https::Timeout=10",
         "install", "-y", packagePath,
       ]));
+    runCommand(spawn, "sudo", ["bash", path.join(__dirname, "allow-netlink.sh")]);
     await retry("aegis install", () => runCommand(spawn, layout.binary, ["install", "--config", configPath]));
     return layout;
   }
