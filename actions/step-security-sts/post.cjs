@@ -1,4 +1,5 @@
 const { endpoint, request: httpRequest, retry } = require("./http.cjs");
+const { warning } = require("../harden-runner/annotations.cjs");
 
 function buildRevokeRequest(token, leaseId, rawHost) {
   const body = JSON.stringify({ token, lease_id: leaseId });
@@ -14,18 +15,6 @@ function buildRevokeRequest(token, leaseId, rawHost) {
     },
     body,
   };
-}
-
-function escapeAnnotation(value) {
-  return value
-    .replaceAll("%", "%25")
-    .replaceAll("\r", "%0D")
-    .replaceAll("\n", "%0A");
-}
-
-function warning(title, message) {
-  const property = escapeAnnotation(title).replaceAll(":", "%3A").replaceAll(",", "%2C");
-  console.log(`::warning title=${property}::${escapeAnnotation(message)}`);
 }
 
 // Revocation is best-effort. The STS lease expires on its own, so a revocation
@@ -56,17 +45,19 @@ async function main({ env = process.env, request = httpRequest, sleep } = {}) {
     );
   } catch (error) {
     warning(
-      "Step Security STS lease revocation failed",
       `Could not reach the Step Security STS to close the lease: ${error.message}. ` +
         "The lease expires on its own.",
+      "Step Security STS lease revocation failed",
+      env,
     );
     return;
   }
   if (response.status !== 204) {
     warning(
-      "Step Security STS lease revocation failed",
       `The Step Security STS answered HTTP ${response.status} when closing the lease. ` +
         "The lease expires on its own.",
+      "Step Security STS lease revocation failed",
+      env,
     );
     return;
   }

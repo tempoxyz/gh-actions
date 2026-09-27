@@ -15,7 +15,7 @@ function stepSummary(env, markdown) {
   fs.appendFileSync(file, `${markdown}\n`);
 }
 
-// Emits a warning annotation and mirrors it into the step summary, so a job
+// Emits a warning annotation (or plain log when opted out) and a step summary, so a job
 // that ran with reduced protection says so on its summary page as well as in
 // the annotations list. Callers pass the environment they were given so tests
 // and entrypoints alike control where the summary goes.
@@ -24,7 +24,12 @@ function warning(message, title, env = {}) {
     title === undefined
       ? ""
       : ` title=${escapeAnnotation(title).replaceAll(":", "%3A").replaceAll(",", "%2C")}`;
-  console.log(`::warning${properties}::${escapeAnnotation(message)}`);
+  if (env["INPUT_WARNING-ANNOTATIONS"] === "false") {
+    // Keep untrusted newlines from introducing workflow commands in plain logs.
+    console.log(`WARNING: ${escapeAnnotation(title ?? "Harden Runner")}: ${escapeAnnotation(message)}`);
+  } else {
+    console.log(`::warning${properties}::${escapeAnnotation(message)}`);
+  }
   stepSummary(
     env,
     `> ⚠️ **${title ?? "Harden Runner"}:** ${message.replace(/\s*\r?\n\s*/g, " ")}`,

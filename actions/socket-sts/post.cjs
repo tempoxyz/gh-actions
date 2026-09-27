@@ -1,5 +1,6 @@
 const { host, request: httpRequest, retry } = require("./http.cjs");
 const { uploadAegisReport } = require("./dist/artifact-upload.cjs");
+const { warning } = require("../harden-runner/annotations.cjs");
 
 function buildRevokeRequest(token, endpoint) {
   const body = JSON.stringify({ token });
@@ -15,18 +16,6 @@ function buildRevokeRequest(token, endpoint) {
     },
     body,
   };
-}
-
-function escapeAnnotation(value) {
-  return value
-    .replaceAll("%", "%25")
-    .replaceAll("\r", "%0D")
-    .replaceAll("\n", "%0A");
-}
-
-function warning(title, message) {
-  const property = escapeAnnotation(title).replaceAll(":", "%3A").replaceAll(",", "%2C");
-  console.log(`::warning title=${property}::${escapeAnnotation(message)}`);
 }
 
 // Revocation is best-effort. The STS lease expiration bounds the token's
@@ -59,17 +48,19 @@ async function main({
       );
     } catch (error) {
       warning(
-        "Socket STS token revocation failed",
         `Could not reach the Socket STS to revoke the token: ${error.message}. ` +
           "The STS lease expiration still bounds the token's lifetime.",
+        "Socket STS token revocation failed",
+        env,
       );
       return;
     }
     if (response.status !== 204) {
       warning(
-        "Socket STS token revocation failed",
         `The Socket STS answered HTTP ${response.status} when revoking the token. ` +
           "The STS lease expiration still bounds the token's lifetime.",
+        "Socket STS token revocation failed",
+        env,
       );
       return;
     }
@@ -82,7 +73,7 @@ async function main({
           { retryHttpResponses: false, sleep },
         );
       } catch (error) {
-        console.log(`::warning title=Aegis audit-log upload failed::${error.message}`);
+        warning(error.message, "Aegis audit-log upload failed", env);
       }
     }
   }

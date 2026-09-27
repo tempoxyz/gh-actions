@@ -44,9 +44,11 @@ async function main({
         // job. A GitHub-hosted runner is discarded after the job, so the same
         // failure only deserves a warning.
         if (env.RUNNER_ENVIRONMENT !== "github-hosted") throw error;
-        console.log(
-          `::warning title=Aegis cleanup failed::${error.message}. ` +
+        warning(
+          `${error.message}. ` +
             "This GitHub-hosted runner is discarded after the job.",
+          "Aegis cleanup failed",
+          env,
         );
       }
     }

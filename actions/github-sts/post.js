@@ -1,6 +1,7 @@
 const https = require("node:https");
 const { host } = require("./host.js");
 const { isTransientStatus, retry } = require("./retry.js");
+const { warning } = require("../harden-runner/annotations.cjs");
 
 function request(url, options = {}) {
   return new Promise((resolve, reject) => {
@@ -98,13 +99,6 @@ async function revokeToken(token, stsHost, dependencies = {}) {
   );
 }
 
-function escapeAnnotation(value) {
-  return value
-    .replaceAll("%", "%25")
-    .replaceAll("\r", "%0D")
-    .replaceAll("\n", "%0A");
-}
-
 // Revocation is best-effort. The token expires at its requested TTL, so a
 // revocation that neither the STS nor GitHub can serve after retries must not
 // turn a finished job red; it is reported as a warning instead.
@@ -119,9 +113,10 @@ async function main({ env = process.env, dependencies = {} } = {}) {
     await revokeToken(token, env.STATE_sts_host, dependencies);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    console.log(
-      "::warning title=GitHub App token revocation failed::" +
-        escapeAnnotation(`${reason} The token expires at its requested TTL.`),
+    warning(
+      `${reason} The token expires at its requested TTL.`,
+      "GitHub App token revocation failed",
+      env,
     );
   }
 }

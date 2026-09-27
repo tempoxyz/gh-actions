@@ -40,6 +40,10 @@ inputs:
     description: "Deploy Harden Runner directly on an ephemeral self-hosted Linux VM"
     required: false
     default: "false"
+  warning-annotations:
+    description: "Emit warning annotations from Secure Runner setup and cleanup; logs and step summaries are always retained"
+    required: false
+    default: "true"
   disable-enforcement:
     description: "Skip Harden Runner and Aegis with a warning annotation"
     required: false

@@ -38,6 +38,14 @@ and forwards them unchanged: `step-security-sts-host`, `egress-policy`, `allowed
 `disable-file-monitoring`, `deploy-on-self-hosted-vm`, and `token`. `socket-sts-host`
 selects the Socket STS.
 
+Set `warning-annotations: false` to write Secure Runner's setup and cleanup
+warnings to plain logs and step summaries without emitting GitHub warning
+annotations. The default is `true`. This includes degraded protection, Aegis
+runtime warning verdicts, audit-log upload failures, and credential revocation
+warnings. Enforcement, artifact uploads, and failures are unaffected. Annotations
+emitted directly by vendored tools or other workflow steps are not controlled by
+this input.
+
 `disable-enforcement: true` skips both Harden Runner and Aegis with a warning
 annotation. It is intended for Aegis's own installation tests, where a
 preinstalled Aegis service would conflict with the version under test and a large

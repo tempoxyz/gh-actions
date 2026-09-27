@@ -47,7 +47,8 @@ test("is a node24 action with no pre hook or nested pins and the expected inputs
     assert.deepEqual(ours.find((input) => input[0] === name), [name, fallback], `input ${name} must match harden-runner`);
   }
   assert.deepEqual(ours.find((input) => input[0] === "socket-sts-host"), ["socket-sts-host", '"socket-sts.tempoxyz.net"']);
-  assert.equal(ours.length, hardenRunners.length + 1);
+  assert.deepEqual(ours.find((input) => input[0] === "warning-annotations"), ["warning-annotations", '"true"']);
+  assert.equal(ours.length, hardenRunners.length + 2);
   assert.doesNotMatch(manifest, /^outputs:/m, "the action exposes no outputs; nothing consumes them");
   assert.doesNotMatch(manifest, /\bdev:/);
   const implementation = ["main.cjs", "post.cjs", "oidc.cjs"]
