@@ -133,9 +133,7 @@ Clients supporting the identity extension can POST
 successful GitHub OIDC acquisition, the response additionally includes
 `"github_oidc_jwt":"<raw JWT>"`. The client is responsible for base64 encoding
 that JWT into its `X-Aegis-GitHub-OIDC-JWT` header; the provider does not encode it.
-The legacy `https://aegis.tempoxyz.dev` audience remains supported during the
-client migration. No other audience is supported, and tokens for the two
-audiences are acquired and cached independently.
+No other audience is supported.
 
 OIDC acquisition is on demand, capped at 1.5 seconds, and never follows redirects.
 Concurrent requests share acquisition. Tokens stay in memory, refresh near
