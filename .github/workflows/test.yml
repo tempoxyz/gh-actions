@@ -40,12 +40,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # The first step uses a pinned Secure Runner release. Its Aegis v0.14.0
-      # Linux service unit needs AF_NETLINK for online status detection.
-      - name: Allow Aegis network detection on Linux
-        if: runner.os == 'Linux'
-        run: sudo bash actions/aegis/allow-netlink.sh
-
       - name: Verify Socket STS artifact uploader bundle
         working-directory: actions/socket-sts
         run: |

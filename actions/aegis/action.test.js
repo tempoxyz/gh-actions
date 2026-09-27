@@ -31,7 +31,6 @@ test("uses both STS exchanges and the aegis download policy", () => {
   assert.doesNotMatch(manifest, /\bdev:/);
   assert.match(manifest, /INPUT_SOCKET_TOKEN: \$\{\{ steps\.socket-token\.outputs\.token \}\}/);
   assert.match(manifest, /aegis install --config/);
-  assert.match(manifest, /sudo bash "\$GITHUB_ACTION_PATH\/allow-netlink\.sh"/);
 });
 
 test("downloads the latest stable release and verifies its checksums and provenance", () => {
@@ -499,7 +498,6 @@ test("installAegis runs each platform's install sequence and retries where the s
     ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
     ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
     ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
-    ["sudo", "bash", path.join(__dirname, "allow-netlink.sh")],
     ["/usr/bin/aegis", "install", "--config", "/tmp/install.json"],
   ]);
   assert.deepEqual(delays, [1000, 2000]);
