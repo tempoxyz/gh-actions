@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -69,4 +70,58 @@ test("post cleanup failures fail the job only on self-hosted runners", async () 
     platform: "darwin",
   });
   assert.equal(cleanups, 0);
+});
+
+test("post annotates runtime warning decisions without duplicating lookup diagnostics", async (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-report-test-"));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const copiedLog = path.join(temp, "aegis-service.jsonl");
+  const summary = path.join(temp, "summary.md");
+  const records = [
+    { msg: "socket lookup complete", action: "warn", result: "warn" },
+    { msg: "package decision", action: "allow", reason: "allowed" },
+    { msg: "package decision", action: "warn", reason: "Not connected to internet" },
+    { msg: "package decision", action: "warn", reason: "upstream\n::error::secret" },
+    null,
+  ];
+  const { main: postMain } = require("./post.cjs");
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(String(line));
+  try {
+    await postMain({
+      upload: async () => fs.writeFileSync(copiedLog, records.map(JSON.stringify).join("\n") + "\nnot JSON\n"),
+      env: { RUNNER_TEMP: temp, GITHUB_STEP_SUMMARY: summary },
+      platform: "linux",
+    });
+  } finally {
+    console.log = original;
+  }
+  assert.deepEqual(lines, [
+    "::warning title=Aegis runtime warning verdicts::Aegis allowed 2 package downloads with warning verdicts: Not connected to internet (1), other warning verdicts (1). Review the Aegis audit-log artifact for details.",
+  ]);
+  assert.match(fs.readFileSync(summary, "utf8"), /Not connected to internet/);
+  assert.doesNotMatch(fs.readFileSync(summary, "utf8"), /secret/);
+});
+
+test("post still reports copied warning verdicts when artifact upload fails", async (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-upload-test-"));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(String(line));
+  try {
+    await require("./post.cjs").main({
+      upload: async () => {
+        fs.writeFileSync(path.join(temp, "aegis-service.jsonl"), '{"msg":"package decision","action":"warn","reason":"Aegis server unreachable"}\n');
+        throw new Error("artifact service unavailable");
+      },
+      env: { RUNNER_TEMP: temp },
+      platform: "linux",
+    });
+  } finally {
+    console.log = original;
+  }
+  assert.match(lines[0], /Aegis audit-log upload failed::artifact service unavailable/);
+  assert.match(lines[1], /Aegis runtime warning verdicts::.*Aegis server unreachable \(1\)/);
 });

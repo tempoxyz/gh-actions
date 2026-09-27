@@ -175,7 +175,7 @@ async function main({ env = process.env, platform = process.platform, deps = {} 
 
     const installed = await stage(STAGES.install, () =>
       install({ platform, packagePath: artifact.package, configPath: config, env, spawn, sleep }));
-    console.log(`Aegis installed at ${installed.binary}; package downloads are inspected and enforced.`);
+    console.log(`Aegis installed at ${installed.binary}; runtime warning verdicts are reported at job end.`);
   } catch (error) {
     if (!(error instanceof StageError)) throw error;
     // Any failure to set the firewall up leaves the job running without one

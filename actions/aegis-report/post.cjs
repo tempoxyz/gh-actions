@@ -1,16 +1,39 @@
-const { uploadAegisReport } = require("./dist/artifact-upload.cjs");
+const fs = require("node:fs");
+const path = require("node:path");
+const { aegisReportPath, uploadAegisReport } = require("./dist/artifact-upload.cjs");
+const { warning } = require("../harden-runner/annotations.cjs");
 const { retire } = require("./linux-lifecycle.cjs");
+const { scanRuntimeWarnings, runtimeWarningMessage } = require("./runtime-warnings.cjs");
 
 async function main({
   upload = uploadAegisReport,
+  scan = scanRuntimeWarnings,
   cleanup = retire,
   env = process.env,
   platform = process.platform,
 } = {}) {
   try {
-    await upload({ action: env.STATE_action || "aegis-report" });
+    const uploadStarted = Date.now();
+    try {
+      await upload({ action: env.STATE_action || "aegis-report", env });
+    } catch (error) {
+      warning(error.message, "Aegis audit-log upload failed", env);
+    }
+    // The uploader makes a readable copy of the root-owned Linux service log
+    // before contacting GitHub. Scan it even if the artifact upload failed.
+    const source = aegisReportPath(platform, env);
+    const copiedLog = path.join(env.RUNNER_TEMP || path.dirname(source), "aegis-service.jsonl");
+    try {
+      // Ignore a copy left by an earlier job on a reused runner.
+      if (fs.existsSync(copiedLog) && fs.statSync(copiedLog).mtimeMs >= uploadStarted - 1000) {
+        const message = runtimeWarningMessage(await scan(copiedLog));
+        if (message) warning(message, "Aegis runtime warning verdicts", env);
+      }
+    } catch (error) {
+      warning(error.message, "Aegis warning reporting failed", env);
+    }
   } catch (error) {
-    console.log(`::warning title=Aegis audit-log upload failed::${error.message}`);
+    warning(error.message, "Aegis post-job reporting failed", env);
   } finally {
     if (platform === "linux" && env.STATE_installation_identity) {
       try {

@@ -379,7 +379,7 @@ test("the report step names the first failed stage in a warning annotation", {
 
   for (const installStage of ["INSTALL_LINUX", "INSTALL_MACOS", "INSTALL_WINDOWS"]) {
     const lines = run(chainOutcomes(null, installStage));
-    assert.deepEqual(lines, ["Aegis installed at /usr/bin/aegis; package downloads are inspected and enforced."], installStage);
+    assert.deepEqual(lines, ["Aegis installed at /usr/bin/aegis; runtime warning verdicts are reported at job end."], installStage);
   }
 
   // Nothing failed but nothing installed either: still never silent.

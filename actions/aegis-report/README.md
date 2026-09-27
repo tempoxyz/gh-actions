@@ -3,7 +3,10 @@
 Register a post-job handler that uploads Aegis's final service audit log as a
 seven-day GitHub Actions artifact. Invoke this action after Aegis has been
 installed. Upload failures are warnings, so they do not hide the original job
-result.
+result. At job end, warning verdicts in that log are also summarized in one
+GitHub Actions warning annotation and the step summary. Known availability
+fail-open reasons (such as no internet connection) are named; other policy
+warning reasons are counted without quoting potentially sensitive upstream text.
 
 This is the lifecycle companion for `aegis`; it does not mint or
 revoke Socket API tokens.

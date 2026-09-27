@@ -238,7 +238,7 @@ runs:
           if [ "$outcome" != skipped ]; then install=$outcome; fi
         done
         if [ "$install" = success ]; then
-          echo "Aegis installed at $AEGIS_BINARY; package downloads are inspected and enforced."
+          echo "Aegis installed at $AEGIS_BINARY; runtime warning verdicts are reported at job end."
           exit 0
         fi
         reason="Aegis setup did not complete"

@@ -369,7 +369,7 @@ test("main installs on macOS and Windows without the Linux lifecycle retirement"
     assert.deepEqual(calls.map((call) => call[0]), ["socket", "release", "cli", "download"], platform);
     assert.match(fs.readFileSync(env.GITHUB_STATE, "utf8"), /aegis_action=/);
     assert.doesNotMatch(fs.readFileSync(env.GITHUB_STATE, "utf8"), /aegis_installation_identity/);
-    assert.equal(lines.at(-1), `Aegis installed at ${layout.binary}; package downloads are inspected and enforced.`, platform);
+    assert.equal(lines.at(-1), `Aegis installed at ${layout.binary}; runtime warning verdicts are reported at job end.`, platform);
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
