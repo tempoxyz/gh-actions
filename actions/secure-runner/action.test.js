@@ -4,7 +4,6 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createOidcClient, expiresAt } = require("./oidc.cjs");
-const { main: preMain } = require("./pre.cjs");
 const { GITHUB_STS_HOST, STAGES, assertionProvider, forkPullRequest, main: mainMain } = require("./main.cjs");
 const { main: postMain } = require("./post.cjs");
 
@@ -37,8 +36,9 @@ const oidcEnv = {
   ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/oidc",
 };
 
-test("is a node24 action with no nested pins and the wrapper's inputs and outputs", () => {
-  assert.match(manifest, /runs:\n  using: "node24"\n  pre: "pre\.cjs"\n  main: "main\.cjs"\n  post: "post\.cjs"\n/);
+test("is a node24 action with no pre hook or nested pins and the expected inputs and outputs", () => {
+  assert.match(manifest, /runs:\n  using: "node24"\n  main: "main\.cjs"\n  post: "post\.cjs"\n/);
+  assert.doesNotMatch(manifest, /^  pre:/m);
   assert.doesNotMatch(manifest, /uses:/);
   const inputs = (text) => [...text.matchAll(/^  ([a-z-]+):\n    description: "[^"]+"\n    required: false\n    default: (.*)$/gm)].map((m) => [m[1], m[2]]);
   const ours = inputs(manifest.split("\nruns:")[0]);
@@ -48,9 +48,9 @@ test("is a node24 action with no nested pins and the wrapper's inputs and output
   }
   assert.deepEqual(ours.find((input) => input[0] === "socket-sts-host"), ["socket-sts-host", '"socket-sts.tempoxyz.net"']);
   assert.equal(ours.length, hardenRunners.length + 1);
-  assert.doesNotMatch(manifest, /^outputs:/m, "the wrapper exposes no outputs; nothing consumes them");
+  assert.doesNotMatch(manifest, /^outputs:/m, "the action exposes no outputs; nothing consumes them");
   assert.doesNotMatch(manifest, /\bdev:/);
-  const implementation = ["pre.cjs", "main.cjs", "post.cjs", "oidc.cjs"]
+  const implementation = ["main.cjs", "post.cjs", "oidc.cjs"]
     .map((filename) => fs.readFileSync(path.join(__dirname, filename), "utf8"))
     .join("\n");
   assert.doesNotMatch(implementation, /GITHUB_ENV|STEPSECURITY_API_KEY/);
@@ -113,7 +113,7 @@ test("the OIDC client reports failures with their cause and does not cache them"
   );
 });
 
-test("pre starts Harden Runner with a Step Security credential minted from the shared OIDC client", async () => {
+test("main starts Harden Runner before Aegis setup with a Step Security credential minted from the shared OIDC client", async () => {
   const state = tempFile("state");
   const audiences = [];
   const calls = [];
@@ -124,15 +124,18 @@ test("pre starts Harden Runner with a Step Security credential minted from the s
     return { token: "step_test_short_lived_api_key", leaseId: "11111111-1111-4111-8111-111111111111", rawHost: host };
   };
   await captured(() =>
-    preMain({
+    mainMain({
       env: { ...oidcEnv, GITHUB_STATE: state, "INPUT_STEP-SECURITY-STS-HOST": "ss-sts.tempoxyz.dev" },
-      run: (...args) => calls.push(args),
-      oidc,
-      exchangeToken,
+      deps: {
+        runHardenRunner: (...args) => calls.push(args),
+        oidc,
+        exchangeStepSecurity: exchangeToken,
+        exchangeSocket: async () => { calls.push(["socket"]); throw new Error("skip Aegis setup"); },
+      },
     }),
   );
-  assert.deepEqual(audiences, ["ss-sts.tempoxyz.dev"]);
-  assert.deepEqual(calls, [["pre", "step_test_short_lived_api_key"]]);
+  assert.deepEqual(audiences, ["ss-sts.tempoxyz.dev", "socket-sts.tempoxyz.net", GITHUB_STS_HOST]);
+  assert.deepEqual(calls, [["pre", "step_test_short_lived_api_key"], ["socket"]]);
   assert.equal(
     fs.readFileSync(state, "utf8"),
     "token=step_test_short_lived_api_key\nlease_id=11111111-1111-4111-8111-111111111111\nsts_host=ss-sts.tempoxyz.dev\n",
@@ -142,14 +145,17 @@ test("pre starts Harden Runner with a Step Security credential minted from the s
   // to the inline policy with the usual annotation.
   const degraded = tempFile("state");
   const { lines } = await captured(() =>
-    preMain({
+    mainMain({
       env: { ...oidcEnv, GITHUB_STATE: degraded },
-      run: (...args) => calls.push(args),
-      oidc,
-      exchangeToken: async () => { throw new Error("Step Security STS exchange failed (HTTP 503)"); },
+      deps: {
+        runHardenRunner: (...args) => calls.push(args),
+        oidc,
+        exchangeStepSecurity: async () => { throw new Error("Step Security STS exchange failed (HTTP 503)"); },
+        exchangeSocket: async () => { calls.push(["socket"]); throw new Error("skip Aegis setup"); },
+      },
     }),
   );
-  assert.deepEqual(calls.at(-1), ["pre", null]);
+  assert.deepEqual(calls.slice(-2), [["pre", null], ["socket"]]);
   assert.equal(fs.readFileSync(degraded, "utf8"), "inline_policy=true\n");
   assert.ok(lines.some((line) => line.startsWith("::warning title=StepSecurity policy store unavailable::")), lines.join("\n"));
 });
@@ -170,6 +176,7 @@ function pipelineDeps(overrides = {}) {
   };
   const deps = {
     oidc,
+    startHardenRunner: async () => {},
     sleep: async () => {},
     spawn: () => ({ status: 0 }),
     exchangeSocket: record("socket", async ({ getAssertion }) => {

@@ -4,10 +4,10 @@ Start Harden Runner with authenticated StepSecurity policy-store access, then
 install Aegis with a short-lived Socket token. Use this action as the first step
 in a job.
 
-Secure Runner is a single `node24` action. Its pre-job entrypoint starts Harden
-Runner before checkout, its main entrypoint installs Aegis, and its post-job
-entrypoint cleans both up. It runs the same code the standalone
-[Harden Runner](../harden-runner), [Aegis](../aegis),
+Secure Runner is a single `node24` action. Its main entrypoint starts Harden
+Runner before installing Aegis. When used as the first workflow step, Harden
+Runner starts before checkout. Its post-job entrypoint cleans both up. It runs
+the same code the standalone [Harden Runner](../harden-runner), [Aegis](../aegis),
 [Step Security STS](../step-security-sts), [Socket STS](../socket-sts),
 [GitHub STS](../github-sts), and [Aegis Report](../aegis-report) actions run,
 loaded as modules from the same pinned revision, so one `secure-runner@<sha>`

@@ -1,9 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
-const { append, maskSecret, required } = require("../step-security-sts/main.cjs");
+const { append, exchangeToken: exchangeStepSecurityToken, maskSecret, required } = require("../step-security-sts/main.cjs");
 const { warning } = require("../harden-runner/annotations.cjs");
-const { enforcementDisabled, oidcAvailable } = require("../harden-runner/pre.cjs");
+const hardenRunner = require("../harden-runner/pre.cjs");
+const { enforcementDisabled, oidcAvailable } = hardenRunner;
 const socketSts = require("../socket-sts/main.cjs");
 const { host: socketHost } = require("../socket-sts/http.cjs");
 const { disabledMessage, isServiceDisabled } = require("../socket-sts/status.cjs");
@@ -98,6 +99,9 @@ async function main({ env = process.env, platform = process.platform, deps = {} 
     spawn = spawnSync,
     sleep,
     oidc = createOidcClient({ env }),
+    startHardenRunner = hardenRunner.main,
+    runHardenRunner,
+    exchangeStepSecurity = exchangeStepSecurityToken,
     exchangeSocket = socketSts.exchange,
     exchangeGitHub = githubSts.exchange,
     ensureCli = ensureGitHubCli,
@@ -107,6 +111,14 @@ async function main({ env = process.env, platform = process.platform, deps = {} 
     retireIncumbent = retire,
     install = installAegis,
   } = deps;
+
+  // Secure Runner is the first workflow step. Start Harden Runner before any
+  // Aegis setup so checkout and subsequent steps run under its policy.
+  await startHardenRunner({
+    env,
+    run: runHardenRunner,
+    exchange: (host) => exchangeStepSecurity(host, { env, getOidc: (audience) => oidc.token(audience) }),
+  });
 
   if (enforcementDisabled(env)) {
     console.log("Runner security enforcement is disabled for this job; Aegis will not be installed.");

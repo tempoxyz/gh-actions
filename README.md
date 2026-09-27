@@ -161,8 +161,8 @@ jobs:
 
 The default fallback egress policy is `audit`. Set `egress-policy: block` and, if needed,
 `allowed-endpoints` for workflows that should fail closed when no stored policy applies.
-The nested Harden Runner wrapper performs its STS exchange in its pre-job entrypoint before starting Harden Runner,
-because Harden Runner fetches its policy in its own pre-job entrypoint. The short-lived API key is
+Secure Runner performs the Step Security STS exchange at the start of its main entrypoint before starting Harden Runner,
+because Harden Runner fetches its policy when it starts. The short-lived API key is
 passed only to the vendored Harden Runner process and is revoked during post-job cleanup.
 
 ## Versioning
