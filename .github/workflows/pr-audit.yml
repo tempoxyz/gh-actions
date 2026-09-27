@@ -3,6 +3,11 @@ name: Pull request audit
 on:
   workflow_call:
     inputs:
+      secure-runner-warning-annotations:
+        description: Emit Secure Runner setup and cleanup warning annotations.
+        required: false
+        type: boolean
+        default: true
       required-label:
         description: Label required to trigger audit event publishing. Kept for compatibility; use required-labels for multiple labels.
         required: false
@@ -50,7 +55,9 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
+        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a
+        with:
+          warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
 
       - name: Resolve target
         id: target
@@ -206,7 +213,9 @@ jobs:
       statuses: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
+        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a
+        with:
+          warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
 
       - name: Report audit status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -264,7 +273,9 @@ jobs:
       statuses: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
+        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a
+        with:
+          warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
 
       - name: Pass merge group
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
