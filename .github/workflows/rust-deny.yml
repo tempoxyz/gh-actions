@@ -34,7 +34,7 @@ permissions: {}
 jobs:
   deny:
     # Call the reusable workflow at the published, pinned commit.
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@224ca8e9a057a9b9cddd4ae0ff9d378f73881ec3
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@224ca8e9a057a9b9cddd4ae0ff9d378f73881ec3 # pr-294-warning-workflows
     permissions:
       contents: read
       id-token: write

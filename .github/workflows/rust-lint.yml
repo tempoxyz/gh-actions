@@ -103,7 +103,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a
+        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a # pr-294-warning-action
         with:
           warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
 
@@ -167,7 +167,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a
+        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a # pr-294-warning-action
         with:
           warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
 
@@ -198,7 +198,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a
+        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a # pr-294-warning-action
         with:
           warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
 
@@ -243,7 +243,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a
+        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a # pr-294-warning-action
         with:
           warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
 
@@ -276,7 +276,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a
+        uses: tempoxyz/gh-actions/actions/secure-runner@23e669f478bb26faeb033f958b6da51c9a34744a # pr-294-warning-action
         with:
           warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
 
