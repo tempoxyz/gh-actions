@@ -3,6 +3,11 @@ name: rust deny
 on:
   workflow_call:
     inputs:
+      secure-runner-warning-annotations:
+        description: Emit Secure Runner setup and cleanup warning annotations.
+        required: false
+        type: boolean
+        default: true
       rust-toolchain:
         description: Rust toolchain installed on the runner and used inside the cargo-deny container.
         required: false
@@ -29,11 +34,12 @@ permissions: {}
 jobs:
   deny:
     # Call the reusable workflow at the published, pinned commit.
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@ee2960a6cc25d99bda45614135bfe1197d879bac # 2026-09-26T06-46-03Z-ee2960a6
+    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@224ca8e9a057a9b9cddd4ae0ff9d378f73881ec3
     permissions:
       contents: read
       id-token: write
     with:
+      secure-runner-warning-annotations: ${{ inputs.secure-runner-warning-annotations }}
       run-clippy: false
       run-fmt: false
       run-typos: false

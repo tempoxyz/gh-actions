@@ -46,6 +46,10 @@ warnings. Enforcement, artifact uploads, and failures are unaffected. Annotation
 emitted directly by vendored tools or other workflow steps are not controlled by
 this input.
 
+The reusable `rust-lint`, `rust-deny`, `scan-github-actions`, and `pr-audit`
+workflows expose the same preference as the boolean input
+`secure-runner-warning-annotations`, also defaulting to `true`.
+
 `disable-enforcement: true` skips both Harden Runner and Aegis with a warning
 annotation. It is intended for Aegis's own installation tests, where a
 preinstalled Aegis service would conflict with the version under test and a large
