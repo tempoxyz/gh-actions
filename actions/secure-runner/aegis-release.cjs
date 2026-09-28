@@ -3,10 +3,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { execFileSync } = require("node:child_process");
 const { Readable } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
-const { assetName, expectedDigest, ghEnvironment, retrySync } = require("../aegis/download.cjs");
+const { assetName, expectedDigest, ghEnvironment } = require("../aegis/download.cjs");
+const { runCommand } = require("./command.cjs");
 
 const ORIGIN = "https://aegis.tempoxyz.net";
 const RELEASE_PATH = "/v1/actions/releases";
@@ -28,14 +28,14 @@ async function request(url, getOidc, { fetcher = fetch, timeout = 10_000 } = {})
   return response;
 }
 
-async function retry(operation, description, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))) {
+async function retry(operation, description, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), jitter = 0) {
   let error;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try { return await operation(); } catch (caught) {
       error = caught;
       if (attempt === 3) break;
       console.warn(`${description} failed (attempt ${attempt}/3); retrying.`);
-      await sleep(1000 * 2 ** (attempt - 1));
+      await sleep(Math.round(1000 * 2 ** (attempt - 1) * (1 + jitter * Math.random())));
     }
   }
   throw error;
@@ -53,7 +53,7 @@ function validateMetadata(metadata, tag, channel) {
 }
 
 async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runnerArch, env = process.env,
-  pathEntries = [], fetcher = fetch, execute = execFileSync, sleep } = {}) {
+  pathEntries = [], fetcher = fetch, execute = runCommand, sleep } = {}) {
   if (version && !RELEASE_TAG.test(version)) throw new Error(`Invalid Aegis release version: ${version}`);
   if (typeof getOidc !== "function") throw new Error("Aegis release OIDC provider is missing");
   const options = { fetcher };
@@ -83,7 +83,7 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
   const expected = expectedDigest(fs.readFileSync(path.join(directory, "SHA256SUMS"), "utf8"), asset);
   const actual = crypto.createHash("sha256").update(fs.readFileSync(artifact)).digest("hex");
   assert.equal(actual, expected, `${asset} does not match SHA256SUMS`);
-  retrySync(() => execute("gh", [
+  await retry(() => execute("gh", [
     "attestation", "verify", artifact,
     "--repo", "tempoxyz/aegis",
     "--bundle", path.join(directory, "provenance.sigstore.json"),
@@ -92,8 +92,8 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
     "--source-ref", "refs/heads/main",
     "--deny-self-hosted-runners",
   ], { stdio: "inherit", timeout: 60_000, env: ghEnvironment(token, env, pathEntries) }),
-  "Aegis provenance verification");
+  "Aegis provenance verification", sleep, 0.25);
   return { package: artifact, directory };
 }
 
-module.exports = { AUDIENCE, ORIGIN, RELEASE_TAG, downloadAndVerify, releaseChannel, validateMetadata };
+module.exports = { AUDIENCE, ORIGIN, RELEASE_TAG, downloadAndVerify, releaseChannel, retry, validateMetadata };
