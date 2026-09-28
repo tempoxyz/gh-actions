@@ -1,12 +1,17 @@
 # Secure Runner
 
-Start Harden Runner with authenticated StepSecurity policy-store access, then
-install Aegis with a short-lived Socket token. Use this action as the first step
-in a job.
+Start Harden Runner with authenticated StepSecurity policy-store access and
+install Aegis with a short-lived Socket token concurrently. Use this action as
+the first step in a job.
 
-Secure Runner is a single `node24` action. Its main entrypoint starts Harden
-Runner before installing Aegis. When used as the first workflow step, Harden
-Runner starts before checkout. Its post-job entrypoint cleans both up. It runs
+Secure Runner is a single `node24` action. Its main entrypoint runs StepSecurity's
+OIDC/STS exchange and installation in a child process alongside Aegis's
+OIDC/STS exchange, verified download, and installation. Separate processes let
+the existing synchronous installers overlap. It waits for both setup paths to
+finish, including on failure, before returning; checkout and later job steps
+therefore cannot race setup. Aegis bootstrap may run before StepSecurity monitoring
+is active. Its post-job entrypoint cleans both up in the existing dependency
+order. It runs
 the same code the standalone [Harden Runner](../harden-runner), [Aegis](../aegis),
 [Step Security STS](../step-security-sts), [Socket STS](../socket-sts),
 [Aegis Report](../aegis-report) actions run,
@@ -14,12 +19,11 @@ loaded as modules from the same pinned revision, so one `secure-runner@<sha>`
 pin selects every piece and there are no nested pins to refresh.
 
 No Node installation is required before or inside this action: it runs on the
-runner's bundled Node. One GitHub OIDC client serves every credential exchange.
-Each STS still receives an assertion issued for its own audience, and the
-assertions are requested concurrently, so the job pays roughly one request of
-latency for its credentials.
+runner's bundled Node. Each STS still receives an assertion issued for its own
+audience. StepSecurity obtains its assertion in the child process; Aegis's OIDC
+client warms the Socket STS and release-server assertions concurrently.
 
-Harden Runner starts first. Aegis setup then exchanges a Socket API token,
+Aegis setup exchanges a Socket API token,
 bootstraps a GitHub CLI with attestation support on Linux if
 needed, downloads Aegis through `aegis.tempoxyz.net` for the runner operating
 system and architecture, verifies it against `SHA256SUMS` and its Sigstore

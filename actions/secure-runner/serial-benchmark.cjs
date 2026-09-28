@@ -1,8 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
-const { append, maskSecret, required } = require("../step-security-sts/main.cjs");
-const { endpoint: stepSecurityEndpoint } = require("../step-security-sts/http.cjs");
+const { append, exchangeToken: exchangeStepSecurityToken, maskSecret, required } = require("../step-security-sts/main.cjs");
 const { warning } = require("../harden-runner/annotations.cjs");
 const hardenRunner = require("../harden-runner/pre.cjs");
 const { enforcementDisabled, oidcAvailable } = hardenRunner;
@@ -15,7 +14,6 @@ const { prepareConfiguration } = require("../aegis/token-provider.cjs");
 const { runnerOIDCEnvironment } = require("../aegis/github-oidc.cjs");
 const { identity, retire } = require("../aegis-report/linux-lifecycle.cjs");
 const { createOidcClient } = require("./oidc.cjs");
-const { startHardenRunner } = require("./harden.cjs");
 
 const TITLE = "Package-policy enforcement disabled";
 
@@ -91,28 +89,13 @@ function assertionProvider(oidc, audience) {
 }
 
 async function main({ env = process.env, platform = process.platform, deps = {} } = {}) {
-  // Reject invalid hosts before either branch can make requests. Disabled and
-  // fork runs retain their existing skip/inline-policy behavior.
-  if (!enforcementDisabled(env) && oidcAvailable(env)) {
-    stepSecurityEndpoint(env["INPUT_STEP-SECURITY-STS-HOST"] || "ss-sts.tempoxyz.net");
-    socketHost(env["INPUT_SOCKET-STS-HOST"] || "socket-sts.tempoxyz.net");
-  }
-  const results = await Promise.allSettled([
-    Promise.resolve().then(() => (deps.startHardenRunner || startHardenRunner)({ env })),
-    Promise.resolve().then(() => setupAegis({ env, platform, deps })),
-  ]);
-  // A fatal failure in either branch must not let the action exit while the
-  // other branch is still installing or recording state needed by post cleanup.
-  const errors = results.filter((result) => result.status === "rejected").map((result) => result.reason);
-  if (errors.length === 1) throw errors[0];
-  if (errors.length > 1) throw new AggregateError(errors, "Secure Runner setup failed");
-}
-
-async function setupAegis({ env, platform, deps }) {
   const {
     spawn = spawnSync,
     sleep,
     oidc = createOidcClient({ env }),
+    startHardenRunner = hardenRunner.main,
+    runHardenRunner,
+    exchangeStepSecurity = exchangeStepSecurityToken,
     exchangeSocket = socketSts.exchange,
     ensureCli = ensureGitHubCli,
     download = downloadAndVerify,
@@ -121,6 +104,14 @@ async function setupAegis({ env, platform, deps }) {
     retireIncumbent = retire,
     install = installAegis,
   } = deps;
+
+  // Secure Runner is the first workflow step. Start Harden Runner before any
+  // Aegis setup so checkout and subsequent steps run under its policy.
+  await startHardenRunner({
+    env,
+    run: runHardenRunner,
+    exchange: (host) => exchangeStepSecurity(host, { env, getOidc: (audience) => oidc.token(audience) }),
+  });
 
   if (enforcementDisabled(env)) {
     console.log("Runner security enforcement is disabled for this job; Aegis will not be installed.");
