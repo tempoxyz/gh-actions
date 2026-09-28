@@ -150,7 +150,7 @@ async function main({ env = process.env, platform = process.platform, deps = {} 
 
     const pathEntries = await stage(STAGES.cli, () => ensureCli({ env, token: env["INPUT_TOKEN"] || env.GITHUB_TOKEN, spawn, sleep }));
     const artifact = await stage(STAGES.download, () =>
-      download({ version: env.INPUT_AEGIS_VERSION || "", getOidc: assertionProvider(oidc, AEGIS_AUDIENCE),
+      download({ version: env["INPUT_AEGIS-VERSION"] || "", getOidc: assertionProvider(oidc, AEGIS_AUDIENCE),
         token: env["INPUT_TOKEN"] || env.GITHUB_TOKEN, runnerOS: env.RUNNER_OS, runnerArch: env.RUNNER_ARCH,
         env, pathEntries, sleep }));
     const config = await stage(STAGES.provider, () =>

@@ -41,14 +41,14 @@ test("is a node24 action with no pre hook or nested pins and the expected inputs
   assert.match(manifest, /runs:\n  using: "node24"\n  main: "main\.cjs"\n  post: "post\.cjs"\n/);
   assert.doesNotMatch(manifest, /^  pre:/m);
   assert.doesNotMatch(manifest, /uses:/);
-  const inputs = (text) => [...text.matchAll(/^  ([a-z_-]+):\n    description: "[^"]+"\n    required: false\n    default: (.*)$/gm)].map((m) => [m[1], m[2]]);
+  const inputs = (text) => [...text.matchAll(/^  ([a-z-]+):\n    description: "[^"]+"\n    required: false\n    default: (.*)$/gm)].map((m) => [m[1], m[2]]);
   const ours = inputs(manifest.split("\nruns:")[0]);
   const hardenRunners = inputs(hardenRunnerManifest.split("\nruns:")[0]);
   for (const [name, fallback] of hardenRunners) {
     assert.deepEqual(ours.find((input) => input[0] === name), [name, fallback], `input ${name} must match harden-runner`);
   }
   assert.deepEqual(ours.find((input) => input[0] === "socket-sts-host"), ["socket-sts-host", '"socket-sts.tempoxyz.net"']);
-  assert.deepEqual(ours.find((input) => input[0] === "aegis_version"), ["aegis_version", '""']);
+  assert.deepEqual(ours.find((input) => input[0] === "aegis-version"), ["aegis-version", '""']);
   assert.equal(ours.length, hardenRunners.length + 2);
   assert.doesNotMatch(manifest, /^outputs:/m, "the action exposes no outputs; nothing consumes them");
   assert.doesNotMatch(manifest, /\bdev:/);
@@ -257,7 +257,7 @@ test("main runs the Aegis pipeline in order and records state and masks", async 
 });
 
 test("main passes an exact Aegis release tag to the server downloader", async () => {
-  const { env, config, directory } = pipelineEnv({ INPUT_AEGIS_VERSION: "20260927T194115Z-5e7bd8b807b2" });
+  const { env, config, directory } = pipelineEnv({ "INPUT_AEGIS-VERSION": "20260927T194115Z-5e7bd8b807b2" });
   const { calls, deps } = pipelineDeps({ prepareConfig: async () => config });
   await captured(() => mainMain({ env, platform: "linux", deps }));
   assert.equal(calls.find((call) => call[0] === "download")[1].version, "20260927T194115Z-5e7bd8b807b2");

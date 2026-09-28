@@ -142,7 +142,7 @@ steps:
 Use `secure-runner` as the first step in a job. It uses the production STS endpoints by default.
 For a development deployment, set `step-security-sts-host: ss-sts.tempoxyz.dev` and/or
 `socket-sts-host: socket-sts.tempoxyz.dev`.
-Set `aegis_version` to a published tag to pin the installed Aegis release;
+Set `aegis-version` to a published tag to pin the installed Aegis release;
 otherwise Secure Runner downloads the latest stable release from the Aegis server.
 
 ```yaml

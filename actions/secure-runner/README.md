@@ -35,7 +35,7 @@ Accepts all inputs and defaults from [Harden Runner](../harden-runner/action.yml
 and forwards them unchanged: `step-security-sts-host`, `egress-policy`, `allowed-endpoints`,
 `denied-endpoints`, `disable-telemetry`, `disable-sudo-and-containers`,
 `disable-file-monitoring`, `deploy-on-self-hosted-vm`, and `token`. `socket-sts-host`
-selects the Socket STS. `aegis_version` selects an exact published release tag,
+selects the Socket STS. `aegis-version` selects an exact published release tag,
 including stable tags such as `v0.15.0` and prerelease tags such as
 `20260927T194115Z-5e7bd8b807b2`. When empty, the action selects the latest
 stable release from the Aegis server. Downloads require `id-token: write` and
