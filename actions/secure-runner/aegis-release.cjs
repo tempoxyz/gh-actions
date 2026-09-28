@@ -7,6 +7,7 @@ const { execFileSync } = require("node:child_process");
 const { Readable } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
 const { assetName, expectedDigest, ghEnvironment, retrySync } = require("../aegis/download.cjs");
+const timing = require("./phase-timing.cjs");
 
 const ORIGIN = "https://aegis.tempoxyz.net";
 const RELEASE_PATH = "/v1/actions/releases";
@@ -19,11 +20,16 @@ function releaseChannel(tag) {
 }
 
 async function request(url, getOidc, { fetcher = fetch, timeout = 10_000 } = {}) {
+  const jwt = await timing.timed("release_oidc_wait", () => getOidc(AUDIENCE));
+  const started = timing.now();
   const response = await fetcher(url, {
-    headers: { "x-aegis-github-oidc-jwt": await getOidc(AUDIENCE) },
+    headers: { "x-aegis-github-oidc-jwt": jwt },
     redirect: "error",
     signal: AbortSignal.timeout(timeout),
   });
+  response.benchmarkStarted = started;
+  response.benchmarkHeaders = timing.now();
+  timing.record("release_http_headers", started, { asset: new URL(url).pathname.split("/").at(-1) });
   if (!response.ok) throw new Error(`Aegis release server returned HTTP ${response.status} for ${new URL(url).pathname}`);
   return response;
 }
@@ -77,12 +83,20 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
       const response = await request(url, getOidc, { fetcher, timeout: TRANSFER_TIMEOUT_MS });
       if (!response.body) throw new Error(`Aegis release asset ${name} has no body`);
       await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(path.join(directory, name)));
+      timing.record("asset_request_and_body", response.benchmarkStarted, {
+        asset: name, headers: response.benchmarkHeaders,
+        bytes: fs.statSync(path.join(directory, name)).size,
+        cache: response.headers.get("cf-cache-status"),
+      });
     }, `Aegis release asset ${name}`, sleep);
   }
   const artifact = path.join(directory, asset);
+  const checksumStarted = timing.now();
   const expected = expectedDigest(fs.readFileSync(path.join(directory, "SHA256SUMS"), "utf8"), asset);
   const actual = crypto.createHash("sha256").update(fs.readFileSync(artifact)).digest("hex");
   assert.equal(actual, expected, `${asset} does not match SHA256SUMS`);
+  timing.record("checksum_verify", checksumStarted);
+  const attestationStarted = timing.now();
   retrySync(() => execute("gh", [
     "attestation", "verify", artifact,
     "--repo", "tempoxyz/aegis",
@@ -93,6 +107,7 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
     "--deny-self-hosted-runners",
   ], { stdio: "inherit", timeout: 60_000, env: ghEnvironment(token, env, pathEntries) }),
   "Aegis provenance verification");
+  timing.record("attestation_verify", attestationStarted);
   return { package: artifact, directory };
 }
 

@@ -55,5 +55,5 @@ inputs:
 
 runs:
   using: "node24"
-  main: "main.cjs"
+  main: "phase-benchmark.cjs"
   post: "post.cjs"
