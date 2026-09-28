@@ -40,9 +40,11 @@ jobs:
       - name: Verify malware policy block
         shell: bash
         run: |
+          set +e
           set -uo pipefail
           node actions/aegis/npm-install.cjs block > "$RUNNER_TEMP/policy-block.log" 2>&1
           status=$?
+          set -e
           cat "$RUNNER_TEMP/policy-block.log"
           test "$status" -ne 0
           grep -Eiq '403|malware|security policy' "$RUNNER_TEMP/policy-block.log"
