@@ -28,6 +28,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-pinact`](actions/setup-pinact) | Install pinact from an attested release
 | [`setup-terraform`](actions/setup-terraform) | Install Terraform verified against HashiCorp's signed checksums
 | [`setup-helm`](actions/setup-helm) | Install Helm verified against the maintainers' GPG signatures
+| [`cargo-dependency-changes`](actions/cargo-dependency-changes) | Detect selected Cargo dependency version/source changes without running repository code |
 | [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
 
 ### Installer verification
