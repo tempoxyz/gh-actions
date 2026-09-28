@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createOidcClient, expiresAt } = require("./oidc.cjs");
-const { STAGES, assertionProvider, forkPullRequest, main: mainMain } = require("./main.cjs");
+const { STAGES, assertionProvider, ensureGitHubCli, forkPullRequest, main: mainMain } = require("./main.cjs");
 const { AUDIENCE: AEGIS_AUDIENCE } = require("./aegis-release.cjs");
 const { main: postMain } = require("./post.cjs");
 
@@ -460,6 +460,28 @@ test("assertionProvider serves the warmed assertion once and fresh ones afterwar
   await provider();
   await provider();
   assert.deepEqual(seen, [["aud", false], ["aud", true], ["aud", true]]);
+});
+
+test("CLI bootstrap awaits retries and returns only the PATH entries it added", async () => {
+  const pathFile = tempFile("path");
+  fs.writeFileSync(pathFile, "/existing/bin\n");
+  const waits = [];
+  let attempts = 0;
+  const entries = await ensureGitHubCli({
+    env: { GITHUB_PATH: pathFile },
+    token: "job-token",
+    sleep: async (ms) => waits.push(ms),
+    execute: async (command, args, options) => {
+      assert.equal(command, "bash");
+      assert.equal(options.env.GH_TOKEN, "job-token");
+      await new Promise((resolve) => setImmediate(resolve));
+      if (++attempts < 3) throw new Error("bootstrap failed");
+      fs.appendFileSync(pathFile, "/new/gh/bin\n");
+    },
+  });
+  assert.equal(attempts, 3);
+  assert.deepEqual(waits, [1000, 2000]);
+  assert.deepEqual(entries, ["/new/gh/bin"]);
 });
 
 test("post runs the cleanups in reverse start order with each piece's own state, and reports every failure", async () => {
