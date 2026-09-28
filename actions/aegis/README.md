@@ -11,10 +11,11 @@ GitHub actor.
 The download and token-provider scripts reuse the Node executable already
 provided by the GitHub Actions runner, obtained from Socket STS's `node-path`
 output. They do not need `node` on `PATH` or a preceding `actions/setup-node`
-step. When used through Secure Runner, Harden Runner starts before any of this
-setup. If the GitHub CLI is missing or lacks attestation support on Linux, the
+step. When used through Secure Runner, Harden Runner starts concurrently with
+this setup, and the action waits for both setup paths before finishing. If the
+GitHub CLI is missing or lacks attestation support on Linux, the
 action bootstraps the checksum-pinned, provenance-verified CLI before downloading
-Aegis; this happens inside Secure Runner, after Harden Runner starts.
+Aegis; this happens inside Secure Runner.
 
 The action uses GitHub STS policy `download-releases` in `tempoxyz/aegis` to
 download the native artifact for the runner operating system and architecture

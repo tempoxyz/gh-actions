@@ -1,6 +1,6 @@
 name: "Secure Runner"
 description: >-
-  Start Harden Runner with StepSecurity policy-store access, then install Aegis,
+  Start Harden Runner with StepSecurity policy-store access and install Aegis concurrently,
   running without either when its service cannot be reached
 
 inputs:

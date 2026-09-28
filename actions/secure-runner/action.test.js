@@ -115,51 +115,64 @@ test("the OIDC client reports failures with their cause and does not cache them"
   );
 });
 
-test("main starts Harden Runner before Aegis setup with a Step Security credential minted from the shared OIDC client", async () => {
-  const state = tempFile("state");
-  const audiences = [];
-  const calls = [];
-  const oidc = { token: async (audience) => { audiences.push(audience); return "shared-assertion"; } };
-  const exchangeToken = async (host, options) => {
-    const assertion = await options.getOidc(host);
-    assert.equal(assertion, "shared-assertion");
-    return { token: "step_test_short_lived_api_key", leaseId: "11111111-1111-4111-8111-111111111111", rawHost: host };
-  };
-  await captured(() =>
-    mainMain({
-      env: { ...oidcEnv, GITHUB_STATE: state, "INPUT_STEP-SECURITY-STS-HOST": "ss-sts.tempoxyz.dev" },
-      deps: {
-        runHardenRunner: (...args) => calls.push(args),
-        oidc,
-        exchangeStepSecurity: exchangeToken,
-        exchangeSocket: async () => { calls.push(["socket"]); throw new Error("skip Aegis setup"); },
-      },
-    }),
-  );
-  assert.deepEqual(audiences, ["ss-sts.tempoxyz.dev", "socket-sts.tempoxyz.net", AEGIS_AUDIENCE]);
-  assert.deepEqual(calls, [["pre", "step_test_short_lived_api_key"], ["socket"]]);
-  assert.equal(
-    fs.readFileSync(state, "utf8"),
-    "token=step_test_short_lived_api_key\nlease_id=11111111-1111-4111-8111-111111111111\nsts_host=ss-sts.tempoxyz.dev\n",
-  );
+test("main overlaps both installers and waits for both before returning", async () => {
+  const { env, config } = pipelineEnv();
+  const hardenStarted = Promise.withResolvers();
+  const installStarted = Promise.withResolvers();
+  const releaseHarden = Promise.withResolvers();
+  const releaseInstall = Promise.withResolvers();
+  const { deps } = pipelineDeps({
+    startHardenRunner: async () => { hardenStarted.resolve(); await releaseHarden.promise; },
+    prepareConfig: async () => config,
+    install: async () => {
+      installStarted.resolve();
+      await releaseInstall.promise;
+      return { binary: "/usr/bin/aegis" };
+    },
+  });
+  let finished = false;
+  const running = mainMain({ env, platform: "linux", deps }).then(() => { finished = true; });
+  await Promise.all([hardenStarted.promise, installStarted.promise]);
+  assert.equal(finished, false, "Aegis reaches installation while StepSecurity is still running");
+  releaseInstall.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finished, false, "finishing Aegis must not advance the workflow past StepSecurity");
+  releaseHarden.resolve();
+  await running;
+});
 
-  // Harden Runner's own degrade paths are untouched: an STS failure falls back
-  // to the inline policy with the usual annotation.
-  const degraded = tempFile("state");
-  const { lines } = await captured(() =>
-    mainMain({
-      env: { ...oidcEnv, GITHUB_STATE: degraded },
-      deps: {
-        runHardenRunner: (...args) => calls.push(args),
-        oidc,
-        exchangeStepSecurity: async () => { throw new Error("Step Security STS exchange failed (HTTP 503)"); },
-        exchangeSocket: async () => { calls.push(["socket"]); throw new Error("skip Aegis setup"); },
-      },
-    }),
-  );
-  assert.deepEqual(calls.slice(-2), [["pre", null], ["socket"]]);
-  assert.equal(fs.readFileSync(degraded, "utf8"), "inline_policy=true\n");
-  assert.ok(lines.some((line) => line.startsWith("::warning title=StepSecurity policy store unavailable::")), lines.join("\n"));
+test("a fatal setup failure waits for the other branch to finish and record cleanup state", async () => {
+  for (const failedBranch of ["harden", "aegis"]) {
+    const { env, config } = pipelineEnv();
+    const started = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    const state = "other_branch_finished=true\n";
+    const finish = async () => {
+      started.resolve();
+      await release.promise;
+      fs.appendFileSync(env.GITHUB_STATE, state);
+      return { binary: "/usr/bin/aegis" };
+    };
+    const { deps } = pipelineDeps({
+      startHardenRunner: failedBranch === "harden" ? async () => { throw new Error("harden failed"); } : finish,
+      prepareConfig: async () => config,
+      install: finish,
+    });
+    // Missing state is a fatal Aegis configuration error, not a degraded stage.
+    const effectiveEnv = failedBranch === "aegis" ? { ...env, GITHUB_STATE: "" } : env;
+    let settled = false;
+    const running = mainMain({ env: effectiveEnv, platform: "linux", deps }).then(
+      () => { settled = true; assert.fail("must reject"); },
+      (error) => { settled = true; return error; },
+    );
+    await started.promise;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false, failedBranch);
+    release.resolve();
+    const error = await running;
+    assert.match(error.message, failedBranch === "harden" ? /harden failed/ : /GITHUB_STATE/);
+    assert.ok(fs.readFileSync(env.GITHUB_STATE, "utf8").endsWith(state));
+  }
 });
 
 function pipelineDeps(overrides = {}) {

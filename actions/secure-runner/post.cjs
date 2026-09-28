@@ -3,8 +3,8 @@ const stepSecurityPost = require("../step-security-sts/post.cjs");
 const socketPost = require("../socket-sts/post.cjs");
 const aegisPost = require("../aegis-report/post.cjs");
 
-// Job end. The cleanups run in the reverse of the order their pieces started,
-// as the nested actions' post hooks did: the Aegis audit log uploads and the
+// Job end. Cleanup retains its dependency order even though setup overlaps:
+// the Aegis audit log uploads and the
 // Linux installation retires before the Socket token that fed it is revoked,
 // and Harden Runner stops last. One state file holds every piece's state under
 // its own prefix; each hook sees the `STATE_*` names it expects. Every cleanup
