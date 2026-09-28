@@ -73,6 +73,8 @@ async function statusFor(body, userId = 258930814) {
 
 for (const [name, body] of [
   ["legacy", heading], ["marked", marked], ["CRLF marked", marked.replace("\n", "\r\n")],
+  ["marked with a blank line", marked.replace("\n", "\n\n")],
+  ["CRLF marked with a blank line", marked.replace("\n", "\r\n\r\n")],
 ]) {
   test(`publishes success for a ${name} review`, async () => {
     const status = await statusFor(body);
@@ -83,6 +85,7 @@ for (const [name, body] of [
 
 test("does not accept another author's review", async () => {
   assert.equal((await statusFor(marked, 123)).state, "pending");
+  assert.equal((await statusFor(marked.replace("\n", "\n\n"), 123)).state, "pending");
 });
 
 for (const body of [undefined, "Unrelated review", marked.split("\n")[0],
