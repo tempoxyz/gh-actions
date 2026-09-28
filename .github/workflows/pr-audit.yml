@@ -234,6 +234,7 @@ jobs:
               completedReview = reviews.find(review =>
                 review.user?.id === cyclopsBotId &&
                 review.body?.replace(/^<!-- cyclops:review [^\r\n]* -->\r?\n/, '')
+                  .trimStart()
                   .startsWith(':eye: **Cyclops Review**')
               );
             }
