@@ -31,6 +31,13 @@ Supported runners are Linux, Windows, and macOS on X64 or ARM64. Aegis v0.4.0
 restores Intel macOS artifacts; macOS X64 runners use the `macos-amd64.tar.gz`
 CLI package with the same checksum and provenance verification as other targets.
 
+Linux installs the verified `.deb` directly with `dpkg --install`, avoiding
+APT's package-index processing and post-install hooks when dependencies are
+already present. If that fails, the action falls back to the existing bounded,
+retried APT installation so runners with missing dependencies remain supported.
+Both paths retain package maintainer scripts and `aegis install --config` for
+certificate, configuration, and service setup.
+
 This release honors effective Socket `pendingScan` actions of `ignore` or
 `monitor`, including `alertPriorities` overrides, without requiring complete
 analysis. Other alerts and records are still validated, so policy blocks still

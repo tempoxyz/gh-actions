@@ -491,10 +491,11 @@ test("installAegis runs each platform's install sequence and retries where the s
   const made = [];
   const mkdir = (directory) => made.push(directory);
 
-  const linux = fakeSpawn({ "sudo apt-get": 2 });
+  const linux = fakeSpawn({ "sudo dpkg": 1, "sudo apt-get": 2 });
   const linuxLayout = await installAegis({ platform: "linux", packagePath: "/tmp/aegis.deb", configPath: "/tmp/install.json", env, spawn: linux.spawn, sleep, mkdir });
   assert.deepEqual(linuxLayout, { binary: "/usr/bin/aegis", report: "/var/log/aegis/service.jsonl" });
   assert.deepEqual(linux.calls.map((call) => [call.command, ...call.args]), [
+    ["sudo", "dpkg", "--install", "/tmp/aegis.deb"],
     ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
     ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
     ["sudo", "apt-get", "-o", "Acquire::Retries=0", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::https::Timeout=10", "install", "-y", "/tmp/aegis.deb"],
@@ -529,6 +530,26 @@ test("installAegis runs each platform's install sequence and retries where the s
     /\/usr\/bin\/aegis install exited with status 1/,
   );
   await assert.rejects(installAegis({ platform: "plan9", packagePath: "p", configPath: "c", env }), /Unsupported platform/);
+});
+
+test("Linux skips APT on successful direct installation and never starts Aegis after failed dependency repair", async () => {
+  const direct = fakeSpawn();
+  await installAegis({ platform: "linux", packagePath: "/tmp/aegis package.deb", configPath: "/tmp/install.json", spawn: direct.spawn });
+  assert.deepEqual(direct.calls.map((call) => [call.command, ...call.args]), [
+    ["sudo", "dpkg", "--install", "/tmp/aegis package.deb"],
+    ["/usr/bin/aegis", "install", "--config", "/tmp/install.json"],
+  ]);
+
+  const broken = fakeSpawn({ "sudo dpkg": 1, "sudo apt-get": 3 });
+  const delays = [];
+  await assert.rejects(
+    installAegis({ platform: "linux", packagePath: "/tmp/aegis.deb", configPath: "/tmp/install.json", spawn: broken.spawn, sleep: async (delay) => delays.push(delay) }),
+    /sudo apt-get exited with status 1/,
+  );
+  assert.deepEqual(broken.calls.map((call) => [call.command, call.args[0]]), [
+    ["sudo", "dpkg"], ["sudo", "apt-get"], ["sudo", "apt-get"], ["sudo", "apt-get"],
+  ]);
+  assert.deepEqual(delays, [1000, 2000]);
 });
 
 test("downloadAndVerify runs gh with the release token and any bootstrapped PATH entries", () => {
