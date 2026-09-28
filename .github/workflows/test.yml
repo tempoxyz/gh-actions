@@ -40,36 +40,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Diagnose Aegis OIDC handoff
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo "$(command -v node)" <<'NODE'
-          const fs = require('node:fs');
-          (async () => {
-            const config = JSON.parse(fs.readFileSync('/etc/aegis/config.json', 'utf8'));
-            const endpoint = config.token_provider_url || config.test_token_url;
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ github_oidc_audience: 'https://aegis.tempoxyz.net' }),
-            });
-            const body = await response.json();
-            const jwt = body.github_oidc_jwt || '';
-            const claims = jwt ? JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString()) : {};
-            console.log(JSON.stringify({ providerStatus: response.status, hasJwt: Boolean(jwt),
-              audience: claims.aud || null, owner: claims.repository_owner || null,
-              subject: claims.sub || null, expired: claims.exp ? claims.exp < Date.now() / 1000 : null }));
-            if (jwt) {
-              const release = await fetch('https://aegis.tempoxyz.net/v1/actions/releases/next?channel=regular', {
-                headers: { 'x-aegis-github-oidc-jwt': jwt },
-              });
-              const result = await release.json();
-              console.log(JSON.stringify({ releaseStatus: release.status, releaseError: result.error || null }));
-            }
-          })().catch((error) => { console.error(error.message); process.exitCode = 1; });
-          NODE
-
       - name: Verify Socket STS artifact uploader bundle
         working-directory: actions/socket-sts
         run: |
