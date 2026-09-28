@@ -9,7 +9,7 @@ Runner before installing Aegis. When used as the first workflow step, Harden
 Runner starts before checkout. Its post-job entrypoint cleans both up. It runs
 the same code the standalone [Harden Runner](../harden-runner), [Aegis](../aegis),
 [Step Security STS](../step-security-sts), [Socket STS](../socket-sts),
-[GitHub STS](../github-sts), and [Aegis Report](../aegis-report) actions run,
+[Aegis Report](../aegis-report) actions run,
 loaded as modules from the same pinned revision, so one `secure-runner@<sha>`
 pin selects every piece and there are no nested pins to refresh.
 
@@ -17,12 +17,11 @@ No Node installation is required before or inside this action: it runs on the
 runner's bundled Node. One GitHub OIDC client serves every credential exchange.
 Each STS still receives an assertion issued for its own audience, and the
 assertions are requested concurrently, so the job pays roughly one request of
-latency for three credentials.
+latency for its credentials.
 
 Harden Runner starts first. Aegis setup then exchanges a Socket API token,
-exchanges a GitHub App token under the `download-releases` policy in
-`tempoxyz/aegis`, bootstraps a GitHub CLI with attestation support on Linux if
-needed, downloads the latest stable Aegis release for the runner operating
+bootstraps a GitHub CLI with attestation support on Linux if
+needed, downloads Aegis through `aegis.tempoxyz.net` for the runner operating
 system and architecture, verifies it against `SHA256SUMS` and its Sigstore
 provenance (signer workflow, release-tag source commit, and `refs/heads/main`),
 starts the loopback token provider, prepares the Aegis lifecycle, and installs
@@ -36,7 +35,11 @@ Accepts all inputs and defaults from [Harden Runner](../harden-runner/action.yml
 and forwards them unchanged: `step-security-sts-host`, `egress-policy`, `allowed-endpoints`,
 `denied-endpoints`, `disable-telemetry`, `disable-sudo-and-containers`,
 `disable-file-monitoring`, `deploy-on-self-hosted-vm`, and `token`. `socket-sts-host`
-selects the Socket STS.
+selects the Socket STS. `aegis_version` selects an exact published release tag,
+including stable tags such as `v0.15.0` and prerelease tags such as
+`20260927T194115Z-5e7bd8b807b2`. When empty, the action selects the latest
+stable release from the Aegis server. Downloads require `id-token: write` and
+do not require access to the private `tempoxyz/aegis` repository.
 
 `disable-enforcement: true` skips both Harden Runner and Aegis with a warning
 annotation. It is intended for Aegis's own installation tests, where a
