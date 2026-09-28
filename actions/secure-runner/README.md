@@ -113,7 +113,7 @@ reports its own failures as above.
 
 Aegis setup degrades the same way. Its stages run in order, and if one fails
 after its own retries, nothing after it runs: the Socket STS exchange, the
-GitHub STS exchange for the release token, the GitHub CLI bootstrap, the Aegis
+GitHub CLI bootstrap, the Aegis
 download and verification, the token provider, the lifecycle handler, and the
 package installation. The action then emits a warning annotation titled
 "Package-policy enforcement disabled" naming the stage that failed and the
@@ -123,8 +123,8 @@ same way and installs nothing.
 
 Credential cleanup at job end is best-effort in the same spirit. The Aegis audit
 log uploads and the Linux installation retires before the Socket token that fed
-it is revoked; the GitHub App token and the Step Security lease are revoked, and
-Harden Runner stops last. If an STS cannot revoke its lease or token after
+it is revoked; Harden Runner then stops and the Step Security lease is revoked.
+If an STS cannot revoke its lease or token after
 retries, the post-job step reports a warning rather than failing a job that has
 already finished; every lease and token expires on its own. Corrupt saved state
 still fails, since that indicates a bug rather than an outage. On self-hosted
