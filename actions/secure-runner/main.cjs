@@ -8,25 +8,19 @@ const { enforcementDisabled, oidcAvailable } = hardenRunner;
 const socketSts = require("../socket-sts/main.cjs");
 const { host: socketHost } = require("../socket-sts/http.cjs");
 const { disabledMessage, isServiceDisabled } = require("../socket-sts/status.cjs");
-const githubSts = require("../github-sts/main.js");
-const { downloadAndVerify } = require("../aegis/download.cjs");
+const { AUDIENCE: AEGIS_AUDIENCE, downloadAndVerify } = require("./aegis-release.cjs");
 const { installAegis, retrying, runCommand } = require("../aegis/install.cjs");
 const { prepareConfiguration } = require("../aegis/token-provider.cjs");
 const { runnerOIDCEnvironment } = require("../aegis/github-oidc.cjs");
 const { identity, retire } = require("../aegis-report/linux-lifecycle.cjs");
 const { createOidcClient } = require("./oidc.cjs");
 
-const GITHUB_STS_HOST = "gh-sts.tempoxyz.net";
-const AEGIS_RELEASE_SCOPE = "tempoxyz/aegis";
-const AEGIS_RELEASE_POLICY = "download-releases";
-const AEGIS_RELEASE_TOKEN_TTL = "15m";
 const TITLE = "Package-policy enforcement disabled";
 
 // Stage descriptions, worded as the Aegis composite's status report words them
 // so existing checks on the annotation keep matching.
 const STAGES = {
   socket: "the Socket STS did not issue a Socket API token",
-  release: "the GitHub STS did not issue an Aegis release download token",
   cli: "a GitHub CLI with attestation support could not be bootstrapped",
   download: "the Aegis release could not be downloaded and verified",
   provider: "the Aegis token provider could not be started",
@@ -103,7 +97,6 @@ async function main({ env = process.env, platform = process.platform, deps = {} 
     runHardenRunner,
     exchangeStepSecurity = exchangeStepSecurityToken,
     exchangeSocket = socketSts.exchange,
-    exchangeGitHub = githubSts.exchange,
     ensureCli = ensureGitHubCli,
     download = downloadAndVerify,
     prepareConfig = prepareConfiguration,
@@ -146,7 +139,7 @@ async function main({ env = process.env, platform = process.platform, deps = {} 
   // Both assertions are requested at once; the exchanges below still run in
   // order, so nothing is downloaded or installed without a Socket API token.
   oidc.token(socketEndpoint).catch(() => {});
-  oidc.token(GITHUB_STS_HOST).catch(() => {});
+  oidc.token(AEGIS_AUDIENCE).catch(() => {});
 
   try {
     const socket = await stage(STAGES.socket, () =>
@@ -155,21 +148,11 @@ async function main({ env = process.env, platform = process.platform, deps = {} 
     append(state, "socket_token", socket.token);
     append(state, "socket_host", socketEndpoint);
 
-    const release = await stage(STAGES.release, () =>
-      exchangeGitHub({
-        host: GITHUB_STS_HOST,
-        scope: AEGIS_RELEASE_SCOPE,
-        policy: AEGIS_RELEASE_POLICY,
-        ttl: AEGIS_RELEASE_TOKEN_TTL,
-        getOidc: assertionProvider(oidc, GITHUB_STS_HOST),
-      }));
-    maskSecret(release.token);
-    append(state, "github_token", release.token);
-    append(state, "github_sts_host", GITHUB_STS_HOST);
-
-    const pathEntries = await stage(STAGES.cli, () => ensureCli({ env, token: release.token, spawn, sleep }));
+    const pathEntries = await stage(STAGES.cli, () => ensureCli({ env, token: env["INPUT_TOKEN"] || env.GITHUB_TOKEN, spawn, sleep }));
     const artifact = await stage(STAGES.download, () =>
-      download({ token: release.token, runnerOS: env.RUNNER_OS, runnerArch: env.RUNNER_ARCH, env, pathEntries, sleep }));
+      download({ version: env.INPUT_AEGIS_VERSION || "", getOidc: assertionProvider(oidc, AEGIS_AUDIENCE),
+        token: env["INPUT_TOKEN"] || env.GITHUB_TOKEN, runnerOS: env.RUNNER_OS, runnerArch: env.RUNNER_ARCH,
+        env, pathEntries, sleep }));
     const config = await stage(STAGES.provider, () =>
       prepareConfig(socket.token, { env, oidc: runnerOIDCEnvironment(env) }));
 
@@ -216,10 +199,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  AEGIS_RELEASE_POLICY,
-  AEGIS_RELEASE_SCOPE,
-  AEGIS_RELEASE_TOKEN_TTL,
-  GITHUB_STS_HOST,
   STAGES,
   StageError,
   assertionProvider,

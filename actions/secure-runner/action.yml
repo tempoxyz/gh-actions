@@ -12,6 +12,10 @@ inputs:
     description: "Socket STS hostname used for the Aegis credential"
     required: false
     default: "socket-sts.tempoxyz.net"
+  aegis_version:
+    description: "Exact published Aegis release tag (for example v0.15.0 or 20260927T194115Z-5e7bd8b807b2); empty selects the latest stable release"
+    required: false
+    default: ""
   egress-policy:
     description: "Fallback outbound policy when no stored policy applies (audit or block)"
     required: false

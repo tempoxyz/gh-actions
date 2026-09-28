@@ -4,7 +4,8 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createOidcClient, expiresAt } = require("./oidc.cjs");
-const { GITHUB_STS_HOST, STAGES, assertionProvider, forkPullRequest, main: mainMain } = require("./main.cjs");
+const { STAGES, assertionProvider, forkPullRequest, main: mainMain } = require("./main.cjs");
+const { AUDIENCE: AEGIS_AUDIENCE } = require("./aegis-release.cjs");
 const { main: postMain } = require("./post.cjs");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8").replace(/\r\n/g, "\n");
@@ -40,14 +41,15 @@ test("is a node24 action with no pre hook or nested pins and the expected inputs
   assert.match(manifest, /runs:\n  using: "node24"\n  main: "main\.cjs"\n  post: "post\.cjs"\n/);
   assert.doesNotMatch(manifest, /^  pre:/m);
   assert.doesNotMatch(manifest, /uses:/);
-  const inputs = (text) => [...text.matchAll(/^  ([a-z-]+):\n    description: "[^"]+"\n    required: false\n    default: (.*)$/gm)].map((m) => [m[1], m[2]]);
+  const inputs = (text) => [...text.matchAll(/^  ([a-z_-]+):\n    description: "[^"]+"\n    required: false\n    default: (.*)$/gm)].map((m) => [m[1], m[2]]);
   const ours = inputs(manifest.split("\nruns:")[0]);
   const hardenRunners = inputs(hardenRunnerManifest.split("\nruns:")[0]);
   for (const [name, fallback] of hardenRunners) {
     assert.deepEqual(ours.find((input) => input[0] === name), [name, fallback], `input ${name} must match harden-runner`);
   }
   assert.deepEqual(ours.find((input) => input[0] === "socket-sts-host"), ["socket-sts-host", '"socket-sts.tempoxyz.net"']);
-  assert.equal(ours.length, hardenRunners.length + 1);
+  assert.deepEqual(ours.find((input) => input[0] === "aegis_version"), ["aegis_version", '""']);
+  assert.equal(ours.length, hardenRunners.length + 2);
   assert.doesNotMatch(manifest, /^outputs:/m, "the action exposes no outputs; nothing consumes them");
   assert.doesNotMatch(manifest, /\bdev:/);
   const implementation = ["main.cjs", "post.cjs", "oidc.cjs"]
@@ -134,7 +136,7 @@ test("main starts Harden Runner before Aegis setup with a Step Security credenti
       },
     }),
   );
-  assert.deepEqual(audiences, ["ss-sts.tempoxyz.dev", "socket-sts.tempoxyz.net", GITHUB_STS_HOST]);
+  assert.deepEqual(audiences, ["ss-sts.tempoxyz.dev", "socket-sts.tempoxyz.net", AEGIS_AUDIENCE]);
   assert.deepEqual(calls, [["pre", "step_test_short_lived_api_key"], ["socket"]]);
   assert.equal(
     fs.readFileSync(state, "utf8"),
@@ -183,10 +185,6 @@ function pipelineDeps(overrides = {}) {
       await getAssertion();
       return { token: "sktsec_test_short_lived_token_api", expiresAt: "2026-09-26T00:00:00Z" };
     }),
-    exchangeGitHub: record("release", async ({ getOidc }) => {
-      await getOidc();
-      return { token: "ghs_release_token_value_", expiresAt: "2026-09-26T00:15:00Z" };
-    }),
     ensureCli: record("cli", ["/bootstrap/gh/bin"]),
     download: record("download", { package: "/runner/temp/aegis-release-x/aegis-1.2.3-linux-amd64.deb", directory: "/runner/temp/aegis-release-x" }),
     prepareConfig: record("provider", null),
@@ -225,54 +223,55 @@ test("main runs the Aegis pipeline in order and records state and masks", async 
   const { calls, tokens, deps } = pipelineDeps({ prepareConfig: async () => config });
   const { lines } = await captured(() => mainMain({ env, platform: "linux", deps }));
 
-  assert.deepEqual(calls.map((call) => call[0]), ["socket", "release", "cli", "download", "retire", "install"]);
+  assert.deepEqual(calls.map((call) => call[0]), ["socket", "cli", "download", "retire", "install"]);
   const socketCall = calls[0][1];
   assert.equal(socketCall.endpoint, "socket-sts.tempoxyz.dev");
-  const releaseCall = calls[1][1];
-  assert.deepEqual([releaseCall.host, releaseCall.scope, releaseCall.policy, releaseCall.ttl], [GITHUB_STS_HOST, "tempoxyz/aegis", "download-releases", "15m"]);
-  assert.equal(calls[2][1].token, "ghs_release_token_value_");
-  assert.deepEqual(calls[3][1].pathEntries, ["/bootstrap/gh/bin"]);
-  assert.deepEqual([calls[3][1].runnerOS, calls[3][1].runnerArch], ["Linux", "X64"]);
-  assert.equal(calls[5][1].configPath, config);
-  assert.equal(calls[5][1].packagePath, "/runner/temp/aegis-release-x/aegis-1.2.3-linux-amd64.deb");
+  assert.deepEqual(calls[2][1].pathEntries, ["/bootstrap/gh/bin"]);
+  assert.deepEqual([calls[2][1].runnerOS, calls[2][1].runnerArch], ["Linux", "X64"]);
+  assert.equal(calls[2][1].version, "");
+  assert.equal(calls[4][1].configPath, config);
+  assert.equal(calls[4][1].packagePath, "/runner/temp/aegis-release-x/aegis-1.2.3-linux-amd64.deb");
 
   // Both audiences are warmed up front and served from the cache first; only
   // repeat calls ask for a fresh assertion.
   assert.deepEqual(tokens, [
     ["socket-sts.tempoxyz.dev", false],
-    [GITHUB_STS_HOST, false],
+    [AEGIS_AUDIENCE, false],
     ["socket-sts.tempoxyz.dev", false],
-    [GITHUB_STS_HOST, false],
   ]);
 
   assert.equal(
     fs.readFileSync(env.GITHUB_STATE, "utf8"),
     "socket_token=sktsec_test_short_lived_token_api\n" +
       "socket_host=socket-sts.tempoxyz.dev\n" +
-      "github_token=ghs_release_token_value_\n" +
-      "github_sts_host=gh-sts.tempoxyz.net\n" +
       "aegis_action=__tempoxyz_gh-actions_actions_secure-runner\n" +
       "aegis_installation_identity=identity-of-http://127.0.0.1:1/route\n",
   );
   assert.ok(!fs.existsSync(env.GITHUB_OUTPUT), "no outputs are written");
   assert.deepEqual(lines.filter((line) => line.startsWith("::")), [
     "::add-mask::sktsec_test_short_lived_token_api",
-    "::add-mask::ghs_release_token_value_",
   ]);
   assert.ok(lines.at(-1).startsWith("Aegis installed at /usr/bin/aegis"));
   assert.ok(!fs.existsSync(env.GITHUB_STEP_SUMMARY));
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test("main passes an exact Aegis release tag to the server downloader", async () => {
+  const { env, config, directory } = pipelineEnv({ INPUT_AEGIS_VERSION: "20260927T194115Z-5e7bd8b807b2" });
+  const { calls, deps } = pipelineDeps({ prepareConfig: async () => config });
+  await captured(() => mainMain({ env, platform: "linux", deps }));
+  assert.equal(calls.find((call) => call[0] === "download")[1].version, "20260927T194115Z-5e7bd8b807b2");
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
 test("main degrades at the failing stage, installs nothing after it, and says why", async () => {
   const failures = [
     ["exchangeSocket", "socket", STAGES.socket, ["socket"], []],
-    ["exchangeGitHub", "release", STAGES.release, ["socket", "release"], ["socket_token", "socket_host"]],
-    ["ensureCli", "cli", STAGES.cli, ["socket", "release", "cli"], ["socket_token", "socket_host", "github_token", "github_sts_host"]],
-    ["download", "download", STAGES.download, ["socket", "release", "cli", "download"], ["socket_token", "socket_host", "github_token", "github_sts_host"]],
-    ["prepareConfig", "provider", STAGES.provider, ["socket", "release", "cli", "download"], ["socket_token", "socket_host", "github_token", "github_sts_host"]],
-    ["retireIncumbent", "retire", STAGES.lifecycle, ["socket", "release", "cli", "download", "retire"], ["socket_token", "socket_host", "github_token", "github_sts_host", "aegis_action"]],
-    ["install", "install", STAGES.install, ["socket", "release", "cli", "download", "retire", "install"], ["socket_token", "socket_host", "github_token", "github_sts_host", "aegis_action", "aegis_installation_identity"]],
+    ["ensureCli", "cli", STAGES.cli, ["socket", "cli"], ["socket_token", "socket_host"]],
+    ["download", "download", STAGES.download, ["socket", "cli", "download"], ["socket_token", "socket_host"]],
+    ["prepareConfig", "provider", STAGES.provider, ["socket", "cli", "download"], ["socket_token", "socket_host"]],
+    ["retireIncumbent", "retire", STAGES.lifecycle, ["socket", "cli", "download", "retire"], ["socket_token", "socket_host", "aegis_action"]],
+    ["install", "install", STAGES.install, ["socket", "cli", "download", "retire", "install"], ["socket_token", "socket_host", "aegis_action", "aegis_installation_identity"]],
   ];
   for (const [dep, name, reason, expectedCalls, stateKeys] of failures) {
     const { env, config, directory } = pipelineEnv();
@@ -281,7 +280,7 @@ test("main degrades at the failing stage, installs nothing after it, and says wh
     };
     const { calls, deps } = pipelineDeps({
       prepareConfig: dep === "prepareConfig" ? failing : async () => config,
-      [dep]: dep === "prepareConfig" ? failing : (dep === "exchangeSocket" || dep === "exchangeGitHub" || dep === "ensureCli" || dep === "download" || dep === "install" || dep === "retireIncumbent"
+      [dep]: dep === "prepareConfig" ? failing : (dep === "exchangeSocket" || dep === "ensureCli" || dep === "download" || dep === "install" || dep === "retireIncumbent"
         ? (...args) => { calls.push([name, ...args]); return failing(); }
         : failing),
     });
@@ -304,14 +303,13 @@ test("main reports a paused STS as disabled with its reason instead of as an out
   const { ServiceDisabledError } = require("../socket-sts/status.cjs");
   const cases = [
     ["exchangeSocket", "Socket STS", "socket-sts.tempoxyz.dev", STAGES.socket, ["socket"]],
-    ["exchangeGitHub", "GitHub STS", GITHUB_STS_HOST, STAGES.release, ["socket", "release"]],
   ];
   for (const [dep, service, host, reason, expectedCalls] of cases) {
     const { env, config, directory } = pipelineEnv({ "INPUT_SOCKET-STS-HOST": "socket-sts.tempoxyz.dev" });
     const { calls, deps } = pipelineDeps({
       prepareConfig: async () => config,
       [dep]: (...args) => {
-        calls.push([dep === "exchangeSocket" ? "socket" : "release", ...args]);
+        calls.push(["socket", ...args]);
         throw new ServiceDisabledError(service, host, "Paused");
       },
     });
@@ -373,7 +371,7 @@ test("main installs on macOS and Windows without the Linux lifecycle retirement"
     const { env, config, directory } = pipelineEnv({ RUNNER_OS: platform === "darwin" ? "macOS" : "Windows" });
     const { calls, deps } = pipelineDeps({ prepareConfig: async () => config, install: async () => layout });
     const { lines } = await captured(() => mainMain({ env, platform, deps }));
-    assert.deepEqual(calls.map((call) => call[0]), ["socket", "release", "cli", "download"], platform);
+    assert.deepEqual(calls.map((call) => call[0]), ["socket", "cli", "download"], platform);
     assert.match(fs.readFileSync(env.GITHUB_STATE, "utf8"), /aegis_action=/);
     assert.doesNotMatch(fs.readFileSync(env.GITHUB_STATE, "utf8"), /aegis_installation_identity/);
     assert.equal(lines.at(-1), `Aegis installed at ${layout.binary}; runtime warning verdicts are reported at job end.`, platform);
@@ -395,7 +393,6 @@ test("post runs the cleanups in reverse start order with each piece's own state,
   const envs = {};
   const hooks = {
     aegis: async ({ env, platform }) => { order.push("aegis"); envs.aegis = { env, platform }; },
-    github: async ({ env }) => { order.push("github"); envs.github = env; },
     socket: async ({ env }) => { order.push("socket"); envs.socket = env; },
     hardenRunner: async ({ env, revoke }) => { order.push("harden-runner"); envs.hardenRunner = env; await revoke(); },
     revokeLease: async ({ env }) => { order.push("lease"); envs.lease = env; },
@@ -406,19 +403,15 @@ test("post runs the cleanups in reverse start order with each piece's own state,
     STATE_sts_host: "ss-sts.tempoxyz.net",
     STATE_socket_token: "sktsec_test_short_lived_token_api",
     STATE_socket_host: "socket-sts.tempoxyz.net",
-    STATE_github_token: "ghs_release_token_value_",
-    STATE_github_sts_host: "gh-sts.tempoxyz.net",
     STATE_aegis_action: "secure-runner",
     STATE_aegis_installation_identity: "abc",
     RUNNER_ENVIRONMENT: "github-hosted",
   };
   await postMain({ env, platform: "linux", hooks });
-  assert.deepEqual(order, ["aegis", "github", "socket", "harden-runner", "lease"]);
+  assert.deepEqual(order, ["aegis", "socket", "harden-runner", "lease"]);
   assert.equal(envs.aegis.env.STATE_action, "secure-runner");
   assert.equal(envs.aegis.env.STATE_installation_identity, "abc");
   assert.equal(envs.aegis.platform, "linux");
-  assert.equal(envs.github.STATE_token, "ghs_release_token_value_");
-  assert.equal(envs.github.STATE_sts_host, "gh-sts.tempoxyz.net");
   assert.equal(envs.socket.STATE_token, "sktsec_test_short_lived_token_api");
   assert.equal(envs.socket.STATE_host, "socket-sts.tempoxyz.net");
   assert.equal(envs.socket.STATE_upload_aegis_report, "false");
@@ -444,5 +437,5 @@ test("post runs the cleanups in reverse start order with each piece's own state,
     }),
     (error) => error instanceof AggregateError && error.errors.length === 2 && /Aegis cleanup: uninstall failed/.test(error.errors[0].message) && /Socket token revocation: stored Socket token is invalid/.test(error.errors[1].message),
   );
-  assert.deepEqual(order, ["aegis", "github", "socket", "harden-runner", "lease"]);
+  assert.deepEqual(order, ["aegis", "socket", "harden-runner", "lease"]);
 });

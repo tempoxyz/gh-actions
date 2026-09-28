@@ -1,7 +1,6 @@
 const hardenRunnerPost = require("../harden-runner/post.cjs");
 const stepSecurityPost = require("../step-security-sts/post.cjs");
 const socketPost = require("../socket-sts/post.cjs");
-const githubPost = require("../github-sts/post.js");
 const aegisPost = require("../aegis-report/post.cjs");
 
 // Job end. The cleanups run in the reverse of the order their pieces started,
@@ -13,7 +12,6 @@ const aegisPost = require("../aegis-report/post.cjs");
 async function main({ env = process.env, platform = process.platform, hooks = {} } = {}) {
   const {
     aegis = aegisPost.main,
-    github = githubPost.main,
     socket = socketPost.main,
     hardenRunner = hardenRunnerPost.main,
     revokeLease = stepSecurityPost.main,
@@ -37,12 +35,6 @@ async function main({ env = process.env, platform = process.platform, hooks = {}
           STATE_installation_identity: env.STATE_aegis_installation_identity || "",
         },
         platform,
-      }));
-  }
-  if (env.STATE_github_token) {
-    await attempt("GitHub App token revocation", () =>
-      github({
-        env: { ...env, STATE_token: env.STATE_github_token, STATE_sts_host: env.STATE_github_sts_host || "" },
       }));
   }
   if (env.STATE_socket_token) {
