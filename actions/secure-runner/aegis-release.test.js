@@ -41,7 +41,7 @@ for (const [requested, tag, version, channel] of [
       assert.equal(fs.readFileSync(result.package, "utf8"), "artifact");
       assert.equal(requests.some(({ url }) => url.includes("/next?")), requested === "");
       assert.equal(requests[requested === "" ? 1 : 0].url,
-        `https://aegis.tempoxyz.net/v1/releases/${channel}/${tag}`);
+        `https://aegis.tempoxyz.net/v1/actions/releases/${channel}/${tag}`);
       assert.ok(requests.every(({ options }) => options.headers["x-aegis-github-oidc-jwt"] === "oidc-assertion"));
       assert.equal(commands.length, 1);
       assert.equal(commands[0].command, "gh");

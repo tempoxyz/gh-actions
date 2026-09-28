@@ -9,6 +9,7 @@ const { pipeline } = require("node:stream/promises");
 const { assetName, expectedDigest, ghEnvironment, retrySync } = require("../aegis/download.cjs");
 
 const ORIGIN = "https://aegis.tempoxyz.net";
+const RELEASE_PATH = "/v1/actions/releases";
 const AUDIENCE = ORIGIN;
 const RELEASE_TAG = /^(?:v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?|[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12})$/;
 const TRANSFER_TIMEOUT_MS = 120_000;
@@ -58,7 +59,7 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
   const options = { fetcher };
   let tag = version;
   if (!tag) {
-    const response = await retry(() => request(`${ORIGIN}/v1/releases/next?channel=regular`, getOidc, options), "Aegis latest release lookup", sleep);
+    const response = await retry(() => request(`${ORIGIN}${RELEASE_PATH}/next?channel=regular`, getOidc, options), "Aegis latest release lookup", sleep);
     const latest = await response.json();
     tag = latest?.tag;
     if (typeof tag !== "string" || !RELEASE_TAG.test(tag) || releaseChannel(tag) !== "regular") {
@@ -66,12 +67,12 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
     }
   }
   const channel = releaseChannel(tag);
-  const metadataResponse = await retry(() => request(`${ORIGIN}/v1/releases/${channel}/${encodeURIComponent(tag)}`, getOidc, options), "Aegis release lookup", sleep);
+  const metadataResponse = await retry(() => request(`${ORIGIN}${RELEASE_PATH}/${channel}/${encodeURIComponent(tag)}`, getOidc, options), "Aegis release lookup", sleep);
   const metadata = validateMetadata(await metadataResponse.json(), tag, channel);
   const asset = assetName(metadata.version, runnerOS, runnerArch);
   const directory = fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), "aegis-release-"));
   for (const name of [asset, "SHA256SUMS", "provenance.sigstore.json"]) {
-    const url = `${ORIGIN}/v1/releases/${channel}/${encodeURIComponent(tag)}/assets/${name}`;
+    const url = `${ORIGIN}${RELEASE_PATH}/${channel}/${encodeURIComponent(tag)}/assets/${name}`;
     await retry(async () => {
       const response = await request(url, getOidc, { fetcher, timeout: TRANSFER_TIMEOUT_MS });
       if (!response.body) throw new Error(`Aegis release asset ${name} has no body`);
