@@ -1,0 +1,30 @@
+name: Cargo dependency changes
+description: Compare selected Cargo dependency versions and sources without executing repository code
+inputs:
+  package-prefix:
+    description: Package name or prefix (e.g. reth matches reth and reth-*)
+    required: true
+  base:
+    description: Base commit SHA
+    required: true
+  head:
+    description: Head commit SHA
+    required: true
+  token:
+    description: GitHub token with contents read permission
+    default: ${{ github.token }}
+outputs:
+  changed:
+    description: Whether a matching dependency changed (true on a truncated comparison)
+    value: ${{ steps.detect.outputs.changed }}
+runs:
+  using: composite
+  steps:
+    - id: detect
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+        PACKAGE_PREFIX: ${{ inputs.package-prefix }}
+      run: python3 "$GITHUB_ACTION_PATH/detect.py"

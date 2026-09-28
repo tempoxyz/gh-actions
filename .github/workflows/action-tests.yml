@@ -65,7 +65,7 @@ jobs:
   tests-passed:
     name: tests-passed
     if: ${{ always() }}
-    needs: [discover, test]
+    needs: [discover, test, cargo-dependency-changes]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -76,11 +76,25 @@ jobs:
       - name: Check matrix results
         env:
           DISCOVER_RESULT: ${{ needs.discover.result }}
+          CARGO_RESULT: ${{ needs.cargo-dependency-changes.result }}
           TEST_RESULT: ${{ needs.test.result }}
         run: |
           set -euo pipefail
-          if [[ "$DISCOVER_RESULT" != "success" || "$TEST_RESULT" != "success" ]]; then
+          if [[ "$DISCOVER_RESULT" != "success" || "$TEST_RESULT" != "success" || "$CARGO_RESULT" != "success" ]]; then
             echo "::error::Action tests failed (discover=$DISCOVER_RESULT, tests=$TEST_RESULT)"
             exit 1
           fi
           echo "All action tests passed"
+
+  cargo-dependency-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@c28778f589e9cd5b6e17a395a3203cedbd0f3f6f # 2026-09-28T07-25-04Z-c28778f5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s actions/cargo-dependency-changes -v
