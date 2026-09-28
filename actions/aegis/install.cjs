@@ -60,14 +60,21 @@ async function installAegis({
   const retry = (description, operation) => retrying(description, operation, { sleep });
 
   if (platform === "linux") {
-    await retry("apt-get install", () =>
-      runCommand(spawn, "sudo", [
-        "apt-get",
-        "-o", "Acquire::Retries=0",
-        "-o", "Acquire::http::Timeout=10",
-        "-o", "Acquire::https::Timeout=10",
-        "install", "-y", packagePath,
-      ]));
+    // Hosted runners already have Aegis's dependencies. Avoid APT's package
+    // index and post-install hooks, but retain dependency repair on other images.
+    try {
+      runCommand(spawn, "sudo", ["dpkg", "--install", packagePath]);
+    } catch {
+      console.log("Direct Aegis package installation failed; retrying with APT to resolve dependencies.");
+      await retry("apt-get install", () =>
+        runCommand(spawn, "sudo", [
+          "apt-get",
+          "-o", "Acquire::Retries=0",
+          "-o", "Acquire::http::Timeout=10",
+          "-o", "Acquire::https::Timeout=10",
+          "install", "-y", packagePath,
+        ]));
+    }
     await retry("aegis install", () => runCommand(spawn, layout.binary, ["install", "--config", configPath]));
     return layout;
   }
