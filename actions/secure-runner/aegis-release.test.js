@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { downloadAndVerify } = require("./aegis-release.cjs");
+const { downloadAndVerify, retry } = require("./aegis-release.cjs");
 
 for (const [requested, tag, version, channel] of [
   ["", "v0.15.0", "0.15.0", "regular"],
@@ -17,6 +17,7 @@ for (const [requested, tag, version, channel] of [
     const digest = crypto.createHash("sha256").update("artifact").digest("hex");
     const requests = [];
     const commands = [];
+    let verified = false;
     const fetcher = async (url, options) => {
       requests.push({ url, options });
       if (url.includes("/next?")) return Response.json({ tag });
@@ -35,10 +36,15 @@ for (const [requested, tag, version, channel] of [
         runnerOS: "Linux", runnerArch: "X64",
         env: { RUNNER_TEMP: directory, PATH: "/usr/bin" },
         fetcher,
-        execute: (command, args, options) => { commands.push({ command, args, options }); return ""; },
+        execute: async (command, args, options) => {
+          commands.push({ command, args, options });
+          await new Promise((resolve) => setImmediate(resolve));
+          verified = true;
+        },
         sleep: async () => {},
       });
       assert.equal(fs.readFileSync(result.package, "utf8"), "artifact");
+      assert.equal(verified, true, "must await provenance verification before returning the artifact");
       assert.equal(requests.some(({ url }) => url.includes("/next?")), requested === "");
       assert.equal(requests[requested === "" ? 1 : 0].url,
         `https://aegis.tempoxyz.net/v1/actions/releases/${channel}/${tag}`);
@@ -56,4 +62,18 @@ for (const [requested, tag, version, channel] of [
 
 test("rejects invalid versions before calling the server", async () => {
   await assert.rejects(downloadAndVerify({ version: "../latest", getOidc: async () => "x" }), /Invalid Aegis release version/);
+});
+
+test("async command failures retry with bounded jitter and reject after three attempts", async () => {
+  let attempts = 0;
+  const waits = [];
+  await assert.rejects(retry(async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+    attempts += 1;
+    throw new Error("verification failed");
+  }, "verification", async (ms) => waits.push(ms), 0.25), /verification failed/);
+  assert.equal(attempts, 3);
+  assert.equal(waits.length, 2);
+  assert.ok(waits[0] >= 1000 && waits[0] <= 1250);
+  assert.ok(waits[1] >= 2000 && waits[1] <= 2500);
 });

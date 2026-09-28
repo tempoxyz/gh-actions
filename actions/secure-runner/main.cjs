@@ -9,8 +9,9 @@ const { enforcementDisabled, oidcAvailable } = hardenRunner;
 const socketSts = require("../socket-sts/main.cjs");
 const { host: socketHost } = require("../socket-sts/http.cjs");
 const { disabledMessage, isServiceDisabled } = require("../socket-sts/status.cjs");
-const { AUDIENCE: AEGIS_AUDIENCE, downloadAndVerify } = require("./aegis-release.cjs");
-const { installAegis, retrying, runCommand } = require("../aegis/install.cjs");
+const { AUDIENCE: AEGIS_AUDIENCE, downloadAndVerify, retry } = require("./aegis-release.cjs");
+const { installAegis } = require("../aegis/install.cjs");
+const { runCommand } = require("./command.cjs");
 const { prepareConfiguration } = require("../aegis/token-provider.cjs");
 const { runnerOIDCEnvironment } = require("../aegis/github-oidc.cjs");
 const { identity, retire } = require("../aegis-report/linux-lifecycle.cjs");
@@ -65,14 +66,14 @@ function forkPullRequest(env) {
 // Runs the checksum-pinned GitHub CLI bootstrap and returns the PATH entries
 // it published through GITHUB_PATH. Those only reach later steps on their own;
 // this process must add them itself before calling `gh`.
-async function ensureGitHubCli({ env, token, spawn = spawnSync, sleep }) {
+async function ensureGitHubCli({ env, token, execute = runCommand, sleep }) {
   const script = path.join(__dirname, "..", "setup-foundry", "ensure-gh.sh");
   const pathFile = env.GITHUB_PATH;
   const before = pathFile && fs.existsSync(pathFile) ? fs.statSync(pathFile).size : 0;
-  await retrying(
+  await retry(
+    () => execute("bash", [script], { env: { ...env, GH_TOKEN: token } }),
     "GitHub CLI bootstrap",
-    () => runCommand(spawn, "bash", [script], { env: { ...env, GH_TOKEN: token } }),
-    { sleep },
+    sleep,
   );
   if (!pathFile || !fs.existsSync(pathFile)) return [];
   return fs.readFileSync(pathFile, "utf8").slice(before).split(/\r?\n/).filter(Boolean);
@@ -145,23 +146,35 @@ async function setupAegis({ env, platform, deps }) {
   const state = required("GITHUB_STATE", env);
   const socketEndpoint = socketHost(env["INPUT_SOCKET-STS-HOST"] || "socket-sts.tempoxyz.net");
 
-  // Both assertions are requested at once; the exchanges below still run in
-  // order, so nothing is downloaded or installed without a Socket API token.
+  // Socket authentication and the verified release download are independent.
+  // Warm both assertions before starting their respective branches.
   oidc.token(socketEndpoint).catch(() => {});
   oidc.token(AEGIS_AUDIENCE).catch(() => {});
 
   try {
-    const socket = await stage(STAGES.socket, () =>
-      exchangeSocket({ endpoint: socketEndpoint, getAssertion: assertionProvider(oidc, socketEndpoint), sleep }));
-    maskSecret(socket.token);
-    append(state, "socket_token", socket.token);
-    append(state, "socket_host", socketEndpoint);
-
-    const pathEntries = await stage(STAGES.cli, () => ensureCli({ env, token: env["INPUT_TOKEN"] || env.GITHUB_TOKEN, spawn, sleep }));
-    const artifact = await stage(STAGES.download, () =>
-      download({ version: env["INPUT_AEGIS-VERSION"] || "", getOidc: assertionProvider(oidc, AEGIS_AUDIENCE),
-        token: env["INPUT_TOKEN"] || env.GITHUB_TOKEN, runnerOS: env.RUNNER_OS, runnerArch: env.RUNNER_ARCH,
-        env, pathEntries, sleep }));
+    const results = await Promise.allSettled([
+      (async () => {
+        const socket = await stage(STAGES.socket, () =>
+          exchangeSocket({ endpoint: socketEndpoint, getAssertion: assertionProvider(oidc, socketEndpoint), sleep }));
+        maskSecret(socket.token);
+        append(state, "socket_token", socket.token);
+        append(state, "socket_host", socketEndpoint);
+        return socket;
+      })(),
+      (async () => {
+        const pathEntries = await stage(STAGES.cli, () => ensureCli({ env, token: env["INPUT_TOKEN"] || env.GITHUB_TOKEN, sleep }));
+        return stage(STAGES.download, () =>
+          download({ version: env["INPUT_AEGIS-VERSION"] || "", getOidc: assertionProvider(oidc, AEGIS_AUDIENCE),
+            token: env["INPUT_TOKEN"] || env.GITHUB_TOKEN, runnerOS: env.RUNNER_OS, runnerArch: env.RUNNER_ARCH,
+            env, pathEntries, sleep }));
+      })(),
+    ]);
+    // Drain both branches even on failure: a late Socket token must be masked
+    // and saved for post cleanup. Never configure or install unless both pass.
+    for (const result of results) {
+      if (result.status === "rejected") throw result.reason;
+    }
+    const [socket, artifact] = results.map((result) => result.value);
     const config = await stage(STAGES.provider, () =>
       prepareConfig(socket.token, { env, oidc: runnerOIDCEnvironment(env) }));
 

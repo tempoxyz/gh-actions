@@ -23,12 +23,15 @@ runner's bundled Node. Each STS still receives an assertion issued for its own
 audience. StepSecurity obtains its assertion in the child process; Aegis's OIDC
 client warms the Socket STS and release-server assertions concurrently.
 
-Aegis setup exchanges a Socket API token,
-bootstraps a GitHub CLI with attestation support on Linux if
+Aegis setup exchanges a Socket API token concurrently with its release preparation.
+The release branch bootstraps a GitHub CLI with attestation support on Linux if
 needed, downloads Aegis through `aegis.tempoxyz.net` for the runner operating
 system and architecture, verifies it against `SHA256SUMS` and its Sigstore
 provenance (signer workflow, release-tag source commit, and `refs/heads/main`),
-starts the loopback token provider, prepares the Aegis lifecycle, and installs
+then waits for Socket authentication to finish. CLI bootstrap and provenance
+verification use asynchronous subprocesses so authentication can progress during
+both. Once both branches succeed, setup starts the loopback token provider,
+prepares the Aegis lifecycle, and installs
 the package. Aegis is never installed without a Socket API token, and only a
 verified release is ever installed. See [Aegis](../aegis) for policy behavior
 and supported runners.
@@ -111,11 +114,12 @@ a deliberate pause reads differently from an outage. Any other answer to the
 probe, including none at all, is inconclusive: the exchange proceeds and
 reports its own failures as above.
 
-Aegis setup degrades the same way. Its stages run in order, and if one fails
-after its own retries, nothing after it runs: the Socket STS exchange, the
-GitHub CLI bootstrap, the Aegis
-download and verification, the token provider, the lifecycle handler, and the
-package installation. The action then emits a warning annotation titled
+Aegis setup degrades the same way. Socket authentication and CLI bootstrap plus
+download/verification run concurrently; if either fails after its own retries,
+the action waits for the other branch to finish and records any issued token
+for cleanup. It does not start the token provider, lifecycle handler, or package
+installation unless both branches succeed. Those later stages run in order and
+stop at the first failure. The action then emits a warning annotation titled
 "Package-policy enforcement disabled" naming the stage that failed and the
 error, and the job continues without a package firewall: package downloads are
 not inspected or blocked. A checksum or provenance mismatch is reported the

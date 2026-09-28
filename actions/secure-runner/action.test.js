@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createOidcClient, expiresAt } = require("./oidc.cjs");
-const { STAGES, assertionProvider, forkPullRequest, main: mainMain } = require("./main.cjs");
+const { STAGES, assertionProvider, ensureGitHubCli, forkPullRequest, main: mainMain } = require("./main.cjs");
 const { AUDIENCE: AEGIS_AUDIENCE } = require("./aegis-release.cjs");
 const { main: postMain } = require("./post.cjs");
 
@@ -231,7 +231,7 @@ function pipelineEnv(extra = {}) {
   };
 }
 
-test("main runs the Aegis pipeline in order and records state and masks", async () => {
+test("main joins Aegis preparation before installation and records state and masks", async () => {
   const { env, config, directory } = pipelineEnv({ "INPUT_SOCKET-STS-HOST": "socket-sts.tempoxyz.dev" });
   const { calls, tokens, deps } = pipelineDeps({ prepareConfig: async () => config });
   const { lines } = await captured(() => mainMain({ env, platform: "linux", deps }));
@@ -277,9 +277,70 @@ test("main passes an exact Aegis release tag to the server downloader", async ()
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test("Socket auth and download overlap and both must succeed before configuring Aegis", async () => {
+  for (const first of ["socket", "download"]) {
+    const { env, config } = pipelineEnv();
+    const started = { socket: Promise.withResolvers(), download: Promise.withResolvers() };
+    const finish = { socket: Promise.withResolvers(), download: Promise.withResolvers() };
+    let configured = false;
+    const { deps } = pipelineDeps({
+      exchangeSocket: async () => { started.socket.resolve(); return finish.socket.promise; },
+      download: async () => { started.download.resolve(); return finish.download.promise; },
+      prepareConfig: async () => { configured = true; return config; },
+    });
+    const running = mainMain({ env, platform: "linux", deps });
+    await Promise.all([started.socket.promise, started.download.promise]);
+    const values = { socket: { token: "sktsec_test_short_lived_token_api" }, download: { package: "/verified.deb" } };
+    finish[first].resolve(values[first]);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(configured, false);
+    const last = first === "socket" ? "download" : "socket";
+    finish[last].resolve(values[last]);
+    await running;
+    assert.equal(configured, true);
+  }
+});
+
+test("a failed auth or release branch drains its peer and preserves late credentials for cleanup", async () => {
+  for (const failure of ["socket", "cli", "download", "both"]) {
+    const { env } = pipelineEnv();
+    const release = Promise.withResolvers();
+    let finished = false;
+    const { deps } = pipelineDeps({
+      exchangeSocket: async () => {
+        if (failure === "socket" || failure === "both") throw new Error("socket failed");
+        await release.promise;
+        return { token: "sktsec_test_short_lived_token_api" };
+      },
+      ensureCli: async () => { if (failure === "cli") throw new Error("cli failed"); return []; },
+      download: async () => {
+        if (failure === "download" || failure === "both") throw new Error("download failed");
+        await release.promise;
+        return { package: "/verified.deb" };
+      },
+      prepareConfig: async () => assert.fail("must not configure after either branch fails"),
+      install: async () => assert.fail("must not install after either branch fails"),
+    });
+    const { lines } = await captured(async () => {
+      const running = mainMain({ env, platform: "linux", deps }).then(() => { finished = true; });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(finished, failure === "both");
+      release.resolve();
+      await running;
+    });
+    assert.equal(lines.filter((line) => line.startsWith("::warning")).length, 1);
+    if (failure === "cli" || failure === "download") {
+      assert.match(fs.readFileSync(env.GITHUB_STATE, "utf8"), /^socket_token=sktsec_test_short_lived_token_api\nsocket_host=socket-sts.tempoxyz.net\n$/);
+      assert.ok(lines.includes("::add-mask::sktsec_test_short_lived_token_api"));
+    } else {
+      assert.equal(fs.existsSync(env.GITHUB_STATE), false);
+    }
+  }
+});
+
 test("main degrades at the failing stage, installs nothing after it, and says why", async () => {
   const failures = [
-    ["exchangeSocket", "socket", STAGES.socket, ["socket"], []],
+    ["exchangeSocket", "socket", STAGES.socket, ["socket", "cli", "download"], []],
     ["ensureCli", "cli", STAGES.cli, ["socket", "cli"], ["socket_token", "socket_host"]],
     ["download", "download", STAGES.download, ["socket", "cli", "download"], ["socket_token", "socket_host"]],
     ["prepareConfig", "provider", STAGES.provider, ["socket", "cli", "download"], ["socket_token", "socket_host"]],
@@ -315,7 +376,7 @@ test("main degrades at the failing stage, installs nothing after it, and says wh
 test("main reports a paused STS as disabled with its reason instead of as an outage", async () => {
   const { ServiceDisabledError } = require("../socket-sts/status.cjs");
   const cases = [
-    ["exchangeSocket", "Socket STS", "socket-sts.tempoxyz.dev", STAGES.socket, ["socket"]],
+    ["exchangeSocket", "Socket STS", "socket-sts.tempoxyz.dev", STAGES.socket, ["socket", "cli", "download"]],
   ];
   for (const [dep, service, host, reason, expectedCalls] of cases) {
     const { env, config, directory } = pipelineEnv({ "INPUT_SOCKET-STS-HOST": "socket-sts.tempoxyz.dev" });
@@ -399,6 +460,28 @@ test("assertionProvider serves the warmed assertion once and fresh ones afterwar
   await provider();
   await provider();
   assert.deepEqual(seen, [["aud", false], ["aud", true], ["aud", true]]);
+});
+
+test("CLI bootstrap awaits retries and returns only the PATH entries it added", async () => {
+  const pathFile = tempFile("path");
+  fs.writeFileSync(pathFile, "/existing/bin\n");
+  const waits = [];
+  let attempts = 0;
+  const entries = await ensureGitHubCli({
+    env: { GITHUB_PATH: pathFile },
+    token: "job-token",
+    sleep: async (ms) => waits.push(ms),
+    execute: async (command, args, options) => {
+      assert.equal(command, "bash");
+      assert.equal(options.env.GH_TOKEN, "job-token");
+      await new Promise((resolve) => setImmediate(resolve));
+      if (++attempts < 3) throw new Error("bootstrap failed");
+      fs.appendFileSync(pathFile, "/new/gh/bin\n");
+    },
+  });
+  assert.equal(attempts, 3);
+  assert.deepEqual(waits, [1000, 2000]);
+  assert.deepEqual(entries, ["/new/gh/bin"]);
 });
 
 test("post runs the cleanups in reverse start order with each piece's own state, and reports every failure", async () => {
