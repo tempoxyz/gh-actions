@@ -23,7 +23,7 @@ jobs:
         sample: [1, 2, 3]
     steps:
       - name: Measure Secure Runner and Aegis installation
-        uses: tempoxyz/gh-actions/actions/secure-runner-benchmark@centaur/use-dpkg-for-aegis-1790621072
+        uses: tempoxyz/gh-actions/actions/secure-runner-benchmark@52cabc29b4fa1966c7a689783178414050f404c5
         with:
           variant: ${{ matrix.variant }}
           aegis-version: v0.19.0
