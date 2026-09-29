@@ -15,8 +15,8 @@ vendor_dir: vendor
 # Nested `uses:` lines pointing at these owners are left in place; the org policy allows them.
 # Every other nested third-party reference is rewritten to a pinned reference into this
 # repository. Keep self_sha and self_tag in sync with the latest published tag.
-self_sha: c28778f589e9cd5b6e17a395a3203cedbd0f3f6f
-self_tag: 2026-09-28T07-25-04Z-c28778f5
+self_sha: afd6ea052fb1953e4e9df3c406f28c3f3d1ab8fc
+self_tag: 2026-09-29T00-29-36Z-afd6ea05
 allowed_upstreams:
   - actions/
   - github/
