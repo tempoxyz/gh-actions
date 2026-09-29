@@ -140,6 +140,10 @@ uninstall in a child process, so the upload can progress during teardown.
 Once teardown completes (or is skipped), Socket token revocation and Harden
 Runner's telemetry flush run concurrently, without waiting for the audit upload.
 The Step Security lease is revoked only after its telemetry flush finishes.
+On GitHub-hosted runners, StepSecurity's post event and completion acknowledgement
+are retained, but process teardown and diagnostic log harvesting are skipped;
+GitHub discards the VM. The vendored post hook still renders the security summary.
+Self-hosted and unknown runner environments retain the full vendored cleanup.
 All started operations are awaited even on failure; no cleanup is detached.
 If an STS cannot revoke its lease or token after
 retries, the post-job step reports a warning rather than failing a job that has
