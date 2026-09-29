@@ -52,10 +52,16 @@ function validateMetadata(metadata, tag, channel) {
   return metadata;
 }
 
-async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runnerArch, env = process.env,
-  pathEntries = [], fetcher = fetch, execute = runCommand, sleep } = {}) {
-  if (version && !RELEASE_TAG.test(version)) throw new Error(`Invalid Aegis release version: ${version}`);
-  if (typeof getOidc !== "function") throw new Error("Aegis release OIDC provider is missing");
+// Drain all started transfers before returning, including when one fails.
+async function settle(operations) {
+  const results = await Promise.allSettled(operations);
+  for (const result of results) {
+    if (result.status === "rejected") throw result.reason;
+  }
+  return results.map((result) => result.value);
+}
+
+async function downloadAssets({ version, getOidc, runnerOS, runnerArch, directory, fetcher, sleep }) {
   const options = { fetcher };
   let tag = version;
   if (!tag) {
@@ -70,28 +76,55 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
   const metadataResponse = await retry(() => request(`${ORIGIN}${RELEASE_PATH}/${channel}/${encodeURIComponent(tag)}`, getOidc, options), "Aegis release lookup", sleep);
   const metadata = validateMetadata(await metadataResponse.json(), tag, channel);
   const asset = assetName(metadata.version, runnerOS, runnerArch);
-  const directory = fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), "aegis-release-"));
-  for (const name of [asset, "SHA256SUMS", "provenance.sigstore.json"]) {
+  await settle([asset, "SHA256SUMS", "provenance.sigstore.json"].map(async (name) => {
     const url = `${ORIGIN}${RELEASE_PATH}/${channel}/${encodeURIComponent(tag)}/assets/${name}`;
     await retry(async () => {
       const response = await request(url, getOidc, { fetcher, timeout: TRANSFER_TIMEOUT_MS });
       if (!response.body) throw new Error(`Aegis release asset ${name} has no body`);
       await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(path.join(directory, name)));
     }, `Aegis release asset ${name}`, sleep);
-  }
+  }));
   const artifact = path.join(directory, asset);
   const expected = expectedDigest(fs.readFileSync(path.join(directory, "SHA256SUMS"), "utf8"), asset);
   const actual = crypto.createHash("sha256").update(fs.readFileSync(artifact)).digest("hex");
   assert.equal(actual, expected, `${asset} does not match SHA256SUMS`);
+  return { artifact, commit: metadata.source_commit };
+}
+
+async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runnerArch, env = process.env,
+  pathEntries = [], fetcher = fetch, execute = runCommand, sleep } = {}) {
+  if (version && !RELEASE_TAG.test(version)) throw new Error(`Invalid Aegis release version: ${version}`);
+  if (typeof getOidc !== "function") throw new Error("Aegis release OIDC provider is missing");
+  const directory = fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), "aegis-release-"));
+  const trustedRoot = path.join(directory, "trusted_root.jsonl");
+  const commandOptions = { timeout: 60_000, env: ghEnvironment(token, env, pathEntries) };
+  // Fetch current roots using gh's authenticated TUF flow, independently of
+  // release lookup and asset transfers. Never reuse a root file across jobs.
+  const [{ artifact, commit }] = await settle([
+    downloadAssets({ version, getOidc, runnerOS, runnerArch, directory, fetcher, sleep }),
+    retry(async () => {
+      // Truncate on every attempt so partial output cannot survive a retry.
+      const output = fs.openSync(trustedRoot, "w", 0o600);
+      try {
+        await execute("gh", ["attestation", "trusted-root"], {
+          ...commandOptions, stdio: ["ignore", output, "inherit"],
+        });
+      } finally {
+        fs.closeSync(output);
+      }
+      if (fs.statSync(trustedRoot).size === 0) throw new Error("GitHub CLI returned no trusted roots");
+    }, "Sigstore trusted-root download", sleep, 0.25),
+  ]);
   await retry(() => execute("gh", [
     "attestation", "verify", artifact,
     "--repo", "tempoxyz/aegis",
     "--bundle", path.join(directory, "provenance.sigstore.json"),
+    "--custom-trusted-root", trustedRoot,
     "--signer-workflow", "tempoxyz/aegis/.github/workflows/release.yml",
-    "--source-digest", metadata.source_commit,
+    "--source-digest", commit,
     "--source-ref", "refs/heads/main",
     "--deny-self-hosted-runners",
-  ], { stdio: "inherit", timeout: 60_000, env: ghEnvironment(token, env, pathEntries) }),
+  ], { ...commandOptions, stdio: "inherit" }),
   "Aegis provenance verification", sleep, 0.25);
   return { package: artifact, directory };
 }
