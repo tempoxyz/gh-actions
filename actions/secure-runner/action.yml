@@ -4,6 +4,12 @@ description: >-
   running without either when its service cannot be reached
 
 inputs:
+  benchmark-variant:
+    description: Benchmark variant
+    default: baseline
+  benchmark-self-hosted:
+    description: Exercise persistent-runner cleanup on an ephemeral test VM
+    default: "false"
   step-security-sts-host:
     description: "Step Security STS hostname used for policy-store credentials"
     required: false
@@ -56,4 +62,4 @@ inputs:
 runs:
   using: "node24"
   main: "main.cjs"
-  post: "post.cjs"
+  post: "benchmark-post.cjs"
