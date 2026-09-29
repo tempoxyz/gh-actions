@@ -58,7 +58,7 @@ jobs:
       binaries: ${{ steps.binaries.outputs.json }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
+        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
 
       - name: Resolve binary matrix
         id: binaries
@@ -91,14 +91,14 @@ jobs:
         binary: ${{ fromJSON(needs.resolve.outputs.binaries) }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
+        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: ${{ inputs.checkout-submodules }}
       - name: Install Rust toolchain
-        uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
+        uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
         with:
           toolchain: ${{ inputs.rust-toolchain }}
       - name: Install mold linker
@@ -131,7 +131,7 @@ jobs:
           fi
           mold --version
       - name: Enable sccache
-        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
+        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
       - name: Build
         env:
           BINARY: ${{ matrix.binary }}
