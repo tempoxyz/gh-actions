@@ -1,10 +1,10 @@
 const { main: revokeLease } = require("../step-security-sts/post.cjs");
 const { warning } = require("./annotations.cjs");
-const { runHardenRunner } = require("./run.cjs");
+const { runHardenRunnerAsync } = require("./run.cjs");
 
 async function main({
   env = process.env,
-  run = runHardenRunner,
+  run = runHardenRunnerAsync,
   revoke = revokeLease,
 } = {}) {
   if (env.STATE_enforcement_disabled === "true") return;
@@ -19,7 +19,7 @@ async function main({
   // its own failure must not turn a job that already ran unprotected red.
   if (inlinePolicy || token !== "") {
     try {
-      run("post", inlinePolicy ? null : token);
+      await run("post", inlinePolicy ? null : token);
     } catch (error) {
       if (!startFailed) errors.push(error);
       else {

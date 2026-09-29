@@ -71,3 +71,20 @@ test("cleanup failure fails post; report-only callers never uninstall", { skip: 
   await assert.rejects(post({ env: { STATE_installation_identity: "owner" }, upload: async () => {}, cleanup }), /restoration failed/);
   await post({ env: {}, upload: async () => {}, cleanup });
 });
+
+test("upload and retirement overlap after snapshot and are both drained on retirement failure", async () => {
+  const upload = Promise.withResolvers();
+  let snapshot = false;
+  let finished = false;
+  const result = post({
+    platform: "linux",
+    env: { STATE_installation_identity: "owner", RUNNER_ENVIRONMENT: "self-hosted" },
+    upload: async () => { snapshot = true; await upload.promise; },
+    cleanup: async () => { assert.equal(snapshot, true); throw new Error("retirement failed"); },
+  }).finally(() => { finished = true; });
+  const checked = assert.rejects(result, /retirement failed/);
+  await new Promise(setImmediate);
+  assert.equal(finished, false);
+  upload.resolve();
+  await checked;
+});

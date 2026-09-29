@@ -22,7 +22,7 @@ test("registers a post-job Aegis audit-log upload", () => {
   assert.match(fs.readFileSync(path.join(__dirname, "post.cjs"), "utf8"), /uploadAegisReport/);
 });
 
-test("post cleanup failures fail the job only on self-hosted runners", async () => {
+test("post skips teardown only on explicitly GitHub-hosted runners", async () => {
   const { main: postMain } = require("./post.cjs");
   const failing = () => {
     throw new Error("aegis uninstall exited 1");
@@ -39,11 +39,9 @@ test("post cleanup failures fail the job only on self-hosted runners", async () 
   };
 
   const hosted = await run({ STATE_installation_identity: "abc", RUNNER_ENVIRONMENT: "github-hosted" });
-  assert.deepEqual(hosted, [
-    "::warning title=Aegis cleanup failed::aegis uninstall exited 1. This GitHub-hosted runner is discarded after the job.",
-  ]);
+  assert.deepEqual(hosted, []);
 
-  for (const environment of ["self-hosted", undefined]) {
+  for (const environment of ["self-hosted", undefined, "", "unknown"]) {
     await assert.rejects(
       run({ STATE_installation_identity: "abc", ...(environment ? { RUNNER_ENVIRONMENT: environment } : {}) }),
       /aegis uninstall exited 1/,

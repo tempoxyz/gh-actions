@@ -484,7 +484,7 @@ test("CLI bootstrap awaits retries and returns only the PATH entries it added", 
   assert.deepEqual(entries, ["/new/gh/bin"]);
 });
 
-test("post runs the cleanups in reverse start order with each piece's own state, and reports every failure", async () => {
+test("post passes each piece its own state and reports every failure", async () => {
   const order = [];
   const envs = {};
   const hooks = {
@@ -531,7 +531,7 @@ test("post runs the cleanups in reverse start order with each piece's own state,
         socket: async () => { order.push("socket"); throw new Error("stored Socket token is invalid"); },
       },
     }),
-    (error) => error instanceof AggregateError && error.errors.length === 2 && /Aegis cleanup: uninstall failed/.test(error.errors[0].message) && /Socket token revocation: stored Socket token is invalid/.test(error.errors[1].message),
+    (error) => error instanceof AggregateError && error.errors.length === 2 && /Aegis reporting: uninstall failed/.test(error.errors[0].message) && /Socket token revocation: stored Socket token is invalid/.test(error.errors[1].message),
   );
   assert.deepEqual(order, ["aegis", "socket", "harden-runner", "lease"]);
 });

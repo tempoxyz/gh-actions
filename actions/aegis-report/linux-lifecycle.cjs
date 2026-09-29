@@ -1,4 +1,4 @@
-const { execFileSync } = require("node:child_process");
+const { execFileSync, spawn } = require("node:child_process");
 const { createHash } = require("node:crypto");
 
 const CONFIG = "/etc/aegis/config.json";
@@ -41,4 +41,25 @@ function retire({ expectedIdentity, run = execFileSync } = {}) {
   });
 }
 
-module.exports = { identity, retire };
+function retireAsync({ expectedIdentity, launch = spawn } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = launch(process.execPath, [__filename, expectedIdentity], { stdio: "inherit" });
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Aegis cleanup failed (${signal ? `signal ${signal}` : `exit ${code}`})`));
+    });
+  });
+}
+
+if (require.main === module) {
+  try {
+    if (!process.argv[2]) throw new Error("Aegis cleanup requires an installation identity");
+    retire({ expectedIdentity: process.argv[2] });
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 1;
+  }
+}
+
+module.exports = { identity, retire, retireAsync };

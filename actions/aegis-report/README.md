@@ -14,11 +14,12 @@ revoke Socket API tokens.
 On dedicated Linux CI runners, pass `linux-installation-config` with the new
 job's generated Aegis configuration and invoke this action **before** installing
 the package. It uninstalls an existing managed installation with the incumbent
-binary, then registers log upload followed by uninstall at job shutdown, before
-the earlier Socket STS handler revokes credentials. Restoration errors abort
+binary, then registers a log snapshot at job shutdown, followed by concurrent
+upload and uninstall, before the earlier Socket STS handler revokes credentials. Restoration errors abort
 setup. Cleanup errors fail the job on self-hosted runners, where a leftover
-installation would affect the next job; on GitHub-hosted runners, which are
-discarded after the job, they are reported as warnings. Other callers retain
+installation would affect the next job. Teardown is skipped only when
+`RUNNER_ENVIRONMENT` is exactly `github-hosted`, since GitHub discards those
+runners after the job; unset or unknown values retain cleanup. Other callers retain
 report-only behavior.
 Post cleanup checks the token-provider identity before touching installed state.
 Incomplete recovery state is left intact for investigation. Concurrent jobs must
