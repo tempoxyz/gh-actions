@@ -20,7 +20,7 @@ jobs:
       id-token: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
+        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
 
       - name: Checkout pushed revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

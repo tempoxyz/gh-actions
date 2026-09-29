@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    uses: tempoxyz/gh-actions/.github/workflows/dependency-scan.yml@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
+    uses: tempoxyz/gh-actions/.github/workflows/dependency-scan.yml@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
     with:
       runs-on: ${{ matrix.os }}
       artifact-name: dependency-scan-${{ matrix.os }}
