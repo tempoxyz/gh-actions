@@ -23,6 +23,13 @@ runner's bundled Node. Each STS still receives an assertion issued for its own
 audience. StepSecurity obtains its assertion in the child process; Aegis's OIDC
 client warms the Socket STS and release-server assertions concurrently.
 
+Release preparation fetches the binary, checksums, and provenance concurrently.
+It also fetches fresh Sigstore trusted roots through `gh attestation trusted-root`
+alongside release lookup and downloads, then passes those roots to verification
+with `--custom-trusted-root`. Roots are not cached across jobs; checksum and
+provenance constraints still apply before installation. All started transfers
+and the root-fetch subprocess finish before setup returns, even on failure.
+
 Aegis setup exchanges a Socket API token concurrently with its release preparation.
 The release branch bootstraps a GitHub CLI with attestation support on Linux if
 needed, downloads Aegis through `aegis.tempoxyz.net` for the runner operating
