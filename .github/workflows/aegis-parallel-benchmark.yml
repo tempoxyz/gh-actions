@@ -1,0 +1,58 @@
+name: Aegis artifact and trust-root overlap benchmark
+
+on:
+  push:
+    branches: [centaur/benchmark-aegis-artifacts-1790641000]
+    paths: [.github/workflows/aegis-parallel-benchmark.yml]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  benchmark:
+    name: ${{ matrix.os }} ${{ matrix.variant }} sample ${{ matrix.sample }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        variant: [serial, parallel]
+        sample: [1, 2, 3, 4, 5]
+        include:
+          - {os: macos-15, variant: parallel, sample: 1}
+          - {os: windows-2025, variant: parallel, sample: 1}
+    steps:
+      - name: Measure Secure Runner setup
+        uses: tempoxyz/gh-actions/actions/secure-runner@c32de199a40f0b6c61f5b5c76b55f8a9543e51ce
+        with:
+          aegis-version: v0.19.0
+          benchmark-variant: ${{ matrix.variant }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify allowed package
+        run: node actions/aegis/npm-install.cjs allow
+
+      - name: Verify malware policy block
+        shell: bash
+        run: |
+          set +e
+          set -uo pipefail
+          node actions/aegis/npm-install.cjs block > "$RUNNER_TEMP/policy-block.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/policy-block.log"
+          test "$status" -ne 0
+          grep -Eiq '403|malware|security policy' "$RUNNER_TEMP/policy-block.log"
+
+      - name: Preserve measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: aegis-${{ matrix.os }}-${{ matrix.variant }}-${{ matrix.sample }}
+          path: ${{ runner.temp }}/aegis-parallel-benchmark.json
+          retention-days: 30
