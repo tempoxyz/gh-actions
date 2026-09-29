@@ -21,6 +21,8 @@ jobs:
           - {os: ubuntu-24.04, variant: parallel, sample: 6, self-hosted: true}
           - {os: macos-15, variant: parallel, sample: 1}
           - {os: windows-2025, variant: parallel, sample: 1}
+          - {os: windows-2025, variant: parallel, sample: 2}
+          - {os: windows-2025, variant: parallel, sample: 3}
     steps:
       - name: Secure Runner baseline
         if: matrix.variant == 'baseline'
@@ -30,7 +32,7 @@ jobs:
           benchmark-variant: baseline
       - name: Secure Runner hosted fast path
         if: matrix.variant == 'parallel'
-        uses: tempoxyz/gh-actions/actions/secure-runner@d4eb5e156692de8811971755ad075883cf63cd17
+        uses: tempoxyz/gh-actions/actions/secure-runner@41a113f3b550a4407617153814e502484fa88134
         with:
           aegis-version: v0.19.0
           benchmark-variant: parallel
