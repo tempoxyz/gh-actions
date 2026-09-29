@@ -10,8 +10,8 @@ OIDC/STS exchange, verified download, and installation. Separate processes let
 the existing synchronous installers overlap. It waits for both setup paths to
 finish, including on failure, before returning; checkout and later job steps
 therefore cannot race setup. Aegis bootstrap may run before StepSecurity monitoring
-is active. Its post-job entrypoint cleans both up in the existing dependency
-order. It runs
+is active. Its post-job entrypoint overlaps independent reporting and cleanup.
+It runs
 the same code the standalone [Harden Runner](../harden-runner), [Aegis](../aegis),
 [Step Security STS](../step-security-sts), [Socket STS](../socket-sts),
 [Aegis Report](../aegis-report) actions run,
@@ -133,8 +133,14 @@ not inspected or blocked. A checksum or provenance mismatch is reported the
 same way and installs nothing.
 
 Credential cleanup at job end is best-effort in the same spirit. The Aegis audit
-log uploads and the Linux installation retires before the Socket token that fed
-it is revoked; Harden Runner then stops and the Step Security lease is revoked.
+log is copied before teardown and uploaded concurrently with cleanup. When
+`RUNNER_ENVIRONMENT` is exactly `github-hosted`, Aegis teardown is skipped: GitHub
+discards the runner after the job. Other Linux runners retain identity-checked
+uninstall in a child process, so the upload can progress during teardown.
+Once teardown completes (or is skipped), Socket token revocation and Harden
+Runner's telemetry flush run concurrently, without waiting for the audit upload.
+The Step Security lease is revoked only after its telemetry flush finishes.
+All started operations are awaited even on failure; no cleanup is detached.
 If an STS cannot revoke its lease or token after
 retries, the post-job step reports a warning rather than failing a job that has
 already finished; every lease and token expires on its own. Corrupt saved state

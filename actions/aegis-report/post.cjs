@@ -2,13 +2,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { aegisReportPath, uploadAegisReport } = require("./dist/artifact-upload.cjs");
 const { warning } = require("../harden-runner/annotations.cjs");
-const { retire } = require("./linux-lifecycle.cjs");
+const { retireAsync } = require("./linux-lifecycle.cjs");
 const { scanRuntimeWarnings, runtimeWarningMessage } = require("./runtime-warnings.cjs");
 
-async function main({
+async function report({
   upload = uploadAegisReport,
   scan = scanRuntimeWarnings,
-  cleanup = retire,
   env = process.env,
   platform = process.platform,
 } = {}) {
@@ -34,23 +33,24 @@ async function main({
     }
   } catch (error) {
     warning(error.message, "Aegis post-job reporting failed", env);
-  } finally {
-    if (platform === "linux" && env.STATE_installation_identity) {
-      try {
-        cleanup({ expectedIdentity: env.STATE_installation_identity });
-      } catch (error) {
-        // A managed installation left behind on a reused self-hosted runner is
-        // not a successful lifecycle, so cleanup failures there still fail the
-        // job. A GitHub-hosted runner is discarded after the job, so the same
-        // failure only deserves a warning.
-        if (env.RUNNER_ENVIRONMENT !== "github-hosted") throw error;
-        console.log(
-          `::warning title=Aegis cleanup failed::${error.message}. ` +
-            "This GitHub-hosted runner is discarded after the job.",
-        );
-      }
-    }
   }
+}
+
+async function cleanup({ env = process.env, platform = process.platform, cleanup: retire = retireAsync } = {}) {
+  // Unknown environments are potentially persistent: only explicitly hosted
+  // runners may leave their installation for GitHub to discard with the VM.
+  if (platform === "linux" && env.STATE_installation_identity && env.RUNNER_ENVIRONMENT !== "github-hosted") {
+    await retire({ expectedIdentity: env.STATE_installation_identity });
+  }
+}
+
+async function main(options = {}) {
+  // uploadAegisReport snapshots the log synchronously before its first await.
+  // Retire in a child process so upload traffic continues during uninstall.
+  const results = await Promise.allSettled([report(options), cleanup(options)]);
+  const errors = results.filter((result) => result.status === "rejected").map((result) => result.reason);
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, "Aegis post-job cleanup failed");
 }
 
 if (require.main === module) {
@@ -60,4 +60,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main };
+module.exports = { main, report, cleanup };

@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 
 const entrypoints = {
   pre: "dist/pre/index.js",
@@ -52,4 +52,21 @@ function runHardenRunner(phase, token) {
   }
 }
 
-module.exports = { hardenRunnerEnv, runHardenRunner };
+function runHardenRunnerAsync(phase, token, launch = spawn) {
+  return new Promise((resolve, reject) => {
+    const relative = entrypoints[phase];
+    if (!relative) throw new Error(`invalid Harden Runner phase: ${phase}`);
+    const script = path.join(__dirname, "../../vendor/step-security/harden-runner", relative);
+    const child = launch(process.execPath, [script], {
+      env: hardenRunnerEnv(token),
+      stdio: "inherit",
+    });
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Harden Runner ${phase} failed (${signal ? `signal ${signal}` : `exit ${code}`})`));
+    });
+  });
+}
+
+module.exports = { hardenRunnerEnv, runHardenRunner, runHardenRunnerAsync };
