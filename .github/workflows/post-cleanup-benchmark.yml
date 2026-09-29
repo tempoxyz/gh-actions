@@ -21,9 +21,9 @@ jobs:
         variant: [baseline, parallel]
         sample: [1, 2, 3, 4, 5]
         include:
-          - {os: ubuntu-24.04, variant: parallel, sample: 1, self-hosted: true}
-          - {os: ubuntu-24.04, variant: parallel, sample: 2, self-hosted: true}
-          - {os: ubuntu-24.04, variant: parallel, sample: 3, self-hosted: true}
+          - {os: ubuntu-24.04, variant: parallel, sample: 6, self-hosted: true}
+          - {os: ubuntu-24.04, variant: parallel, sample: 7, self-hosted: true}
+          - {os: ubuntu-24.04, variant: parallel, sample: 8, self-hosted: true}
           - {os: macos-15, variant: parallel, sample: 1}
           - {os: windows-2025, variant: parallel, sample: 1}
     steps:
