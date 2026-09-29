@@ -29,6 +29,16 @@ on:
         required: false
         type: boolean
         default: false
+      env:
+        description: Audit environment (staging, prod, production, or ab).
+        required: false
+        type: string
+        default: prod
+      audit-on-push:
+        description: Also publish when a non-draft, same-repo PR is opened, pushed, reopened, or marked ready.
+        required: false
+        type: boolean
+        default: false
     secrets:
       EVENTS_KEY:
         required: true
@@ -56,6 +66,8 @@ jobs:
         id: target
         env:
           ACTOR: ${{ github.actor }}
+          AUDIT_ENV: ${{ inputs.env }}
+          AUDIT_ON_PUSH: ${{ inputs.audit-on-push }}
           REQUIRED_LABEL: ${{ inputs.required-label }}
           REQUIRED_LABELS: ${{ inputs.required-labels }}
           BRANCH: ${{ inputs.branch }}
@@ -63,6 +75,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
           LABEL_NAME: ${{ github.event.label.name }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
@@ -70,24 +84,42 @@ jobs:
         run: |
           set -euo pipefail
 
+          # prod omits runner_channel so sensors keep legacy routing.
+          case "$(printf '%s' "$AUDIT_ENV" | tr '[:upper:]' '[:lower:]')" in
+            staging) runner_channel=staging ;;
+            ab) runner_channel=ab ;;
+            prod|production) runner_channel="" ;;
+            *)
+              echo "::error::Invalid env input (must be staging, prod, production, or ab)"
+              exit 1
+              ;;
+          esac
+          echo "runner_channel=$runner_channel" >> "$GITHUB_OUTPUT"
+
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            labels="${REQUIRED_LABELS:-$REQUIRED_LABEL}"
-            if [[ "$EVENT_ACTION" != "labeled" ]]; then
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+            if [[ "$EVENT_ACTION" == "labeled" ]]; then
+              labels="${REQUIRED_LABELS:-$REQUIRED_LABEL}"
+              matched=false
+              while IFS= read -r label; do
+                label="${label#"${label%%[![:space:]]*}"}"
+                label="${label%"${label##*[![:space:]]}"}"
+                if [[ -n "$label" && "$LABEL_NAME" == "$label" ]]; then
+                  matched=true
+                  break
+                fi
+              done < <(printf '%s\n' "$labels" | tr ',' '\n')
 
-            matched=false
-            while IFS= read -r label; do
-              label="${label#"${label%%[![:space:]]*}"}"
-              label="${label%"${label##*[![:space:]]}"}"
-              if [[ -n "$label" && "$LABEL_NAME" == "$label" ]]; then
-                matched=true
-                break
+              if [[ "$matched" != "true" ]]; then
+                echo "publish=false" >> "$GITHUB_OUTPUT"
+                exit 0
               fi
-            done < <(printf '%s\n' "$labels" | tr ',' '\n')
-
-            if [[ "$matched" != "true" ]]; then
+            elif [[ "$AUDIT_ON_PUSH" == "true" &&
+                    "$EVENT_ACTION" =~ ^(opened|synchronize|reopened|ready_for_review)$ ]]; then
+              if [[ "$PR_DRAFT" == "true" || "$PR_HEAD_REPO" != "$REPO" ]]; then
+                echo "publish=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            else
               echo "publish=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -126,6 +158,7 @@ jobs:
           EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
           EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
           REPO: ${{ github.repository }}
+          RUNNER_CHANNEL: ${{ steps.target.outputs.runner_channel }}
           TARGET_PR_NUMBER: ${{ steps.target.outputs.pr_number }}
           TARGET_SHA: ${{ steps.target.outputs.sha }}
         run: |
@@ -170,12 +203,14 @@ jobs:
             --arg repo "$REPO" \
             --arg sha "$TARGET_SHA" \
             --arg pr "$TARGET_PR_NUMBER" \
+            --arg runner_channel "${RUNNER_CHANNEL:-}" \
             '{
               repository: $repo,
               event: "pr_audit",
               data: (
                 {sha: $sha}
                 + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
+                + (if $runner_channel != "" then {runner_channel: $runner_channel} else {} end)
               )
             }' \
           | env -i "${child_env[@]}" curl -sf -o /dev/null -X POST "${events_args[@]}" \

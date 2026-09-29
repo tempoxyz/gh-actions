@@ -6,14 +6,23 @@ const { spawnSync } = require("child_process");
 const usage = [
   '**Usage:** `cyclops [private] audit [super-fast] [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
   '[models="anthropic/claude-opus-4-7,openai/gpt-5.5"] [run-label=LABEL] ',
-  '[dry-run] [note="per-run audit guidance"]`',
+  '[dry-run] [env=staging|prod|ab] [note="per-run audit guidance"]`',
 ].join("");
 
 // `super-fast` is the documented spelling; `superfast` is the variant people
 // reach for that would otherwise be rejected as an unknown argument.
 const SUPER_FAST_ALIASES = new Set(["super-fast", "superfast"]);
 
-function parseArgs(body, commandRegex) {
+// Sensors route on `runner_channel`; prod omits it to keep legacy routing and status contexts.
+const RUNNER_CHANNELS = { staging: "staging", ab: "ab", prod: "" };
+
+function normalizeEnv(value) {
+  const env = String(value ?? "").trim().toLowerCase();
+  if (env === "production") return "prod";
+  return Object.hasOwn(RUNNER_CHANNELS, env) ? env : null;
+}
+
+function parseArgs(body, commandRegex, defaultEnv = "prod") {
   const prefix = new RegExp(commandRegex, "i");
   const args = body.replace(prefix, "").trim();
   const parts = [];
@@ -30,6 +39,7 @@ function parseArgs(body, commandRegex) {
     "dry-run": "false",
     private: "false",
     perf: "false",
+    env: defaultEnv,
     note: "",
   };
   const intArgs = new Set(["iterations", "hours"]);
@@ -82,6 +92,13 @@ function parseArgs(body, commandRegex) {
         defaults[key] = value;
       } else {
         invalid.push(`\`${key}=${value}\` (must be true or false)`);
+      }
+    } else if (key === "env") {
+      const env = normalizeEnv(value);
+      if (env) {
+        defaults.env = env;
+      } else {
+        invalid.push(`\`env=${value}\` (must be staging, prod, production, or ab)`);
       }
     } else if (stringArgs.has(key)) {
       if (!value) {
@@ -185,6 +202,7 @@ function buildPayload(context, pr, defaults) {
   if (defaults["run-label"]) data.run_label = defaults["run-label"];
   if (defaults.note) data.audit_note_b64 = Buffer.from(defaults.note, "utf8").toString("base64");
   if (defaults.perf === "true") data.perf = true;
+  if (RUNNER_CHANNELS[defaults.env]) data.runner_channel = RUNNER_CHANNELS[defaults.env];
 
   return {
     repository: `${context.repo.owner}/${context.repo.repo}`,
@@ -287,10 +305,18 @@ module.exports = async ({ github, context, core, getOctokit }) => {
   const commandRegex = process.env.COMMAND_REGEX;
   if (!new RegExp(commandRegex, "i").test(body)) return;
 
+  const defaultEnv = normalizeEnv(process.env.DEFAULT_ENV || "prod");
+  if (!defaultEnv) {
+    core.setFailed(
+      `Invalid default-env: ${process.env.DEFAULT_ENV} (must be staging, prod, production, or ab)`,
+    );
+    return;
+  }
+
   const pr = await checkPermission({ github, context, core, getOctokit });
   if (!pr) return;
 
-  const { defaults, errors } = parseArgs(body, commandRegex);
+  const { defaults, errors } = parseArgs(body, commandRegex, defaultEnv);
   if (errors.length) {
     const msg = `Invalid cyclops audit command\n\n${errors.join("\n")}\n\n${usage}`;
     await github.rest.issues.createComment({
@@ -304,6 +330,7 @@ module.exports = async ({ github, context, core, getOctokit }) => {
   }
 
   const summary = buildSummary(defaults);
+  const envLabel = RUNNER_CHANNELS[defaults.env] ? ` (${defaults.env})` : "";
   const actor = context.payload.comment.user.login;
   const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
   let commentId;
@@ -324,7 +351,7 @@ module.exports = async ({ github, context, core, getOctokit }) => {
         owner: context.repo.owner,
         repo: context.repo.repo,
         issue_number: context.issue.number,
-        body: `cc @${actor}\n\nCyclops audit event queued. [View workflow run](${runUrl})\n\n${summary}`,
+        body: `cc @${actor}\n\nCyclops audit event queued${envLabel}. [View workflow run](${runUrl})\n\n${summary}`,
       });
       commentId = comment.id;
     } catch (error) {
@@ -348,8 +375,8 @@ module.exports = async ({ github, context, core, getOctokit }) => {
       repo: context.repo.repo,
       comment_id: commentId,
       body: publishError
-        ? `cc @${actor}\n\nCyclops audit event failed to publish. [View workflow run](${runUrl})\n\n${summary}`
-        : `cc @${actor}\n\nCyclops audit event published. [View workflow run](${runUrl})\n\n${summary}`,
+        ? `cc @${actor}\n\nCyclops audit event failed to publish${envLabel}. [View workflow run](${runUrl})\n\n${summary}`
+        : `cc @${actor}\n\nCyclops audit event published${envLabel}. [View workflow run](${runUrl})\n\n${summary}`,
     });
   } catch (error) {
     core.warning(`Could not update audit status comment: ${error.message}`);

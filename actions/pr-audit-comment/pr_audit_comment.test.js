@@ -41,6 +41,30 @@ test("private composes with fast and note arguments", () => {
   assert.equal(defaults.note, "focus on authorization");
 });
 
+test("env selects the audit environment and falls back to the default", () => {
+  const regex = "^cyclops\\s+audit\\b";
+  for (const [body, defaultEnv, expected] of [
+    ["cyclops audit", undefined, "prod"],
+    ["cyclops audit", "staging", "staging"],
+    ["cyclops audit env=staging", undefined, "staging"],
+    ["cyclops audit fast env:AB", undefined, "ab"],
+    ["cyclops audit env=production", "staging", "prod"],
+    ["cyclops audit env=prod", "ab", "prod"],
+  ]) {
+    const { defaults, errors } = handle.parseArgs(body, regex, defaultEnv);
+    assert.deepEqual(errors, [], body);
+    assert.equal(defaults.env, expected, body);
+  }
+});
+
+test("env rejects unknown and empty values", () => {
+  for (const body of ["cyclops audit env=dev", "cyclops audit env="]) {
+    const { errors } = handle.parseArgs(body, "^cyclops\\s+audit\\b");
+    assert.equal(errors.length, 1, body);
+    assert.match(errors[0], /Invalid value\(s\): `env=.*` \(must be staging, prod, production, or ab\)/);
+  }
+});
+
 function makePr({
   authorAssociation = "MEMBER",
   authorId = 2,
@@ -202,6 +226,7 @@ async function runScenario({
   commenterLogin = "commenter",
   body,
   permissionToken,
+  defaultEnv,
   primaryMembership = async () => ({ status: 204 }),
   permissionMembership = async () => ({ status: 204 }),
   createComment,
@@ -214,6 +239,7 @@ async function runScenario({
     ALLOW_SAME_AUTHOR: allowSameAuthor,
     PERMISSION_TOKEN: permissionToken,
     ORGANIZATION: "tempoxyz",
+    DEFAULT_ENV: defaultEnv,
   });
 
   const primary = makeClient({
@@ -268,7 +294,7 @@ function shellQuote(value) {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
-function makeProcessHarness(tmp) {
+function makeProcessHarness(tmp, { stubJq = true } = {}) {
   const bin = path.join(tmp, "bin");
   fs.mkdirSync(bin);
 
@@ -295,14 +321,17 @@ printf '%s\n' "$@" > ${shellQuote(files.curlArgs)}
 env > ${shellQuote(files.curlEnv)}
 for arg in "$@"; do
   case "$arg" in
+    @-) cat > ${shellQuote(files.payload)} ;;
     @*) cp "\${arg#@}" ${shellQuote(files.payload)} ;;
   esac
 done
 cat >/dev/null
 `);
-  writeExecutable(path.join(bin, "jq"), `#!/bin/sh
+  if (stubJq) {
+    writeExecutable(path.join(bin, "jq"), `#!/bin/sh
 printf '%s\n' '{"repository":"tempoxyz/example","event":"pr_audit","data":{}}'
 `);
+  }
 
   return { bin, files };
 }
@@ -612,6 +641,82 @@ test("private audit publishes the flag without creating a GitHub status comment"
   }
 });
 
+async function publishScenario(options) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-env-"));
+  const harness = makeProcessHarness(tmp);
+  const restoreEnvironment = setEnvironment({
+    PATH: `${harness.bin}:${process.env.PATH}`,
+    EVENTS_ARGS: "--url https://events.example",
+    EVENTS_KEY: "event-key-canary",
+    EVENTS_CERT: "event-cert-canary",
+  });
+
+  try {
+    const result = await runScenario({ mode: "association", ...options });
+    const payload = fs.existsSync(harness.files.payload)
+      ? JSON.parse(fs.readFileSync(harness.files.payload))
+      : undefined;
+    return { ...result, payload };
+  } finally {
+    restoreEnvironment();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+for (const [body, defaultEnv, channel] of [
+  ["cyclops audit env=staging", undefined, "staging"],
+  ["cyclops audit fast env=AB", "prod", "ab"],
+  ["cyclops audit", "staging", "staging"],
+  ["cyclops audit", "ab", "ab"],
+]) {
+  test(`comment publisher routes ${body} (default-env ${defaultEnv}) to ${channel}`, async () => {
+    const result = await publishScenario({ body, defaultEnv });
+
+    assert.deepEqual(result.core.failures, []);
+    assert.equal(result.payload.data.runner_channel, channel);
+    assert.match(result.primary.calls.comments[0].body, new RegExp(`event queued \\(${channel}\\)\\.`));
+    assert.match(
+      result.primary.calls.commentUpdates[0].body,
+      new RegExp(`event published \\(${channel}\\)\\.`),
+    );
+  });
+}
+
+for (const [body, defaultEnv] of [
+  ["cyclops audit", undefined],
+  ["cyclops audit", "prod"],
+  ["cyclops audit env=prod", "staging"],
+  ["cyclops audit env=Production", "ab"],
+]) {
+  test(`comment publisher omits runner_channel for ${body} (default-env ${defaultEnv})`, async () => {
+    const result = await publishScenario({ body, defaultEnv });
+
+    assert.deepEqual(result.core.failures, []);
+    assert.equal(Object.hasOwn(result.payload.data, "runner_channel"), false);
+    assert.match(result.primary.calls.comments[0].body, /Cyclops audit event queued\. /);
+    assert.match(result.primary.calls.commentUpdates[0].body, /Cyclops audit event published\. /);
+  });
+}
+
+test("comment publisher rejects an invalid env argument with usage", async () => {
+  const result = await publishScenario({ body: "cyclops audit env=dev", defaultEnv: "staging" });
+
+  assert.equal(result.payload, undefined);
+  assert.equal(result.primary.calls.comments.length, 1);
+  assert.match(result.primary.calls.comments[0].body, /`env=dev` \(must be staging/);
+  assert.match(result.primary.calls.comments[0].body, /\*\*Usage:\*\*/);
+  assert.match(result.core.failures[0], /Invalid cyclops audit command/);
+});
+
+test("comment publisher fails loudly on an invalid default-env", async () => {
+  const result = await publishScenario({ body: "cyclops audit", defaultEnv: "dev" });
+
+  assert.equal(result.payload, undefined);
+  assert.equal(result.primary.calls.pulls.length, 0);
+  assert.equal(result.primary.calls.comments.length, 0);
+  assert.match(result.core.failures[0], /Invalid default-env: dev/);
+});
+
 test("comment publisher continues when the queued status comment fails", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-comment-create-failure-"));
   const harness = makeProcessHarness(tmp);
@@ -832,6 +937,44 @@ test("reusable workflow publisher rejects empty and malformed event arguments", 
       assert.notEqual(result.status, 0);
       assert.match(result.stdout + result.stderr, /must contain at least one curl argument/);
       assert.equal(fs.existsSync(harness.files.curlArgs), false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+});
+
+test("reusable workflow publisher includes runner_channel only when set", () => {
+  for (const [channel, expected] of [["staging", "staging"], ["ab", "ab"], ["", undefined], [undefined, undefined]]) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-workflow-channel-"));
+    const harness = makeProcessHarness(tmp, { stubJq: false });
+    const runnerTemp = path.join(tmp, "runner-temp");
+    fs.mkdirSync(runnerTemp);
+    const env = {
+      ...process.env,
+      PATH: `${harness.bin}:${process.env.PATH}`,
+      EVENTS_ARGS: "--url https://events.example",
+      EVENTS_KEY: "event-key-canary",
+      EVENTS_CERT: "event-cert-canary",
+      REPO: "tempoxyz/example",
+      TARGET_PR_NUMBER: "123",
+      TARGET_SHA: "0123456789abcdef",
+      RUNNER_TEMP: runnerTemp,
+    };
+    if (channel === undefined) delete env.RUNNER_CHANNEL;
+    else env.RUNNER_CHANNEL = channel;
+
+    try {
+      const result = spawnSync("bash", ["-c", workflowPublishScript()], { encoding: "utf8", env });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.deepEqual(JSON.parse(fs.readFileSync(harness.files.payload)), {
+        repository: "tempoxyz/example",
+        event: "pr_audit",
+        data: {
+          sha: "0123456789abcdef",
+          pr_number: 123,
+          ...(expected ? { runner_channel: expected } : {}),
+        },
+      });
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
