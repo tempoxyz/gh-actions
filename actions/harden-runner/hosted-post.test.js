@@ -66,7 +66,7 @@ test("flush timeout is bounded and reported before the lease is revoked", async 
       run: async () => order.push("summary"), revoke: async () => order.push("revoke"),
     });
   } finally { console.log = log; }
-  assert.equal(elapsed, 11_000);
+  assert.equal(elapsed, 10_000);
   assert.match(order[0], /Timed out waiting for the StepSecurity agent's final telemetry upload/);
   assert.deepEqual(order.slice(1), ["summary", "revoke"]);
 });

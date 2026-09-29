@@ -26,9 +26,9 @@ async function flushHostedAgent({
   const post = paths.join(directory, "post_event.json");
   const done = paths.join(directory, "done.json");
   if (!files.existsSync(post)) files.writeFileSync(post, JSON.stringify({ event: "post" }));
-  // Keep upstream's bounded eleven-second wait, but observe completion promptly
+  // Keep upstream's bounded ten-second wait, but observe completion promptly
   // rather than adding up to a second of latency after the upload completes.
-  const deadline = now() + 11_000;
+  const deadline = now() + 10_000;
   while (!files.existsSync(done)) {
     const remaining = deadline - now();
     if (remaining <= 0) {
