@@ -26,7 +26,7 @@ inputs:
       value is `"latest"`, which will always download and install the latest
       available Cloud SDK version.
 
-          - uses: tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@afd6ea052fb1953e4e9df3c406f28c3f3d1ab8fc # 2026-09-29T00-29-36Z-afd6ea05
+          - uses: tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
             with:
               version: '>= 416.0.0'
 
@@ -39,7 +39,7 @@ inputs:
       or newer. If you need support for Workload Identity Federation, specify
       your version constraint as such:
 
-          - uses: tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@afd6ea052fb1953e4e9df3c406f28c3f3d1ab8fc # 2026-09-29T00-29-36Z-afd6ea05
+          - uses: tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
             with:
               version: '>= 363.0.0'
 

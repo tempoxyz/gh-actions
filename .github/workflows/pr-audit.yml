@@ -50,7 +50,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@afd6ea052fb1953e4e9df3c406f28c3f3d1ab8fc # 2026-09-29T00-29-36Z-afd6ea05
+        uses: tempoxyz/gh-actions/actions/secure-runner@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
 
       - name: Resolve target
         id: target
@@ -206,7 +206,7 @@ jobs:
       statuses: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@afd6ea052fb1953e4e9df3c406f28c3f3d1ab8fc # 2026-09-29T00-29-36Z-afd6ea05
+        uses: tempoxyz/gh-actions/actions/secure-runner@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
 
       - name: Report audit status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -265,7 +265,7 @@ jobs:
       statuses: write
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@afd6ea052fb1953e4e9df3c406f28c3f3d1ab8fc # 2026-09-29T00-29-36Z-afd6ea05
+        uses: tempoxyz/gh-actions/actions/secure-runner@2962c8c5f061492c1e3c1b44cd8a6e15e6bd2d95 # 2026-09-29T00-56-32Z-2962c8c5
 
       - name: Pass merge group
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
