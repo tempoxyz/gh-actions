@@ -1,10 +1,11 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { flushHostedAgent } = require("./hosted-post.cjs");
+const { flushHostedAgent, wakeWindowsAgent } = require("./hosted-post.cjs");
 const { main } = require("./post.cjs");
 
 test("only explicitly hosted runners signal the agent and wait for telemetry", async () => {
@@ -47,6 +48,41 @@ test("unavailable and absent installations are not signalled", async () => {
       env: { RUNNER_ENVIRONMENT: "github-hosted", ...state }, platform: "linux",
       files: { existsSync: () => false, writeFileSync: () => assert.fail("no installation") },
     });
+  }
+});
+
+test("Windows session query starts before the post signal and is drained on write failure", async () => {
+  const gate = Promise.withResolvers();
+  let started = false;
+  let finished = false;
+  const flush = flushHostedAgent({
+    env: { RUNNER_ENVIRONMENT: "github-hosted" }, platform: "win32",
+    wake: () => { started = true; return gate.promise; },
+    files: {
+      existsSync: (file) => file === "C:\\agent",
+      writeFileSync: () => { assert.equal(started, true); throw new Error("write failed"); },
+    },
+  }).finally(() => { finished = true; });
+  const checked = assert.rejects(flush, /write failed/);
+  await new Promise(setImmediate);
+  assert.equal(finished, false);
+  gate.resolve();
+  await checked;
+});
+
+test("Windows session query has a timeout, waits for close, and reports launch errors", async () => {
+  for (const fails of [false, true]) {
+    const child = new EventEmitter();
+    const query = wakeWindowsAgent((command, args, options) => {
+      assert.equal(command, "powershell.exe");
+      assert.deepEqual(args, ["-NoProfile", "-NonInteractive", "-Command", "query user; exit $LASTEXITCODE"]);
+      assert.equal(options.timeout, 10_000);
+      return child;
+    });
+    const checked = fails ? assert.rejects(query, /launch failed/) : query;
+    if (fails) child.emit("error", new Error("launch failed"));
+    else child.emit("close", 1);
+    await checked;
   }
 });
 
