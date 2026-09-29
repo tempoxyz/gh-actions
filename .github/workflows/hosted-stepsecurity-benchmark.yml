@@ -30,7 +30,7 @@ jobs:
           benchmark-variant: baseline
       - name: Secure Runner hosted fast path
         if: matrix.variant == 'parallel'
-        uses: tempoxyz/gh-actions/actions/secure-runner@ad4f5d22e8b428d27e3307a480a963d1f02d2e87
+        uses: tempoxyz/gh-actions/actions/secure-runner@d4eb5e156692de8811971755ad075883cf63cd17
         with:
           aegis-version: v0.19.0
           benchmark-variant: parallel
