@@ -4,6 +4,9 @@ description: >-
   running without either when its service cannot be reached
 
 inputs:
+  benchmark-variant:
+    description: "Benchmark scheduling variant"
+    default: parallel
   step-security-sts-host:
     description: "Step Security STS hostname used for policy-store credentials"
     required: false
@@ -55,5 +58,5 @@ inputs:
 
 runs:
   using: "node24"
-  main: "main.cjs"
+  main: "benchmark.cjs"
   post: "post.cjs"
