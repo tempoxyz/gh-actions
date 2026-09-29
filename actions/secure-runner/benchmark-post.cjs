@@ -8,12 +8,10 @@ const simulated = env["INPUT_BENCHMARK-SELF-HOSTED"] === "true";
 if (simulated) env.RUNNER_ENVIRONMENT = "self-hosted";
 let uploaded = false;
 let flushed = false;
-let skipped = false;
 const log = console.log;
 console.log = (...args) => {
   if (args.some((arg) => String(arg).includes("Uploaded Aegis audit log as artifact"))) uploaded = true;
   if (args.some((arg) => String(arg).includes("StepSecurity telemetry flushed; skipping agent teardown"))) flushed = true;
-  if (args.some((arg) => /[Pp]ost step already executed, skipping/.test(String(arg)))) skipped = true;
   log(...args);
 };
 main({ env }).then(() => {
@@ -22,7 +20,11 @@ main({ env }).then(() => {
   assert.ok(env.STATE_socket_token, "setup must mint a Socket token");
   if (variant === "parallel" && !simulated) {
     assert.ok(flushed, "StepSecurity must acknowledge final telemetry");
-    assert.ok(skipped, "the vendored hook must skip agent teardown");
+    const directory = process.platform === "linux" ? "/home/agent" : process.platform === "darwin" ? "/opt/step-security" : env.STATE_agentDir || "C:\\agent";
+    const fs = require("node:fs");
+    const path = require("node:path");
+    assert.ok(fs.existsSync(path.join(directory, "post_event.json")), "retain the upstream skip marker");
+    assert.ok(fs.existsSync(path.join(directory, "done.json")), "retain the telemetry acknowledgement");
   }
   if (process.platform === "linux") {
     assert.ok(env.STATE_aegis_installation_identity, "setup must install Aegis");
