@@ -178,7 +178,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@7f84f1d52d0c56afb45c62fee31a93b843cea4d6 # main
+        uses: actions/setup-node@7f84f1d52d0c56afb45c62fee31a93b843cea4d6 # Untagged upstream snapshot from 2026-09-25
         with:
           node-version: ${{ inputs.node-version }}
           package-manager-cache: false
