@@ -370,9 +370,9 @@ jobs:
           reusable=.github/workflows/scan-github-actions.yml
           composite=actions/scan-github-actions/action.yml
           status=0
-          tool='tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0'
-          r=$(grep -oF "$tool" "$reusable" || true)
-          c=$(grep -oF "$tool" "$composite" || true)
+          tool='tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action'
+          r=$(grep -oE "${tool}@[0-9a-f]{40}" "$reusable" || true)
+          c=$(grep -oE "${tool}@[0-9a-f]{40}" "$composite" || true)
           if [ -z "$r" ] || [ -z "$c" ]; then
             echo "::error::missing reference for $tool (reusable='$r' composite='$c')"
             status=1
