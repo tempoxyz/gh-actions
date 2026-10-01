@@ -879,9 +879,9 @@ jobs:
       publish: true
     secrets:
       RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      TEMPO_CLI_CF_ACCOUNT_ID: ${{ secrets.TEMPO_CLI_CF_ACCOUNT_ID }}
+      TEMPO_CLI_R2_ACCESS_KEY_ID: ${{ secrets.TEMPO_CLI_R2_ACCESS_KEY_ID }}
+      TEMPO_CLI_R2_SECRET_ACCESS_KEY: ${{ secrets.TEMPO_CLI_R2_SECRET_ACCESS_KEY }}
 ```
 
 Required inputs:
@@ -904,7 +904,7 @@ Optional inputs:
 - `base-url` (default: `https://cli.tempo.xyz/extensions`) and `bucket` (default: `tempo-cli`)
 - `signing-tool-ref` — pinned `wallet-rs` commit that builds `tempo-sign`
 
-Publishing needs the `RELEASE_SIGNING_KEY`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `CF_ACCOUNT_ID` secrets. Callers grant `attestations: write`, `contents: read`, and `id-token: write`, whether or not they publish, because GitHub checks every nested job's permissions up front. Each target's binary, checksum, SBOM, and cosign bundle are uploaded as the `<package>-<os>-<arch>` workflow artifact; to attach them to a GitHub release, download them in a caller job that needs this one.
+Publishing needs four secrets in the caller's `environment` (default `release`), named exactly `RELEASE_SIGNING_KEY`, `TEMPO_CLI_CF_ACCOUNT_ID` (the account that owns the `tempo-cli` bucket), `TEMPO_CLI_R2_ACCESS_KEY_ID`, and `TEMPO_CLI_R2_SECRET_ACCESS_KEY` (an R2 Account API token with Object Read & Write on `tempo-cli` only). The publish job reads them from the environment directly; GitHub does not pass environment secrets through a caller's `secrets:` block, which only forwards repository or organization secrets. Callers grant `attestations: write`, `contents: read`, and `id-token: write`, whether or not they publish, because GitHub checks every nested job's permissions up front. Each target's binary, checksum, SBOM, and cosign bundle are uploaded as the `<package>-<os>-<arch>` workflow artifact; to attach them to a GitHub release, download them in a caller job that needs this one.
 
 ### `cargo-update-pr`
 
