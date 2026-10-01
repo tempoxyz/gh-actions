@@ -81,30 +81,21 @@ on:
         default: tempo-cli
       cloudflare-sts-policy:
         description: >-
-          Cloudflare STS trust policy that mints a short-lived R2 token for the upload. When set,
-          the static `TEMPO_CLI_*` bucket secrets are not used.
+          Cloudflare STS trust policy that mints a short-lived R2 token for `bucket`. Required when
+          publishing.
         required: false
         type: string
         default: ""
       cloudflare-sts-account:
-        description: Cloudflare account alias that owns `bucket`, used with `cloudflare-sts-policy`.
+        description: Cloudflare account alias that owns `bucket`.
         required: false
         type: string
         default: prd
-    # Keep these in the caller's `environment` under exactly these names: a job that declares
+    # Keep this in the caller's `environment` under exactly this name: a job that declares
     # an environment reads its secrets directly, and callers cannot pass environment secrets.
     secrets:
       RELEASE_SIGNING_KEY:
         description: Base64-encoded minisign secret key for extension manifests. Required when publishing.
-        required: false
-      TEMPO_CLI_CF_ACCOUNT_ID:
-        description: Cloudflare account ID that owns the `tempo-cli` R2 bucket behind cli.tempo.xyz. Required when publishing.
-        required: false
-      TEMPO_CLI_R2_ACCESS_KEY_ID:
-        description: Access key ID of an R2 token scoped to the `tempo-cli` bucket. Required when publishing.
-        required: false
-      TEMPO_CLI_R2_SECRET_ACCESS_KEY:
-        description: Secret access key of that R2 token. Required when publishing.
         required: false
 
 permissions: {}
@@ -303,23 +294,18 @@ jobs:
           path: artifacts
           pattern: ${{ inputs.package }}-*
 
-      - name: Check publishing secrets
+      - name: Check publishing inputs
         env:
+          CLOUDFLARE_STS_POLICY: ${{ inputs.cloudflare-sts-policy }}
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
-          TEMPO_CLI_CF_ACCOUNT_ID: ${{ secrets.TEMPO_CLI_CF_ACCOUNT_ID }}
-          TEMPO_CLI_R2_ACCESS_KEY_ID: ${{ secrets.TEMPO_CLI_R2_ACCESS_KEY_ID }}
-          TEMPO_CLI_R2_SECRET_ACCESS_KEY: ${{ secrets.TEMPO_CLI_R2_SECRET_ACCESS_KEY }}
-          USE_STS: ${{ inputs.cloudflare-sts-policy != '' }}
         run: |
           set -euo pipefail
-          required=(RELEASE_SIGNING_KEY)
-          [ "$USE_STS" = true ] || required+=(TEMPO_CLI_CF_ACCOUNT_ID TEMPO_CLI_R2_ACCESS_KEY_ID TEMPO_CLI_R2_SECRET_ACCESS_KEY)
-          missing=()
-          for name in "${required[@]}"; do
-            [ -n "${!name}" ] || missing+=("$name")
-          done
-          if [ "${#missing[@]}" -gt 0 ]; then
-            echo "::error::publishing needs these secrets: ${missing[*]}"
+          if [ -z "$RELEASE_SIGNING_KEY" ]; then
+            echo "::error::publishing needs the RELEASE_SIGNING_KEY secret"
+            exit 1
+          fi
+          if [ -z "$CLOUDFLARE_STS_POLICY" ]; then
+            echo "::error::publishing needs the cloudflare-sts-policy input"
             exit 1
           fi
           if [ -n "$SKILL_FILE" ] && [ ! -f "$SKILL_FILE" ]; then
@@ -373,40 +359,29 @@ jobs:
       # Mint the token only after the slow signer build so its lifetime covers just the upload.
       - name: Fetch R2 token
         id: cloudflare-sts
-        if: inputs.cloudflare-sts-policy != ''
         uses: tempoxyz/gh-actions/actions/cloudflare-sts@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
         with:
           account: ${{ inputs.cloudflare-sts-account }}
           policy: ${{ inputs.cloudflare-sts-policy }}
           ttl: 20m
 
-      - name: Resolve R2 credentials
+      - name: Derive R2 credentials
         env:
-          STATIC_ACCESS_KEY_ID: ${{ secrets.TEMPO_CLI_R2_ACCESS_KEY_ID }}
-          STATIC_ACCOUNT_ID: ${{ secrets.TEMPO_CLI_CF_ACCOUNT_ID }}
-          STATIC_SECRET_ACCESS_KEY: ${{ secrets.TEMPO_CLI_R2_SECRET_ACCESS_KEY }}
-          STS_ACCOUNT_ID: ${{ steps.cloudflare-sts.outputs.account-id }}
-          STS_TOKEN: ${{ steps.cloudflare-sts.outputs.token }}
+          ACCOUNT_ID: ${{ steps.cloudflare-sts.outputs.account-id }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.cloudflare-sts.outputs.token }}
         run: |
           set -euo pipefail
-          if [ -n "$STS_TOKEN" ]; then
-            # R2 S3 credentials are the token ID and the SHA-256 of the token value:
-            # https://developers.cloudflare.com/r2/api/tokens/#get-s3-api-credentials-from-an-api-token
-            account_id="$STS_ACCOUNT_ID"
-            access_key_id=$(curl -fsS --retry 3 \
-              -H "Authorization: Bearer $STS_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/${account_id}/tokens/verify" | jq -er '.result.id')
-            secret_access_key=$(printf '%s' "$STS_TOKEN" | sha256sum | cut -d' ' -f1)
-            echo "::add-mask::$access_key_id"
-            echo "::add-mask::$secret_access_key"
-          else
-            account_id="$STATIC_ACCOUNT_ID"
-            access_key_id="$STATIC_ACCESS_KEY_ID"
-            secret_access_key="$STATIC_SECRET_ACCESS_KEY"
-          fi
+          # R2 S3 credentials are the token ID and the SHA-256 of the token value:
+          # https://developers.cloudflare.com/r2/api/tokens/#get-s3-api-credentials-from-an-api-token
+          access_key_id=$(curl -fsS --retry 3 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/tokens/verify" | jq -er '.result.id')
+          secret_access_key=$(printf '%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)
+          echo "::add-mask::$access_key_id"
+          echo "::add-mask::$secret_access_key"
           {
             echo "AWS_ACCESS_KEY_ID=${access_key_id}"
-            echo "AWS_ENDPOINT_URL=https://${account_id}.r2.cloudflarestorage.com"
+            echo "AWS_ENDPOINT_URL=https://${ACCOUNT_ID}.r2.cloudflarestorage.com"
             echo "AWS_SECRET_ACCESS_KEY=${secret_access_key}"
           } >> "$GITHUB_ENV"
 
