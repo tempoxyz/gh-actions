@@ -79,6 +79,18 @@ on:
         required: false
         type: string
         default: tempo-cli
+      cloudflare-sts-policy:
+        description: >-
+          Cloudflare STS trust policy that mints a short-lived R2 token for the upload. When set,
+          the static `TEMPO_CLI_*` bucket secrets are not used.
+        required: false
+        type: string
+        default: ""
+      cloudflare-sts-account:
+        description: Cloudflare account alias that owns `bucket`, used with `cloudflare-sts-policy`.
+        required: false
+        type: string
+        default: prd
     # Keep these in the caller's `environment` under exactly these names: a job that declares
     # an environment reads its secrets directly, and callers cannot pass environment secrets.
     secrets:
@@ -297,10 +309,13 @@ jobs:
           TEMPO_CLI_CF_ACCOUNT_ID: ${{ secrets.TEMPO_CLI_CF_ACCOUNT_ID }}
           TEMPO_CLI_R2_ACCESS_KEY_ID: ${{ secrets.TEMPO_CLI_R2_ACCESS_KEY_ID }}
           TEMPO_CLI_R2_SECRET_ACCESS_KEY: ${{ secrets.TEMPO_CLI_R2_SECRET_ACCESS_KEY }}
+          USE_STS: ${{ inputs.cloudflare-sts-policy != '' }}
         run: |
           set -euo pipefail
+          required=(RELEASE_SIGNING_KEY)
+          [ "$USE_STS" = true ] || required+=(TEMPO_CLI_CF_ACCOUNT_ID TEMPO_CLI_R2_ACCESS_KEY_ID TEMPO_CLI_R2_SECRET_ACCESS_KEY)
           missing=()
-          for name in RELEASE_SIGNING_KEY TEMPO_CLI_CF_ACCOUNT_ID TEMPO_CLI_R2_ACCESS_KEY_ID TEMPO_CLI_R2_SECRET_ACCESS_KEY; do
+          for name in "${required[@]}"; do
             [ -n "${!name}" ] || missing+=("$name")
           done
           if [ "${#missing[@]}" -gt 0 ]; then
@@ -355,11 +370,48 @@ jobs:
           fi
           ./wallet-release-tools/target/release/tempo-sign sign "${args[@]}"
 
+      # Mint the token only after the slow signer build so its lifetime covers just the upload.
+      - name: Fetch R2 token
+        id: cloudflare-sts
+        if: inputs.cloudflare-sts-policy != ''
+        uses: tempoxyz/gh-actions/actions/cloudflare-sts@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        with:
+          account: ${{ inputs.cloudflare-sts-account }}
+          policy: ${{ inputs.cloudflare-sts-policy }}
+          ttl: 20m
+
+      - name: Resolve R2 credentials
+        env:
+          STATIC_ACCESS_KEY_ID: ${{ secrets.TEMPO_CLI_R2_ACCESS_KEY_ID }}
+          STATIC_ACCOUNT_ID: ${{ secrets.TEMPO_CLI_CF_ACCOUNT_ID }}
+          STATIC_SECRET_ACCESS_KEY: ${{ secrets.TEMPO_CLI_R2_SECRET_ACCESS_KEY }}
+          STS_ACCOUNT_ID: ${{ steps.cloudflare-sts.outputs.account-id }}
+          STS_TOKEN: ${{ steps.cloudflare-sts.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "$STS_TOKEN" ]; then
+            # R2 S3 credentials are the token ID and the SHA-256 of the token value:
+            # https://developers.cloudflare.com/r2/api/tokens/#get-s3-api-credentials-from-an-api-token
+            account_id="$STS_ACCOUNT_ID"
+            access_key_id=$(curl -fsS --retry 3 \
+              -H "Authorization: Bearer $STS_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/${account_id}/tokens/verify" | jq -er '.result.id')
+            secret_access_key=$(printf '%s' "$STS_TOKEN" | sha256sum | cut -d' ' -f1)
+            echo "::add-mask::$access_key_id"
+            echo "::add-mask::$secret_access_key"
+          else
+            account_id="$STATIC_ACCOUNT_ID"
+            access_key_id="$STATIC_ACCESS_KEY_ID"
+            secret_access_key="$STATIC_SECRET_ACCESS_KEY"
+          fi
+          {
+            echo "AWS_ACCESS_KEY_ID=${access_key_id}"
+            echo "AWS_ENDPOINT_URL=https://${account_id}.r2.cloudflarestorage.com"
+            echo "AWS_SECRET_ACCESS_KEY=${secret_access_key}"
+          } >> "$GITHUB_ENV"
+
       - name: Upload to R2
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.TEMPO_CLI_R2_ACCESS_KEY_ID }}
-          AWS_ENDPOINT_URL: https://${{ secrets.TEMPO_CLI_CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.TEMPO_CLI_R2_SECRET_ACCESS_KEY }}
           BUCKET: ${{ inputs.bucket }}
         run: |
           set -euo pipefail

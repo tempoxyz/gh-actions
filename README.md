@@ -877,11 +877,9 @@ jobs:
       build-command: pnpm package:cli
       skill-file: src/cli/SKILL.md
       publish: true
+      cloudflare-sts-policy: tempo-cli-release
     secrets:
       RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
-      TEMPO_CLI_CF_ACCOUNT_ID: ${{ secrets.TEMPO_CLI_CF_ACCOUNT_ID }}
-      TEMPO_CLI_R2_ACCESS_KEY_ID: ${{ secrets.TEMPO_CLI_R2_ACCESS_KEY_ID }}
-      TEMPO_CLI_R2_SECRET_ACCESS_KEY: ${{ secrets.TEMPO_CLI_R2_SECRET_ACCESS_KEY }}
 ```
 
 Required inputs:
@@ -902,8 +900,10 @@ Optional inputs:
 - `skill-file` — agent skill signed into the manifest and published as `SKILL.md`
 - `environment` (default: `release`) — environment holding the secrets
 - `base-url` (default: `https://cli.tempo.xyz/extensions`) and `bucket` (default: `tempo-cli`)
+- `cloudflare-sts-policy` — [Cloudflare STS](https://github.com/tempoxyz/cloudflare-sts) trust policy that mints a short-lived R2 token for the upload, replacing the static bucket secrets
+- `cloudflare-sts-account` (default: `prd`) — Cloudflare account alias that owns `bucket`
 
-Publishing needs four secrets in the caller's `environment` (default `release`), named exactly `RELEASE_SIGNING_KEY`, `TEMPO_CLI_CF_ACCOUNT_ID` (the account that owns the `tempo-cli` bucket), `TEMPO_CLI_R2_ACCESS_KEY_ID`, and `TEMPO_CLI_R2_SECRET_ACCESS_KEY` (an R2 Account API token with Object Read & Write on `tempo-cli` only). The publish job reads them from the environment directly; GitHub does not pass environment secrets through a caller's `secrets:` block, which only forwards repository or organization secrets. Callers grant `attestations: write`, `contents: read`, and `id-token: write`, whether or not they publish, because GitHub checks every nested job's permissions up front. Each target's binary, checksum, SBOM, and cosign bundle are uploaded as the `<package>-<os>-<arch>` workflow artifact; to attach them to a GitHub release, download them in a caller job that needs this one.
+Publishing with `cloudflare-sts-policy` needs only `RELEASE_SIGNING_KEY` in the caller's `environment` (default `release`). The publish job mints a bucket-scoped R2 token just before uploading, derives its S3 credentials, and the action revokes it when the job ends. The caller's STS policy must match the `environment:<environment>` subject and should pin `job_workflow_ref` to this workflow. Without a policy, publishing needs four secrets in the caller's `environment`, named exactly `RELEASE_SIGNING_KEY`, `TEMPO_CLI_CF_ACCOUNT_ID` (the account that owns the `tempo-cli` bucket), `TEMPO_CLI_R2_ACCESS_KEY_ID`, and `TEMPO_CLI_R2_SECRET_ACCESS_KEY` (an R2 Account API token with Object Read & Write on `tempo-cli` only). The publish job reads them from the environment directly; GitHub does not pass environment secrets through a caller's `secrets:` block, which only forwards repository or organization secrets. Callers grant `attestations: write`, `contents: read`, and `id-token: write`, whether or not they publish, because GitHub checks every nested job's permissions up front. Each target's binary, checksum, SBOM, and cosign bundle are uploaded as the `<package>-<os>-<arch>` workflow artifact; to attach them to a GitHub release, download them in a caller job that needs this one.
 
 ### `cargo-update-pr`
 
