@@ -1,9 +1,18 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { aegisReportPath, uploadAegisReport } = require("./dist/artifact-upload.cjs");
-const { warning } = require("../harden-runner/annotations.cjs");
+const { stepSummary, warning } = require("../harden-runner/annotations.cjs");
 const { retireAsync } = require("./linux-lifecycle.cjs");
 const { scanRuntimeWarnings, runtimeWarningMessage } = require("./runtime-warnings.cjs");
+
+function workflowEventsUrl(env) {
+  const repository = env.GITHUB_REPOSITORY?.split("/");
+  const runId = env.GITHUB_RUN_ID;
+  const runAttempt = env.GITHUB_RUN_ATTEMPT;
+  if (repository?.length !== 2 || repository.some((part) => !part)
+      || !/^[1-9][0-9]*$/.test(runId || "") || !/^[1-9][0-9]*$/.test(runAttempt || "")) return "";
+  return `https://aegis.tehq.net/${repository.map(encodeURIComponent).join("/")}/workflows/${runId}/${runAttempt}`;
+}
 
 async function report({
   upload = uploadAegisReport,
@@ -25,8 +34,16 @@ async function report({
     try {
       // Ignore a copy left by an earlier job on a reused runner.
       if (fs.existsSync(copiedLog) && fs.statSync(copiedLog).mtimeMs >= uploadStarted - 1000) {
-        const message = runtimeWarningMessage(await scan(copiedLog));
+        const decisions = await scan(copiedLog);
+        const message = runtimeWarningMessage(decisions);
         if (message) warning(message, "Aegis runtime warning verdicts", env);
+        if (decisions.blocked) {
+          stepSummary(env, `> ⛔ **Aegis blocked package downloads:** Aegis blocked ${decisions.blocked} package download${decisions.blocked === 1 ? "" : "s"}. Review the Aegis audit-log artifact for details.`);
+        }
+        if (message || decisions.blocked) {
+          const url = workflowEventsUrl(env);
+          if (url) stepSummary(env, `\n[View all events for this workflow in Aegis](${url})`);
+        }
       }
     } catch (error) {
       warning(error.message, "Aegis warning reporting failed", env);

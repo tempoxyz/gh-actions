@@ -123,3 +123,59 @@ test("post still reports copied warning verdicts when artifact upload fails", as
   assert.match(lines[0], /Aegis audit-log upload failed::artifact service unavailable/);
   assert.match(lines[1], /Aegis runtime warning verdicts::.*Aegis server unreachable \(1\)/);
 });
+
+test("post links warning and blocked download summaries to the current workflow attempt", async (t) => {
+  const context = {
+    GITHUB_REPOSITORY: "tempo-xyz/my_repo.test",
+    GITHUB_RUN_ID: "36356904356",
+    GITHUB_RUN_ATTEMPT: "2",
+  };
+  const link = "[View all events for this workflow in Aegis](https://aegis.tehq.net/tempo-xyz/my_repo.test/workflows/36356904356/2)";
+  const cases = [
+    { name: "warn", actions: ["warn"], linked: true },
+    { name: "block", actions: ["block"], linked: true, blocked: 1 },
+    { name: "mixed", actions: ["warn", "block", "allow", "block"], linked: true, blocked: 2 },
+    { name: "allow", actions: ["allow"], linked: false },
+    { name: "lookup diagnostics", records: [{ msg: "socket lookup complete", action: "block" }], linked: false },
+    { name: "missing repository", actions: ["warn"], env: { GITHUB_REPOSITORY: "" }, linked: false },
+    { name: "missing run ID", actions: ["warn"], env: { GITHUB_RUN_ID: "" }, linked: false },
+    { name: "missing attempt", actions: ["warn"], env: { GITHUB_RUN_ATTEMPT: "" }, linked: false },
+    { name: "invalid repository", actions: ["block"], env: { GITHUB_REPOSITORY: "owner" }, linked: false, blocked: 1 },
+    { name: "invalid run ID", actions: ["warn"], env: { GITHUB_RUN_ID: "123/4" }, linked: false },
+    { name: "invalid attempt", actions: ["warn"], env: { GITHUB_RUN_ATTEMPT: "0" }, linked: false },
+    { name: "upload failure", actions: ["warn", "block"], uploadFails: true, linked: true, blocked: 1 },
+  ];
+  for (const entry of cases) {
+    await t.test(entry.name, async (t) => {
+      const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-summary-test-"));
+      t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+      const summary = path.join(temp, "summary.md");
+      const records = entry.records || entry.actions.map((action) => ({ msg: "package decision", action, reason: "upstream secret" }));
+      const lines = [];
+      const original = console.log;
+      console.log = (line) => lines.push(String(line));
+      try {
+        await require("./post.cjs").report({
+          upload: async () => {
+            fs.writeFileSync(path.join(temp, "aegis-service.jsonl"), records.map(JSON.stringify).join("\n"));
+            if (entry.uploadFails) throw new Error("artifact service unavailable");
+          },
+          env: { ...context, RUNNER_TEMP: temp, GITHUB_STEP_SUMMARY: summary, ...entry.env },
+          platform: "linux",
+        });
+      } finally {
+        console.log = original;
+      }
+      const markdown = fs.existsSync(summary) ? fs.readFileSync(summary, "utf8") : "";
+      assert.equal(markdown.includes(link), entry.linked);
+      assert.equal((markdown.match(/View all events for this workflow in Aegis/g) || []).length, entry.linked ? 1 : 0);
+      if (entry.blocked) {
+        assert.ok(markdown.includes(`Aegis blocked ${entry.blocked} package download${entry.blocked === 1 ? "" : "s"}.`));
+        assert.ok(lines.every((line) => !line.includes("Aegis blocked")), "blocks do not emit a warning annotation");
+      }
+      if (entry.actions?.includes("warn")) assert.match(markdown, /Aegis runtime warning verdicts/);
+      assert.doesNotMatch(markdown, /upstream secret/);
+      if (!entry.linked) assert.doesNotMatch(markdown, /https:\/\/aegis\.tehq\.net/);
+    });
+  }
+});
