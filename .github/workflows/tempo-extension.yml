@@ -115,7 +115,7 @@ jobs:
       matrix: ${{ steps.matrix.outputs.json }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
 
       - name: Validate inputs and resolve the build matrix
         id: matrix
@@ -175,7 +175,7 @@ jobs:
       EXTENSION_VERSION: ${{ inputs.version }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -230,7 +230,7 @@ jobs:
 
       - name: Generate SBOM (SPDX-JSON)
         if: inputs.publish
-        uses: tempoxyz/gh-actions/vendor/anchore/sbom-action@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/vendor/anchore/sbom-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
         with:
           file: ${{ env.EXTENSION_OUTPUT }}
           format: spdx-json
@@ -253,7 +253,7 @@ jobs:
 
       - name: Install cosign
         if: inputs.publish
-        uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
 
       - name: Sign binary with cosign (keyless)
         if: inputs.publish
@@ -284,7 +284,7 @@ jobs:
       VERSION: ${{ inputs.version }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@10b0d5182ead76a63716ac5fc2aa8fd7b7f42795
+        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
