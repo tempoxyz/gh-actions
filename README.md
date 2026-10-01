@@ -194,6 +194,7 @@ The SHA is the immutable reference; the timestamp comment records the reviewed, 
 | [`rust-fmt`](#rust-fmt-and-rust-clippy) | Formatting-only wrapper around rust-lint | rust repos |
 | [`rust-clippy`](#rust-fmt-and-rust-clippy) | Clippy-only wrapper around rust-lint | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
+| [`tempo-extension`](#tempo-extension) | Build, sign, and publish a `tempo` CLI extension to cli.tempo.xyz | api, wallet-cli |
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 
@@ -843,6 +844,68 @@ Optional inputs:
 - `artifact-path-template` (default: `target/{profile}/{binary}`)
 - `retention-days` (default: `7`)
 - `timeout-minutes` (default: `60`)
+
+### `tempo-extension`
+
+Builds a `tempo` CLI extension binary per target (`tempo <name>` runs the `tempo-<name>` binary the launcher installs from cli.tempo.xyz). With `publish: true` it also attests and cosign-signs each binary, signs the extension manifest with `tempo-sign` from [`wallet-rs`](https://github.com/tempoxyz/wallet-rs), and uploads the binaries, manifest, and optional `SKILL.md` to the R2 bucket behind cli.tempo.xyz. Versioned objects are immutable; the `manifest.json` and `VERSION` latest pointers move last.
+
+The caller's `build-command` writes one binary to `$EXTENSION_OUTPUT` and receives `EXTENSION_PACKAGE`, `EXTENSION_VERSION`, `EXTENSION_OS` (`linux`/`darwin`), `EXTENSION_ARCH` (`amd64`/`arm64`), and `EXTENSION_SUFFIX` (`<os>-<arch>`). Node.js and corepack are set up first, so pnpm comes from the caller's `packageManager` field.
+
+```yaml
+name: Release tempo api
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  release:
+    uses: tempoxyz/gh-actions/.github/workflows/tempo-extension.yml@<commit-sha>
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    with:
+      package: tempo-api
+      version: ${{ inputs.version }}
+      description: Sign in to the Tempo API and manage API keys
+      build-command: pnpm package:cli
+      skill-file: src/cli/SKILL.md
+      publish: true
+    secrets:
+      RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+```
+
+Required inputs:
+
+- `package` — extension binary name, `tempo-<name>`
+- `version` — semver without a leading `v`
+- `description` — one-line manifest description
+- `build-command` — writes one target's binary to `$EXTENSION_OUTPUT`
+
+Optional inputs:
+
+- `publish` (default: `false`) — sign, attest, and upload; otherwise only build workflow artifacts
+- `targets` (default: `linux-amd64 linux-arm64 darwin-amd64 darwin-arm64`)
+- `ref` (default: the triggering commit)
+- `install-command` (default: `pnpm install --frozen-lockfile`)
+- `node-version` (default: `22`)
+- `smoke-test-args` (default: `--version`) — run against binaries the build host can execute; empty skips
+- `skill-file` — agent skill signed into the manifest and published as `SKILL.md`
+- `github-release` — existing release tag to attach the binaries to
+- `environment` (default: `release`) — environment holding the secrets
+- `base-url` (default: `https://cli.tempo.xyz/extensions`) and `bucket` (default: `tempo-cli`)
+- `signing-tool-ref` — pinned `wallet-rs` commit that builds `tempo-sign`
+
+Publishing needs the `RELEASE_SIGNING_KEY`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `CF_ACCOUNT_ID` secrets, and the caller must grant `attestations: write`, `contents: write`, and `id-token: write`.
 
 ### `cargo-update-pr`
 

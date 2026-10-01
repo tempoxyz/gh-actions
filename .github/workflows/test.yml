@@ -9,7 +9,8 @@ name: Test
 #
 # Scanner checks run in a single job so the suite surfaces as one status check
 # (`Test / integration`), which can be marked required in branch protection.
-# A separate reusable-workflow smoke test checks rust-lint's disabled-job gate.
+# Separate reusable-workflow smoke tests check rust-lint's disabled-job gate and build a
+# fixture with tempo-extension (build only, no publishing).
 
 on:
   push:
@@ -326,6 +327,21 @@ jobs:
       contents: read
     with:
       flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all-targets --all-features --locked
+
+  tempo-extension-build:
+    name: tempo-extension build
+    uses: ./.github/workflows/tempo-extension.yml
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    with:
+      package: tempo-fixture
+      version: 0.0.0-test
+      description: Fixture extension for the tempo-extension smoke test
+      install-command: "true"
+      build-command: bash testdata/fixtures/tempo-extension/build.sh
+      targets: linux-amd64
 
   integration:
     name: integration
