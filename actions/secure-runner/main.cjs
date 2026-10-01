@@ -17,6 +17,7 @@ const { runnerOIDCEnvironment } = require("../aegis/github-oidc.cjs");
 const { identity, retire } = require("../aegis-report/linux-lifecycle.cjs");
 const { createOidcClient } = require("./oidc.cjs");
 const { startHardenRunner } = require("./harden.cjs");
+const { exportNodeTrust } = require("./node-trust.cjs");
 
 const TITLE = "Package-policy enforcement disabled";
 
@@ -121,6 +122,7 @@ async function setupAegis({ env, platform, deps }) {
     readIdentity = identity,
     retireIncumbent = retire,
     install = installAegis,
+    exportTrust = exportNodeTrust,
   } = deps;
 
   if (enforcementDisabled(env)) {
@@ -198,6 +200,7 @@ async function setupAegis({ env, platform, deps }) {
 
     const installed = await stage(STAGES.install, () =>
       install({ platform, packagePath: artifact.package, configPath: config, env, spawn, sleep }));
+    exportTrust({ env, platform });
     console.log(`Aegis installed at ${installed.binary}; runtime warning verdicts are reported at job end.`);
   } catch (error) {
     if (!(error instanceof StageError)) throw error;
