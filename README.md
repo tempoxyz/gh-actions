@@ -868,7 +868,7 @@ jobs:
     uses: tempoxyz/gh-actions/.github/workflows/tempo-extension.yml@<commit-sha>
     permissions:
       attestations: write
-      contents: write
+      contents: read
       id-token: write
     with:
       package: tempo-api
@@ -900,12 +900,11 @@ Optional inputs:
 - `node-version` (default: `22`)
 - `smoke-test-args` (default: `--version`) — run against binaries the build host can execute; empty skips
 - `skill-file` — agent skill signed into the manifest and published as `SKILL.md`
-- `github-release` — existing release tag to attach the binaries to
 - `environment` (default: `release`) — environment holding the secrets
 - `base-url` (default: `https://cli.tempo.xyz/extensions`) and `bucket` (default: `tempo-cli`)
 - `signing-tool-ref` — pinned `wallet-rs` commit that builds `tempo-sign`
 
-Publishing needs the `RELEASE_SIGNING_KEY`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `CF_ACCOUNT_ID` secrets, and the caller must grant `attestations: write`, `contents: write`, and `id-token: write`.
+Publishing needs the `RELEASE_SIGNING_KEY`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `CF_ACCOUNT_ID` secrets. Callers grant `attestations: write`, `contents: read`, and `id-token: write`, whether or not they publish, because GitHub checks every nested job's permissions up front. Each target's binary, checksum, SBOM, and cosign bundle are uploaded as the `<package>-<os>-<arch>` workflow artifact; to attach them to a GitHub release, download them in a caller job that needs this one.
 
 ### `cargo-update-pr`
 
