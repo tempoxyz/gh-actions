@@ -597,10 +597,10 @@ jobs:
         uses: tempoxyz/gh-actions/actions/setup-terraform@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
       - name: Smoke test setup-helm default (maintainer GPG signature)
         uses: tempoxyz/gh-actions/actions/setup-helm@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
-      - name: Smoke test setup-helm v5.0.0 (a release signed by a different maintainer key)
+      - name: Smoke test setup-helm v4.1.1 (a release signed by a different maintainer key)
         uses: tempoxyz/gh-actions/actions/setup-helm@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
-          version: v5.0.0
+          version: v4.1.1
       - name: Smoke test setup-mold (digest-pinned install)
         uses: tempoxyz/gh-actions/actions/setup-mold@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
