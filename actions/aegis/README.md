@@ -133,7 +133,10 @@ The installed Aegis service does not inherit the workflow environment. Setup
 therefore passes the GitHub OIDC request URL and request bearer to the detached
 provider through private IPC, alongside the Socket token. These credentials are
 not written to install JSON, command arguments, child environment variables, or
-logs. The provider continues to use a random route bound to `127.0.0.1`.
+logs. Secure Runner also hands off its cached Aegis-audience assertion so the
+first package scan can authenticate without another GitHub request. The provider
+checks that assertion's audience and expiry before seeding its in-memory cache.
+The provider continues to use a random route bound to `127.0.0.1`.
 
 Legacy empty POST requests return `{"token":"<Socket token>"}` immediately.
 Clients supporting the identity extension can POST

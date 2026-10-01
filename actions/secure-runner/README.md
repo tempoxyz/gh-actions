@@ -37,8 +37,10 @@ system and architecture, verifies it against `SHA256SUMS` and its Sigstore
 provenance (signer workflow, release-tag source commit, and `refs/heads/main`),
 then waits for Socket authentication to finish. CLI bootstrap and provenance
 verification use asynchronous subprocesses so authentication can progress during
-both. Once both branches succeed, setup starts the loopback token provider,
-prepares the Aegis lifecycle, and installs
+both. Once both branches succeed, setup seeds the loopback token provider with
+the cached Aegis OIDC assertion through private IPC, refreshing it with setup's
+bounded retries if needed. The first package scan can therefore use an existing
+identity immediately. Setup then prepares the Aegis lifecycle and installs
 the package. Aegis is never installed without a Socket API token, and only a
 verified release is ever installed. See [Aegis](../aegis) for policy behavior
 and supported runners.

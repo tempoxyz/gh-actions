@@ -24,8 +24,12 @@ function expiry(jwt, audience) {
   }
 }
 
-function createGitHubOIDC({ requestURL, requestToken } = {}, { fetcher = fetch, now = Date.now } = {}) {
-  const state = { token: "", expires: 0, retryAt: 0, loading: undefined };
+function createGitHubOIDC({ requestURL, requestToken, initialToken } = {}, { fetcher = fetch, now = Date.now } = {}) {
+  // Only seed a fresh assertion for our fixed audience. This is a cache check;
+  // the Aegis Worker still verifies the signature and identity on every handshake.
+  const initialExpiry = expiry(initialToken, AUDIENCE);
+  const usable = initialExpiry > now();
+  const state = { token: usable ? initialToken : "", expires: usable ? initialExpiry : 0, retryAt: 0, loading: undefined };
 
   async function acquire(audience, state) {
     const controller = new AbortController();
