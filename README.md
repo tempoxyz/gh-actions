@@ -847,7 +847,7 @@ Optional inputs:
 
 ### `tempo-extension`
 
-Builds a `tempo` CLI extension binary per target (`tempo <name>` runs the `tempo-<name>` binary the launcher installs from cli.tempo.xyz). With `publish: true` it also attests and cosign-signs each binary, signs the extension manifest with `tempo-sign` from [`wallet-rs`](https://github.com/tempoxyz/wallet-rs), and uploads the binaries, manifest, and optional `SKILL.md` to the R2 bucket behind cli.tempo.xyz. Versioned objects are immutable; the `manifest.json` and `VERSION` latest pointers move last.
+Builds a `tempo` CLI extension binary per target (`tempo <name>` runs the `tempo-<name>` binary the launcher installs from cli.tempo.xyz). With `publish: true` it also attests and cosign-signs each binary, signs the extension manifest with `tempo-sign` from [`wallet-rs`](https://github.com/tempoxyz/wallet-rs), and uploads the binaries, manifest, and optional `SKILL.md` to the R2 bucket behind cli.tempo.xyz. Versioned objects are immutable: they are written with a conditional `PutObject` (`If-None-Match: *`), and a rerun only succeeds if the existing object matches byte for byte. The `manifest.json` and `VERSION` latest pointers move last.
 
 The caller's `build-command` writes one binary to `$EXTENSION_OUTPUT` and receives `EXTENSION_PACKAGE`, `EXTENSION_VERSION`, `EXTENSION_OS` (`linux`/`darwin`), `EXTENSION_ARCH` (`amd64`/`arm64`), and `EXTENSION_SUFFIX` (`<os>-<arch>`). Node.js and corepack are set up first, so pnpm comes from the caller's `packageManager` field.
 
@@ -902,7 +902,6 @@ Optional inputs:
 - `skill-file` — agent skill signed into the manifest and published as `SKILL.md`
 - `environment` (default: `release`) — environment holding the secrets
 - `base-url` (default: `https://cli.tempo.xyz/extensions`) and `bucket` (default: `tempo-cli`)
-- `signing-tool-ref` — pinned `wallet-rs` commit that builds `tempo-sign`
 
 Publishing needs four secrets in the caller's `environment` (default `release`), named exactly `RELEASE_SIGNING_KEY`, `TEMPO_CLI_CF_ACCOUNT_ID` (the account that owns the `tempo-cli` bucket), `TEMPO_CLI_R2_ACCESS_KEY_ID`, and `TEMPO_CLI_R2_SECRET_ACCESS_KEY` (an R2 Account API token with Object Read & Write on `tempo-cli` only). The publish job reads them from the environment directly; GitHub does not pass environment secrets through a caller's `secrets:` block, which only forwards repository or organization secrets. Callers grant `attestations: write`, `contents: read`, and `id-token: write`, whether or not they publish, because GitHub checks every nested job's permissions up front. Each target's binary, checksum, SBOM, and cosign bundle are uploaded as the `<package>-<os>-<arch>` workflow artifact; to attach them to a GitHub release, download them in a caller job that needs this one.
 

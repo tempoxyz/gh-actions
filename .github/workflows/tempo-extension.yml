@@ -79,11 +79,6 @@ on:
         required: false
         type: string
         default: tempo-cli
-      signing-tool-ref:
-        description: tempoxyz/wallet-rs commit that builds `tempo-sign`.
-        required: false
-        type: string
-        default: e8e37d999324ac3619f26d9b8485803310af52a1
     # Keep these in the caller's `environment` under exactly these names: a job that declares
     # an environment reads its secrets directly, and callers cannot pass environment secrets.
     secrets:
@@ -322,7 +317,8 @@ jobs:
         with:
           path: wallet-release-tools
           persist-credentials: false
-          ref: ${{ inputs.signing-tool-ref }}
+          # wallet-rs is archived, so this last commit is final; `tempo-sign` still builds from it.
+          ref: e8e37d999324ac3619f26d9b8485803310af52a1
           repository: tempoxyz/wallet-rs
 
       - name: Build release signer
@@ -368,61 +364,61 @@ jobs:
         run: |
           set -euo pipefail
 
-          aws configure set default.s3.multipart_threshold 8MB
-          aws configure set default.s3.multipart_chunksize 8MB
-
           # Object keys mirror the public URL path: https://host/extensions/tempo-x -> extensions/tempo-x.
-          prefix="s3://${BUCKET}/${URL_PREFIX#*://*/}"
+          prefix="${URL_PREFIX#*://*/}"
           versioned="${prefix}/v${VERSION}"
 
-          # Versioned objects are immutable: an existing object must match byte for byte, so a
-          # rerun is safe but a different build can never replace a published version.
-          upload() {
-            local source="$1" destination="$2" content_type="${3:-}" immutable="${4:-false}"
-            local attempt local_sha remote_sha
-            local -a args
-            if [ "$immutable" = "true" ]; then
-              local_sha=$(sha256sum "$source" | cut -d' ' -f1)
-              if remote_sha=$(aws s3 cp "$destination" - --only-show-errors 2>/dev/null | sha256sum | cut -d' ' -f1); then
+          # Versioned objects are immutable. A conditional PutObject (If-None-Match: *) writes only
+          # when the key is absent, so no publish can replace one; it must be a single PUT because
+          # R2 accepts no conditions on multipart completion.
+          put_immutable() {
+            local source="$1" key="$2" content_type="${3:-}"
+            local attempt output local_sha remote_sha
+            local -a args=(s3api put-object --bucket "$BUCKET" --key "$key" --body "$source" --if-none-match '*')
+            [ -z "$content_type" ] || args+=(--content-type "$content_type")
+            for attempt in 1 2 3; do
+              if output=$(aws "${args[@]}" 2>&1 >/dev/null); then
+                echo "Uploaded ${key}"
+                return 0
+              fi
+              # 412 means the key exists: a rerun of the same build matches byte for byte.
+              if grep -q PreconditionFailed <<<"$output"; then
+                local_sha=$(sha256sum "$source" | cut -d' ' -f1)
+                remote_sha=$(aws s3 cp "s3://${BUCKET}/${key}" - --only-show-errors | sha256sum | cut -d' ' -f1)
                 if [ "$remote_sha" = "$local_sha" ]; then
-                  echo "Verified existing immutable object: ${destination}"
+                  echo "Verified existing immutable object: ${key}"
                   return 0
                 fi
-                echo "::error::immutable object collision at ${destination} (expected ${local_sha}, found ${remote_sha})"
+                echo "::error::immutable object collision at ${key} (expected ${local_sha}, found ${remote_sha})"
                 return 1
               fi
-            fi
-            for attempt in 1 2 3; do
-              args=(s3 cp "$source" "$destination" --only-show-errors)
-              [ -z "$content_type" ] || args+=(--content-type "$content_type")
-              if aws "${args[@]}"; then
-                return 0
-              fi
-              if [ "$immutable" = "true" ] && remote_sha=$(aws s3 cp "$destination" - --only-show-errors 2>/dev/null | sha256sum | cut -d' ' -f1) && [ "$remote_sha" = "$local_sha" ]; then
-                echo "Verified immutable object after an ambiguous upload response: ${destination}"
-                return 0
-              fi
-              if [ "$attempt" -lt 3 ]; then
-                echo "::warning::upload failed for ${destination}; retrying $((attempt + 1))/3"
-                sleep $((attempt * 10))
-              fi
+              echo "::warning::upload failed for ${key} (attempt ${attempt}/3): ${output}"
+              [ "$attempt" -eq 3 ] || sleep $((attempt * 10))
             done
-            echo "::error::upload failed after 3 attempts: ${destination}"
+            echo "::error::upload failed after 3 attempts: ${key}"
             return 1
+          }
+
+          # The latest pointers are meant to move, so they overwrite.
+          put_latest() {
+            local source="$1" key="$2" content_type="${3:-}"
+            local -a args=(s3 cp "$source" "s3://${BUCKET}/${key}" --only-show-errors)
+            [ -z "$content_type" ] || args+=(--content-type "$content_type")
+            aws "${args[@]}"
           }
 
           for file in "artifacts/${PACKAGE}"-linux-* "artifacts/${PACKAGE}"-darwin-*; do
             [ -f "$file" ] || continue
-            upload "$file" "${versioned}/$(basename "$file")" "" true
+            put_immutable "$file" "${versioned}/$(basename "$file")"
           done
-          upload "artifacts/${PACKAGE}-manifest.json" "${versioned}/manifest.json" "" true
+          put_immutable "artifacts/${PACKAGE}-manifest.json" "${versioned}/manifest.json"
           if [ -n "$SKILL_FILE" ]; then
-            upload "$SKILL_FILE" "${versioned}/SKILL.md" text/markdown true
+            put_immutable "$SKILL_FILE" "${versioned}/SKILL.md" text/markdown
           fi
 
           # The latest pointers move last, after every versioned object exists.
-          upload "artifacts/${PACKAGE}-manifest.json" "${prefix}/manifest.json"
+          put_latest "artifacts/${PACKAGE}-manifest.json" "${prefix}/manifest.json"
           printf '%s\n' "$VERSION" > "artifacts/${PACKAGE}-VERSION"
-          upload "artifacts/${PACKAGE}-VERSION" "${prefix}/VERSION" text/plain
+          put_latest "artifacts/${PACKAGE}-VERSION" "${prefix}/VERSION" text/plain
 
           echo "Released ${PACKAGE}@${VERSION}"
