@@ -4,6 +4,7 @@ const test = require("node:test");
 const { AUDIENCE, TIMEOUT_MS, runnerOIDCEnvironment, createGitHubOIDC } = require("./github-oidc.cjs");
 const { createTokenServer } = require("./token-server.cjs");
 const { startProvider, childEnvironment } = require("./token-provider.cjs");
+const { createOidcClient } = require("../secure-runner/oidc.cjs");
 
 const SOCKET_TOKEN = "socket-fixture-" + "a".repeat(32);
 const SOURCE = { requestURL: "https://runner.example/oidc?existing=keep&audience=old", requestToken: "request-fixture-secret" };
@@ -49,6 +50,47 @@ test("acquires the fixed audience, caches concurrent requests and refreshes befo
   failed = false;
   assert.notEqual(await get(AUDIENCE), "");
   assert.equal(calls, 4);
+});
+
+test("uses the handed-off assertion until refresh is needed, even if GitHub is unavailable", async () => {
+  let now = 1_800_000_000_000;
+  const initialToken = jwt(now + 300_000);
+  let calls = 0;
+  let available = false;
+  const get = createGitHubOIDC({ ...SOURCE, initialToken }, {
+    now: () => now,
+    fetcher: async () => {
+      calls++;
+      if (!available) throw new Error("GitHub unavailable");
+      return result(jwt(now + 300_000));
+    },
+  });
+  assert.deepEqual(await Promise.all(Array.from({ length: 25 }, () => get(AUDIENCE))), Array(25).fill(initialToken));
+  assert.equal(calls, 0, "the first scan must not depend on GitHub acquisition");
+  assert.equal(await get("other"), "");
+  now += 275_000;
+  assert.equal(await get(AUDIENCE), initialToken, "a refresh failure retains a still-valid assertion");
+  assert.equal(calls, 1);
+  now += 26_000;
+  assert.equal(await get(AUDIENCE), "", "an expired seed must never be served");
+  now += 35_000;
+  available = true;
+  assert.equal(await get(AUDIENCE), jwt(now + 300_000));
+  assert.equal(calls, 2);
+});
+
+test("rejects unusable seed assertions and acquires a fresh fixed-audience token", async () => {
+  const now = 1_800_000_000_000;
+  for (const initialToken of [undefined, "invalid", jwt(now - 1000), jwt(now + 300_000, "other"), jwt(now + 300_000, [AUDIENCE, 1]), jwt(now + 10_000)]) {
+    let calls = 0;
+    const expected = jwt(now + 300_000);
+    const get = createGitHubOIDC({ ...SOURCE, initialToken }, {
+      now: () => now,
+      fetcher: async () => { calls++; return result(expected); },
+    });
+    assert.equal(await get(AUDIENCE), expected);
+    assert.equal(calls, 1);
+  }
 });
 
 test("ignores absent or unsupported audience requests and unsafe sources", async () => {
@@ -142,6 +184,19 @@ test("real loopback HTTP protocol preserves legacy credentials and serves option
   }
 });
 
+test("detached IPC provider serves the seed without contacting GitHub", async () => {
+  const initialToken = jwt(Date.now() + 300_000);
+  // This source cannot mint anything; identity can only come from the IPC seed.
+  const { child, url } = await startProvider(SOCKET_TOKEN, { initialToken });
+  try {
+    const response = await fetch(url, { method: "POST", body: JSON.stringify({ github_oidc_audience: AUDIENCE }) });
+    assert.deepEqual(await response.json(), { token: SOCKET_TOKEN, github_oidc_jwt: initialToken });
+    const legacy = await fetch(url, { method: "POST" });
+    assert.deepEqual(await legacy.json(), { token: SOCKET_TOKEN });
+    assert.ok(child.spawnargs.every((arg) => !arg.includes(initialToken)));
+  } finally { child.kill(); }
+});
+
 test("detached provider remains Socket-compatible when OIDC is unavailable", async () => {
   const { child, url } = await startProvider(SOCKET_TOKEN, {});
   try {
@@ -151,18 +206,20 @@ test("detached provider remains Socket-compatible when OIDC is unavailable", asy
   } finally { child.kill(); }
 });
 
-test("live runner IPC-to-HTTP OIDC handoff", {
+test("live runner seeded IPC-to-HTTP OIDC handoff", {
   skip: process.env.AEGIS_LIVE_GITHUB_OIDC !== "true",
 }, async () => {
   const source = runnerOIDCEnvironment();
   assert.ok(source.requestURL && source.requestToken, "runner OIDC environment missing");
-  const { child, url } = await startProvider(SOCKET_TOKEN);
+  const initialToken = await createOidcClient().token(AUDIENCE);
+  const { child, url } = await startProvider(SOCKET_TOKEN, { ...source, initialToken });
   try {
     const response = await fetch(url, { method: "POST", body: JSON.stringify({ github_oidc_audience: AUDIENCE }) });
     const body = await response.json();
     // Boolean assertions ensure test diagnostics cannot print credentials.
     assert.ok(body.token === SOCKET_TOKEN, "Socket credential missing");
     assert.ok(typeof body.github_oidc_jwt === "string" && body.github_oidc_jwt.length > 0, "runner identity missing");
+    assert.ok(body.github_oidc_jwt === initialToken, "provider did not reuse the setup assertion");
     const claims = JSON.parse(Buffer.from(body.github_oidc_jwt.split(".")[1], "base64url").toString("utf8"));
     assert.ok(claims.exp * 1000 > Date.now(), "runner identity expired");
     assert.ok(claims.aud === AUDIENCE || (Array.isArray(claims.aud) && claims.aud.includes(AUDIENCE)), "runner audience incorrect");

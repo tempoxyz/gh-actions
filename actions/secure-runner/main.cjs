@@ -175,8 +175,14 @@ async function setupAegis({ env, platform, deps }) {
       if (result.status === "rejected") throw result.reason;
     }
     const [socket, artifact] = results.map((result) => result.value);
-    const config = await stage(STAGES.provider, () =>
-      prepareConfig(socket.token, { env, oidc: runnerOIDCEnvironment(env) }));
+    const config = await stage(STAGES.provider, async () => {
+      // Reuse the release download's assertion instead of making the first
+      // package scan acquire identity under the provider's 1.5-second timeout.
+      // If it aged out during installation preparation, the setup OIDC client
+      // refreshes it with its existing bounded retries before service startup.
+      const initialToken = await oidc.token(AEGIS_AUDIENCE);
+      return prepareConfig(socket.token, { env, oidc: { ...runnerOIDCEnvironment(env), initialToken } });
+    });
 
     // Register the log upload before installing, so a failed install still
     // uploads what Aegis logged. On Linux, retire any managed installation an

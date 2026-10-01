@@ -251,6 +251,7 @@ test("main joins Aegis preparation before installation and records state and mas
     ["socket-sts.tempoxyz.dev", false],
     [AEGIS_AUDIENCE, false],
     ["socket-sts.tempoxyz.dev", false],
+    [AEGIS_AUDIENCE, false],
   ]);
 
   assert.equal(
@@ -275,6 +276,69 @@ test("main passes an exact Aegis release tag to the server downloader", async ()
   await captured(() => mainMain({ env, platform: "linux", deps }));
   assert.equal(calls.find((call) => call[0] === "download")[1].version, "20260927T194115Z-5e7bd8b807b2");
   fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("hands the release assertion to the runtime provider without another GitHub request", async () => {
+  const { env, config } = pipelineEnv();
+  const requests = [];
+  let downloadedToken;
+  let providerSource;
+  const oidc = createOidcClient({
+    env,
+    request: async (url) => {
+      const audience = url.searchParams.get("audience");
+      requests.push(audience);
+      return { status: 200, headers: {}, body: JSON.stringify({ value: jwt(Math.floor(Date.now() / 1000) + 300, audience) }) };
+    },
+  });
+  const { deps } = pipelineDeps({
+    oidc,
+    download: async ({ getOidc }) => {
+      downloadedToken = await getOidc();
+      return { package: "/verified.deb" };
+    },
+    prepareConfig: async (_token, { oidc }) => { providerSource = oidc; return config; },
+  });
+  const { lines } = await captured(() => mainMain({ env, platform: "linux", deps }));
+  assert.deepEqual(requests, ["socket-sts.tempoxyz.net", AEGIS_AUDIENCE]);
+  assert.equal(providerSource.initialToken, downloadedToken);
+  assert.equal(providerSource.requestURL, env.ACTIONS_ID_TOKEN_REQUEST_URL);
+  assert.equal(providerSource.requestToken, env.ACTIONS_ID_TOKEN_REQUEST_TOKEN);
+  for (const contents of [lines.join("\n"), fs.readFileSync(env.GITHUB_STATE, "utf8"), fs.readFileSync(config, "utf8")]) {
+    assert.ok(!contents.includes(downloadedToken), "assertion must stay in memory and IPC");
+  }
+});
+
+test("refreshes an assertion that aged during release preparation with setup retries", async () => {
+  const { env, config } = pipelineEnv();
+  let now = 1_800_000_000_000;
+  let aegisRequests = 0;
+  let downloadedToken;
+  let handedOffToken;
+  const oidc = createOidcClient({
+    env,
+    now: () => now,
+    sleep: async () => {},
+    random: () => 0,
+    request: async (url) => {
+      const audience = url.searchParams.get("audience");
+      if (audience === AEGIS_AUDIENCE && ++aegisRequests === 2) return { status: 503, headers: {}, body: "" };
+      return { status: 200, headers: {}, body: JSON.stringify({ value: jwt(Math.floor(now / 1000) + 300, audience) }) };
+    },
+  });
+  const { deps } = pipelineDeps({
+    oidc,
+    download: async ({ getOidc }) => {
+      downloadedToken = await getOidc();
+      now += 275_000;
+      return { package: "/verified.deb" };
+    },
+    prepareConfig: async (_token, { oidc }) => { handedOffToken = oidc.initialToken; return config; },
+  });
+  await captured(() => mainMain({ env, platform: "linux", deps }));
+  assert.equal(aegisRequests, 3, "the refresh retries a transient GitHub failure before installation");
+  assert.notEqual(handedOffToken, downloadedToken);
+  assert.equal(expiresAt(handedOffToken), now + 300_000);
 });
 
 test("Socket auth and download overlap and both must succeed before configuring Aegis", async () => {
