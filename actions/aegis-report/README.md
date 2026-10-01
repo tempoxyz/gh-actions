@@ -7,6 +7,9 @@ result. At job end, warning verdicts in that log are also summarized in one
 GitHub Actions warning annotation and the step summary. Known availability
 fail-open reasons (such as no internet connection) are named; other policy
 warning reasons are counted without quoting potentially sensitive upstream text.
+Blocked downloads are also counted in the step summary. When either blocked
+downloads or warning verdicts occur, the summary links to the current workflow
+run attempt in Aegis, showing all events across its jobs.
 
 This is the lifecycle companion for `aegis`; it does not mint or
 revoke Socket API tokens.
