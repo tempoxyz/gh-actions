@@ -339,7 +339,7 @@ jobs:
       package: tempo-fixture
       version: 0.0.0-test
       description: Fixture extension for the tempo-extension smoke test
-      install-command: "true"
+      install-command: echo "The fixture has no dependencies"
       build-command: bash testdata/fixtures/tempo-extension/build.sh
       targets: linux-amd64
 
