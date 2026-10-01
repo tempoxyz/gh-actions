@@ -1,7 +1,7 @@
 {
   "upstream": "https://github.com/depot/setup-action",
-  "ref": "v1.7.2",
-  "ref_type": "tag",
+  "ref": "main",
+  "ref_type": "branch",
   "sha": "91bc8495a33ebfc504ffc89e5674379ccf23c29c",
   "upstream_commit_date": "2026-08-20T14:28:02+01:00",
   "readme_url": "https://github.com/depot/setup-action/blob/91bc8495a33ebfc504ffc89e5674379ccf23c29c/README.md",

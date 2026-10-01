@@ -2,6 +2,7 @@
 // lockdown check, the soak-exclude date-annotation check, and the AI-config
 // poison-fingerprint warner. Gate-free string logic built on scan-core.
 
+import { maskStringContents } from '../../scripts/fleet/hooks/guard-block-shape.mts'
 import { scanLines } from './scan-core.mts'
 
 import type { LineHit } from './scan-core.mts'
@@ -39,7 +40,8 @@ const BAD_PERMISSION_MODE_RE =
 const BYPASS_PERMISSIONS_RE = /\bbypassPermissions\b/
 
 export const scanProgrammaticClaudeLockdown = (text: string): LineHit[] => {
-  if (!CLAUDE_DRIVER_RE.test(text)) {
+  const executable = maskStringContents(text)
+  if (!CLAUDE_DRIVER_RE.test(executable)) {
     return []
   }
   // A forbidden mode anywhere is an immediate fail, pointed at its line.
@@ -60,7 +62,12 @@ export const scanProgrammaticClaudeLockdown = (text: string): LineHit[] => {
   if (missing.length === 0) {
     return []
   }
-  return scanLines(text, CLAUDE_DRIVER_RE)
+  const lines = text.split(/\r?\n/)
+  const hits = scanLines(executable, CLAUDE_DRIVER_RE)
+  for (const hit of hits) {
+    hit.line = lines[hit.lineNumber - 1]!
+  }
+  return hits
 }
 
 // ── Soak-exclude date annotations (HARD block, pnpm-workspace.yaml) ──
@@ -76,10 +83,11 @@ const SOAK_ANNOTATION_RE =
   /^\s*#\s+published:\s+\d{4}-\d{2}-\d{2}\s+\|\s+removable:\s+\d{4}-\d{2}-\d{2}\s*$/
 // Same opt-out the canonical soak-excludes-have-dates check honors — an entry
 // that legitimately can't carry a date annotation marks the slot above it.
-const SOAK_ALLOW_MARKER = '# socket-lint: allow soak-exclude-no-date-annotation'
+const SOAK_ALLOW_MARKER =
+  '# oxlint-disable-next-line socket/soak-exclude-has-date'
 
 export const scanSoakExcludeDateAnnotations = (text: string): LineHit[] => {
-  const lines = text.split('\n')
+  const lines = text.split(/\r?\n/)
   const hits: LineHit[] = []
   let inBlock = false
   for (let i = 0, { length } = lines; i < length; i += 1) {
@@ -130,7 +138,7 @@ const POISON_RES: readonly RegExp[] = [
 
 export const scanAiConfigPoison = (text: string): LineHit[] => {
   const hits: LineHit[] = []
-  const lines = text.split('\n')
+  const lines = text.split(/\r?\n/)
   for (let i = 0, { length } = lines; i < length; i += 1) {
     const line = lines[i]!
     for (let p = 0, { length: pLen } = POISON_RES; p < pLen; p += 1) {

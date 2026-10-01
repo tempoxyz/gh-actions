@@ -3,9 +3,9 @@ description: "Install a Terraform release verified against HashiCorp's GPG-signe
 
 inputs:
   version:
-    description: "Exact Terraform version (e.g., 1.14.7). Constraints and 'latest' are rejected."
+    description: "Exact Terraform version (e.g., 1.16.4). Constraints and 'latest' are rejected."
     required: false
-    default: "1.14.7"
+    default: "1.16.4"
 
 runs:
   using: "composite"
@@ -22,7 +22,7 @@ runs:
       run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
         set -euo pipefail
         if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-          echo "::error::setup-terraform requires an exact version such as 1.14.7 (got '$VERSION')"
+          echo "::error::setup-terraform requires an exact version such as 1.16.4 (got '$VERSION')"
           exit 1
         fi
         case "$(uname -m)" in

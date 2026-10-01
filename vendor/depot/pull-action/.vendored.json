@@ -1,7 +1,7 @@
 {
   "upstream": "https://github.com/depot/pull-action",
-  "ref": "v1.3.1",
-  "ref_type": "tag",
+  "ref": "main",
+  "ref_type": "branch",
   "sha": "a913e06772c98ecd2361a8cc49bec81592dc6600",
   "upstream_commit_date": "2026-02-04T14:48:05Z",
   "readme_url": "https://github.com/depot/pull-action/blob/a913e06772c98ecd2361a8cc49bec81592dc6600/README.md",

@@ -8,7 +8,7 @@ release asset verified with `gh release verify-asset` (GitHub's release attestat
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `version` | Immutable typos release tag | No | `v1.49.0` |
+| `version` | Immutable typos release tag | No | `v1.50.3` |
 | `files` | Paths to check, space separated | No | `.` |
 | `config` | typos config file (auto-discovery otherwise) | No | `""` |
 | `extra-args` | Extra `typos` arguments | No | `""` |

@@ -6,6 +6,7 @@ import {CacheReport} from './cache-service'
 import {ProviderNote, renderCachingReport} from './caching-report'
 import {DependencyGraphConfig, getActionId, getGithubToken, getJobMatrix, SummaryConfig} from './configuration'
 import {Deprecation, getDeprecations, getErrors} from './deprecation-collector'
+import {renderSupportStatus, supportStatusSign} from './gradle-support-status'
 
 export async function generateJobSummary(
     buildResults: BuildResult[],
@@ -15,8 +16,11 @@ export async function generateJobSummary(
 ): Promise<void> {
     core.startGroup('Generating Job Summary')
 
+    const heading = renderActionHeading()
+
     const errors = renderErrors()
     if (errors) {
+        core.summary.addRaw(heading)
         core.summary.addRaw(errors)
         await core.summary.write()
         return
@@ -31,6 +35,7 @@ export async function generateJobSummary(
     core.info(cachingReport)
 
     if (config.shouldGenerateJobSummary(hasFailure)) {
+        core.summary.addRaw(heading)
         core.summary.addRaw(summaryTable)
         core.summary.addRaw(cachingReport)
         await core.summary.write()
@@ -57,8 +62,7 @@ async function addPRComment(jobSummary: string): Promise<void> {
     core.info(`Adding Job Summary as comment to PR #${pull_request_number}.`)
 
     const prComment = `${jobMarker(context)}
-<h3>Job Summary for Gradle</h3>
-<a href="${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}" target="_blank">
+${renderActionHeading()}<a href="${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}" target="_blank">
 <h5>${context.workflow} :: <em>${context.job}</em></h5>
 </a>
 
@@ -94,7 +98,13 @@ Note that this permission is never available for a workflow triggered from a rep
 }
 
 export function renderSummaryTable(results: BuildResult[]): string {
-    return `${renderDeprecations()}\n${renderBuildResults(results)}`
+    return `${renderDeprecations()}\n${renderBuildResults(results)}\n${renderSupportStatus(results.map(result => result.gradleVersion))}`
+}
+
+function renderActionHeading(): string {
+    const actionId = getActionId()
+    const caption = actionId ? ` <sub><em>captured by ${actionId}</em></sub>` : ''
+    return `<h3>Gradle Builds${caption}</h3>\n\n`
 }
 
 function renderErrors(): string | undefined {
@@ -138,8 +148,7 @@ function renderBuildResults(results: BuildResult[]): string {
         <th>Build Outcome</th>
         <th>Build&nbsp;Scan®</th>
     </tr>${results.map(result => renderBuildResultRow(result)).join('')}
-</table>
-    `
+</table>`
 }
 
 function anyFailed(results: BuildResult[]): boolean {
@@ -151,10 +160,15 @@ function renderBuildResultRow(result: BuildResult): string {
     <tr>
         <td>${truncateString(result.rootProjectName, 30)}</td>
         <td>${truncateString(result.requestedTasks, 60)}</td>
-        <td align='center'>${result.gradleVersion}</td>
+        <td align='center'>${renderGradleVersion(result.gradleVersion)}</td>
         <td align='center'>${renderOutcome(result)}</td>
         <td>${renderBuildScan(result)}</td>
     </tr>`
+}
+
+function renderGradleVersion(gradleVersion: string): string {
+    const sign = supportStatusSign(gradleVersion)
+    return sign ? `${gradleVersion} ${sign}` : gradleVersion
 }
 
 function renderOutcome(result: BuildResult): string {

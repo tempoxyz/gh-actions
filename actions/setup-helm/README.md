@@ -8,7 +8,7 @@ to the moving `latest`.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `version` | Immutable Helm release tag, e.g. `v4.2.4`. `latest` is rejected. | No | `v4.2.4` |
+| `version` | Immutable Helm release tag, e.g. `v4.3.0`. `latest` is rejected. | No | `v4.3.0` |
 
 ## Usage
 
@@ -18,7 +18,7 @@ steps:
 
   - uses: tempoxyz/gh-actions/actions/setup-helm@main
     with:
-      version: v4.1.1
+      version: v5.0.0
 ```
 
 ## How it verifies

@@ -81,9 +81,9 @@ jobs:
       source_date_epoch: ${{ steps.inputs.outputs.source_date_epoch }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
@@ -132,10 +132,10 @@ jobs:
         working-directory: source
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
 
       - name: Check out resolved source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
           ref: ${{ needs.resolve.outputs.source_sha }}
           path: source
@@ -143,7 +143,7 @@ jobs:
           submodules: recursive
 
       - name: Check out trusted build definitions
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
           ref: ${{ inputs.build-definitions-sha }}
           path: .reproducible-verifier
@@ -177,10 +177,10 @@ jobs:
 
       - name: Set up Depot
         if: matrix.backend == 'depot'
-        uses: tempoxyz/gh-actions/vendor/depot/setup-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/vendor/depot/setup-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
 
       - name: Log in to toolchain registry
-        uses: tempoxyz/gh-actions/vendor/docker/login-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -241,25 +241,25 @@ jobs:
       pcr2: ${{ steps.compare.outputs.pcr2 }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
 
       - name: Download Depot EIF
         if: ${{ !cancelled() }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317 # main
         with:
           name: ${{ inputs.artifact-name }}-depot
           path: ${{ runner.temp }}/eifs/${{ inputs.artifact-name }}-depot
 
       - name: Download clean EIF
         if: ${{ !cancelled() }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317 # main
         with:
           name: ${{ inputs.artifact-name }}-docker
           path: ${{ runner.temp }}/eifs/${{ inputs.artifact-name }}-docker
 
       - name: Log in to toolchain registry
         if: ${{ !cancelled() }}
-        uses: tempoxyz/gh-actions/vendor/docker/login-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

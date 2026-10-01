@@ -75,16 +75,16 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
 
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
           persist-credentials: false
 
       - name: Ensure every job starts with secure-runner
         if: ${{ inputs.ensure-secure-runner }}
-        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/ensure-secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
           fail-on-violation: ${{ inputs.secure-runner-fail-on-violation }}
 
@@ -120,7 +120,7 @@ jobs:
       - name: Install pinact
         if: ${{ inputs.pinact }}
         env:
-          PINACT_VERSION: v4.1.1
+          PINACT_VERSION: v5.0.0
           GH_TOKEN: ${{ github.token }}
         run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
           set -euo pipefail
@@ -161,16 +161,16 @@ jobs:
           VERIFY_MIN_AGE: ${{ !inputs.pin-no-api && inputs.verify-pin-min-age }}
         run: |
           set -euo pipefail
-          args=(-fix=false)
+          args=(--fix=false)
           [[ -n "$CONFIG" ]] && args+=(-c "$CONFIG")
           [[ "$NO_API" == "true" ]] && args+=(--no-api)
-          [[ "$VERIFY" == "true" ]] && args+=(--verify)
+          [[ "$VERIFY" == "true" ]] && args+=(--verify-comment)
           [[ "$VERIFY_MIN_AGE" == "true" ]] && args+=(--verify-min-age)
           pinact run "${args[@]}"
 
       - name: Scan GitHub Actions
         if: ${{ !cancelled() }}
-        uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
           inputs: ${{ inputs.paths }}
           persona: regular

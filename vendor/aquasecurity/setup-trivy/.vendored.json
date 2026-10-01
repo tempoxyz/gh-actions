@@ -1,12 +1,16 @@
 {
   "upstream": "https://github.com/aquasecurity/setup-trivy",
-  "ref": "v0.3.1",
-  "ref_type": "tag",
+  "ref": "main",
+  "ref_type": "branch",
   "sha": "81e514348e19b6112ce2a7e3ecbafe19c1e1f567",
   "upstream_commit_date": "2026-06-03T18:03:56+06:00",
   "readme_url": "https://github.com/aquasecurity/setup-trivy/blob/81e514348e19b6112ce2a7e3ecbafe19c1e1f567/README.md",
   "description": "Install Trivy binary from release page",
   "consume_as": "tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@<gh-actions-sha>",
   "files_removed": 2,
-  "nested_rewrites": []
+  "nested_rewrites": [
+    "actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb -> actions/cache/restore@3edfce9056124e459a23f683a21433670d47daca",
+    "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 -> actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a",
+    "actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb -> actions/cache/save@3edfce9056124e459a23f683a21433670d47daca"
+  ]
 }

@@ -78,6 +78,31 @@ inputs:
     description: "The version of the go-runner to use (e.g., 1.0.0, 1.0.0-beta.1). If not specified, the latest version will be installed"
     required: false
 
+  cycle-estimation:
+    description: |
+      Improve `simulation` accuracy by weighting each instruction by its estimated cycle cost instead of
+      charging every instruction the same fixed cost. Set to 'false' to disable.
+      Requires runner v5 or later. Defaults to 'true'.
+    required: false
+
+  exclude-allocations:
+    description: |
+      Exclude memory allocation time from `simulation` mode results. Set to 'true' to enable.
+      Requires runner v5 or later. Defaults to 'false'.
+    required: false
+
+  simulation-track-subprocess:
+    description: |
+      Measure the subprocesses spawned by the benchmarked process in `simulation` mode. Set to 'true' to enable.
+      Requires runner v5.2.0 or later. Defaults to 'false'.
+    required: false
+
+  experimental-memory-track-physical:
+    description: |
+      [Experimental] Track physical (resident) memory in `memory` mode. Set to 'true' to enable.
+      Requires runner v5.3.0 or later. Defaults to 'false'.
+    required: false
+
   config:
     description: "Path to a CodSpeed configuration file (codspeed.yml). If not specified, the runner will look for a codspeed.yml file in the repository root."
     required: false
@@ -86,6 +111,13 @@ inputs:
     description: "Suppress the warning emitted when hash verification is not available (e.g. when using 'latest', branch, or revision versions)."
     required: false
     default: "false"
+
+outputs:
+  run-id:
+    description: |
+      The id of the CodSpeed run the results were uploaded to.
+      Requires runner v5.4.0 or later.
+    value: ${{ steps.run-benchmarks.outputs.run-id }}
 
 runs:
   using: "composite"
@@ -126,22 +158,32 @@ runs:
         KERNEL_VERSION=$(uname -r)
         echo "kernel-version=$KERNEL_VERSION" >> $GITHUB_OUTPUT
 
+        # Get the distribution for the cache key: instrument installations are built against a
+        # specific release, and `runner.os` only says `Linux`
+        if [ -r /etc/os-release ]; then
+          . /etc/os-release
+          DISTRO="$ID-$VERSION_ID"
+        else
+          DISTRO="${{ runner.os }}"
+        fi
+        echo "distro=$DISTRO" >> $GITHUB_OUTPUT
+
         # Normalize mode for cache key (commas are not allowed in cache keys)
         MODE_CACHE_KEY=$(echo "${{ inputs.mode }}" | tr ',' '-')
         echo "mode-cache-key=$MODE_CACHE_KEY" >> $GITHUB_OUTPUT
 
     - name: Cache CodSpeed instruments
       if: inputs.cache-instruments == 'true'
-      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      uses: actions/cache@3edfce9056124e459a23f683a21433670d47daca # actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
       with:
         path: ${{ inputs.instruments-cache-dir }}
-        key: codspeed-instruments-${{ steps.versions.outputs.mode-cache-key }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.versions.outputs.kernel-version }}-${{ steps.versions.outputs.runner-version }}
+        key: codspeed-instruments-${{ steps.versions.outputs.mode-cache-key }}-${{ steps.versions.outputs.distro }}-${{ runner.arch }}-${{ steps.versions.outputs.kernel-version }}-${{ steps.versions.outputs.runner-version }}
         restore-keys: |
-          codspeed-instruments-${{ steps.versions.outputs.mode-cache-key }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.versions.outputs.kernel-version }}-
+          codspeed-instruments-${{ steps.versions.outputs.mode-cache-key }}-${{ steps.versions.outputs.distro }}-${{ runner.arch }}-${{ steps.versions.outputs.kernel-version }}-
 
     - name: Lookup installer hash
       id: installer-hash
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
       env:
         RUNNER_VERSION: ${{ steps.versions.outputs.runner-version }}
       with:
@@ -217,6 +259,7 @@ runs:
         fi
 
     - name: Run the benchmarks
+      id: run-benchmarks
       shell: bash
       env:
         GH_MATRIX: "${{ toJson(matrix) }}"
@@ -262,6 +305,19 @@ runs:
         fi
         if [ -n "${{ inputs.config }}" ]; then
           RUNNER_ARGS+=(--config="${{ inputs.config }}")
+        fi
+        if [ -n "${{ inputs.cycle-estimation }}" ]; then
+          RUNNER_ARGS+=(--cycle-estimation="${{ inputs.cycle-estimation }}")
+        fi
+        if [ -n "${{ inputs.exclude-allocations }}" ]; then
+          RUNNER_ARGS+=(--exclude-allocations="${{ inputs.exclude-allocations }}")
+        fi
+        if [ "${{ inputs.simulation-track-subprocess }}" = "true" ]; then
+          RUNNER_ARGS+=(--simulation-track-subprocess)
+        fi
+
+        if [ "${{ inputs.experimental-memory-track-physical }}" = "true" ]; then
+          RUNNER_ARGS+=(--experimental-memory-track-physical)
         fi
 
         if [ -n "$CODSPEED_INPUT_RUN" ]; then

@@ -13,15 +13,15 @@ if [[ "$(uname -s)" != Linux ]]; then
   exit 1
 fi
 
-version=2.100.0
+version=2.102.0
 case "$(uname -m)" in
   x86_64)
     arch=amd64
-    sha256=e4d4bb4498e8d007abe545b6568926793ace1b6447da598294a610018cb164be
+    sha256=bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386
     ;;
   aarch64|arm64)
     arch=arm64
-    sha256=ea4e7a581a32ccad6cc7923cb1576ac5859ba4b9a16ab22eb8f8a96e78e2e961
+    sha256=7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484
     ;;
   *)
     echo "::error::setup-foundry: unsupported architecture $(uname -m)"

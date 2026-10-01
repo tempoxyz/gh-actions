@@ -1,7 +1,7 @@
 {
   "name": "configure-aws-credentials",
   "description": "A GitHub Action to configure AWS credentials",
-  "version": "6.2.3",
+  "version": "6.3.0",
   "scripts": {
     "build": "tsc",
     "lint": "biome check --error-on-warnings ./src ./test && markdownlint -i node_modules -i CHANGELOG.md '**/*.md'",
@@ -17,25 +17,26 @@
     "organization": true
   },
   "devDependencies": {
-    "@aws-sdk/credential-provider-env": "^3.972.59",
-    "@biomejs/biome": "2.5.4",
-    "@smithy/property-provider": "^4.4.11",
-    "@types/node": "^26.1.1",
-    "@vitest/coverage-v8": "4.1.10",
+    "@aws-sdk/credential-provider-env": "^3.972.72",
+    "@biomejs/biome": "2.5.14",
+    "@smithy/property-provider": "^4.5.2",
+    "@types/node": "^26.6.3",
+    "@vitest/coverage-v8": "5.0.0",
     "aws-sdk-client-mock": "^4.1.0",
-    "esbuild": "^0.28.1",
-    "generate-license-file": "^4.2.1",
+    "esbuild": "^0.28.2",
+    "generate-license-file": "^4.2.5",
     "json-schema": "^0.4.0",
     "markdownlint-cli": "^0.49.1",
-    "memfs": "^4.64.0",
+    "memfs": "^4.79.0",
     "standard-version": "^9.5.0",
     "typescript": "^7.0.2",
-    "vitest": "4.1.10"
+    "vitest": "5.0.0"
   },
   "dependencies": {
     "@actions/core": "^3.0.1",
-    "@aws-sdk/client-sts": "^3.1091.0",
-    "@smithy/node-http-handler": "^4.9.8",
+    "@aws-sdk/client-sts": "^3.1141.0",
+    "@aws-sdk/credential-provider-node": "^3.972.83",
+    "@smithy/node-http-handler": "^4.12.1",
     "proxy-agent": "^8.0.2"
   },
   "keywords": [

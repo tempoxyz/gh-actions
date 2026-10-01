@@ -1,7 +1,7 @@
 {
   "upstream": "https://github.com/mozilla-actions/sccache-action",
-  "ref": "v0.0.11",
-  "ref_type": "tag",
+  "ref": "main",
+  "ref_type": "branch",
   "sha": "fc920bf0ec8de6ee65d409111f7ec508035751ba",
   "upstream_commit_date": "2026-07-29T13:15:43+02:00",
   "readme_url": "https://github.com/mozilla-actions/sccache-action/blob/fc920bf0ec8de6ee65d409111f7ec508035751ba/README.md",

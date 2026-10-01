@@ -3,9 +3,9 @@ description: "Install pinact, the GitHub Actions pin checker, from a checksum-ve
 
 inputs:
   version:
-    description: "pinact release tag (e.g., v4.1.1). Mutable 'latest' is rejected."
+    description: "pinact release tag (e.g., v5.0.0). Mutable 'latest' is rejected."
     required: false
-    default: "v4.1.1"
+    default: "v5.0.0"
 
 runs:
   using: "composite"

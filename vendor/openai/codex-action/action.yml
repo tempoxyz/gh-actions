@@ -142,7 +142,7 @@ runs:
     - name: Ensure Node.js available
       # Pin to a commit hash because some repositories require it:
       # https://github.com/openai/codex-action/issues/43
-      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      uses: actions/setup-node@7f84f1d52d0c56afb45c62fee31a93b843cea4d6 # actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
       with:
         node-version: "24"
 
