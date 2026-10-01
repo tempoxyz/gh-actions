@@ -1,8 +1,9 @@
 # Setup Foundry
 
 Install the Foundry toolchain (forge, cast, anvil, chisel) from a release whose assets carry SLSA
-provenance. Replaces `foundry-rs/foundry-toolchain`, which runs `foundryup` without verifying what
-it downloads.
+provenance, without running an installer. `foundry-rs/foundry-toolchain` uses the Rust `foundryup`,
+which also verifies the release's Sigstore bundle against Foundry's release workflow; this action
+performs that check with `gh attestation verify` instead of downloading `foundryup` itself.
 
 ## Inputs
 
