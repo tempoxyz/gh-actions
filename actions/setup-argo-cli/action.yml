@@ -3,9 +3,9 @@ description: "Install Argo Workflows CLI"
 
 inputs:
   version:
-    description: "Argo CLI version (e.g., v3.6.4). Mutable 'latest' is rejected."
+    description: "Argo CLI version (e.g., v4.1.4). Mutable 'latest' is rejected."
     required: false
-    default: "v3.6.4"
+    default: "v4.1.4"
 
 runs:
   using: "composite"

@@ -23,3 +23,34 @@ rules:
     conditions:
       - expr: |
           ActionName matches "^docker://.+" && ActionVersion matches "^sha256:[0-9a-f]{64}$"
+  # Latest-head refresh: these exact upstream commits have no release tag. Remove
+  # each exception when replacing the pin with a tagged release; the seven-day
+  # policy still applies to other commits.
+  - ignore: true
+    conditions:
+      - expr: ActionName == "actions/checkout" && ActionVersion == "f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "actions/download-artifact" && ActionVersion == "484a0b528fb4d7bd804637ccb632e47a0e638317"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "actions/setup-node" && ActionVersion == "7f84f1d52d0c56afb45c62fee31a93b843cea4d6"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "actions/attest" && ActionVersion == "a0eb68d51f3a5d373e107cfa9c8455ba800479cd"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "actions/cache" && ActionVersion == "3edfce9056124e459a23f683a21433670d47daca"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "sigstore/cosign-installer" && ActionVersion == "828df1e55de306ba29db814d6057ddae71883cda"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "docker/login-action" && ActionVersion == "783ae9cac559640a24c9212dfa6cd9e998252f9a"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "docker/metadata-action" && ActionVersion == "8e671d84a3bd81afdfc4fdbb96a42b07c2a80934"
+  # The latest published repository commit is intentionally inside the cooldown.
+  - min_age: 0
+    conditions:
+      - expr: ActionName matches "^tempoxyz/gh-actions(/|$)" && ActionVersion == "392079a54ac0240e1b21417eca38b7c0a50bf55d"

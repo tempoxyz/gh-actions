@@ -1,6 +1,6 @@
 # Setup mold
 
-Install the [mold](https://github.com/rui314/mold) linker (2.42.0) and make it the default
+Install the [mold](https://github.com/rui314/mold) linker (2.42.1) and make it the default
 linker. Replaces `rui314/setup-mold`, which piped an unverified download into `tar`; mold
 publishes no checksums or signatures, so the release tarball digests are pinned in the action
 and change together with the version.

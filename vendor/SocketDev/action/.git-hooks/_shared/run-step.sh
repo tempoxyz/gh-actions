@@ -1,25 +1,60 @@
 # Shared pre-commit step runners, sourced by .git-hooks/fleet/pre-commit so the
 # error-visibility + budget-bounding logic lives in ONE place.
+#
+# STAYS .sh, NOT .mts. The fleet writes TypeScript everywhere above the node
+# boundary; this file sits below it. Two reasons it cannot move:
+#   1. The hook dispatchers are pure POSIX sh and SOURCE this file, so its
+#      functions have to exist in the caller's shell. A node script cannot
+#      export a shell function back to its parent.
+#   2. It bounds a step and, on timeout, kills the whole PROCESS GROUP —
+#      the sfw pnpm-shim plus every descendant. That is job-control, which
+#      the shell owns.
+# Its own callee, resolve-node.sh, is what puts node on PATH in the first
+# place, so this layer runs before `node` is reliably callable.
 
-# Error-visibility helper. When lint/test fails, harness output often
-# shows only a final "Failed with non-blocking status code" line — the
-# actual error is buried thousands of lines up the log and gets clipped
-# by the agent's stdout limits. Tee each step's output to a tempfile,
-# tail it on failure with a clear marker so the operator (or agent)
-# can see what broke without scrolling.
+# V8 bytecode cache for every step this file runs. Node caches the compiled
+# form of each module it loads and reuses it on the next spawn, and a commit
+# spawns the same lint and test entrypoints over and over.
+#
+# THE ONE PLACE the fleet names this directory. `.claude/hooks/fleet/index.cjs`
+# calls enableCompileCache() with no argument so it inherits this value rather
+# than repeating the literal; anything else that wants the cache reads
+# NODE_COMPILE_CACHE too. Node keys entries by source path, so one directory
+# shared across checkouts is correct rather than merely tolerable.
+#
+# In os.tmpdir(), not the repo: scratch never goes in the tracked tree, and a
+# temp path cannot write a stray cache into the cascade payload.
+#
+# Measured on this repo it is a wash - a warm staged test run came out
+# indistinguishable from an uncached one, because vitest's cost is vite
+# transform and worker spawn rather than JS compile. It stays because it costs
+# nothing, and the balance shifts as more of a step's work becomes plain module
+# loading.
+if [ -z "$NODE_COMPILE_CACHE" ]; then
+  NODE_COMPILE_CACHE="${TMPDIR:-/tmp}/socket/compile-cache"
+  export NODE_COMPILE_CACHE
+fi
+
+CHECK_OUTPUT_HELPER=.git-hooks/_shared/check-output.mts
+
+show_step_output() {
+  if ! node "$CHECK_OUTPUT_HELPER" "$status" "$step_log"; then
+    cat "$step_log" >&2
+  fi
+}
+
 run_step() {
   step_name=$1
   shift
   step_log=$(mktemp -t "pre-commit-${step_name}.XXXXXX") || step_log=/tmp/pre-commit-step.log
-  if "$@" 2>&1 | tee "$step_log"; then
+  if "$@" >"$step_log" 2>&1; then
     status=0
   else
     status=$?
   fi
+  show_step_output
   if [ "$status" -ne 0 ]; then
     printf '\n========== pre-commit: %s FAILED (exit %s) ==========\n' "$step_name" "$status"
-    printf 'Last 60 lines of output:\n\n'
-    tail -60 "$step_log"
     printf '\n========== full log: %s ==========\n' "$step_log"
   else
     rm -f "$step_log"
@@ -97,24 +132,34 @@ run_pkg_step_bounded() {
 # seconds, and the budget is the hang ceiling that keeps a deadlock (e.g. the
 # Socket Firewall sfw proxy + a worker blocking on each other) from ever hanging
 # the commit past PRECOMMIT_STEP_BUDGET_S. A real lint/test FAILURE (clean
-# non-zero before the budget) still BLOCKS the commit — only a budget-exceeding
-# HANG is skipped, and the pre-push `--all` gate + CI run the full suite. The
+# non-zero, including during timeout cleanup) still BLOCKS the commit — only a
+# budget-exceeding HANG is skipped. The pre-push `--all` gate + CI run the full suite. The
 # ceiling is enforced by scripts/fleet/check/precommit-steps-are-bounded.mts,
 # which fails if a heavy step is invoked un-bounded or the budget drifts above
 # its cap.
 #
-# Portable: no `timeout`/`gtimeout`/`setsid` dependency. `set -m` puts the
-# backgrounded job in its own process group so `kill -- -$pgid` reaps the
-# whole tree; poll in 1s ticks (sh has no `wait -t`).
+# setsid creates a process group without a controlling terminal. Shell job
+# control supplies the group on hosts without setsid.
 PRECOMMIT_STEP_BUDGET_S=10
 run_step_bounded() {
   step_name=$1
   shift
   step_log=$(mktemp -t "pre-commit-${step_name}.XXXXXX") || step_log=/tmp/pre-commit-step.log
-  set -m
-  { "$@" >"$step_log" 2>&1; } &
-  job=$!
-  set +m
+  if command -v setsid >/dev/null 2>&1; then
+    set +m
+    setsid "$@" >"$step_log" 2>&1 &
+    job=$!
+  else
+    if ! (set -m; case $- in *m*) exit 0 ;; *) exit 1 ;; esac) 2>/dev/null; then
+      rm -f "$step_log"
+      printf 'Cannot isolate pre-commit step %s: shell job control is unavailable. Install setsid or use a shell with job control.\n' "$step_name" >&2
+      return 1
+    fi
+    set -m
+    { exec "$@" >"$step_log" 2>&1; } &
+    job=$!
+    set +m
+  fi
   # Poll at 5 Hz (0.2s tick) so a fast step isn't rounded up to a full second
   # of latency before the loop notices it finished; elapsed seconds = ticks / 5.
   # `sleep 0.2` is honored by GNU coreutils, macOS, and busybox sleep.
@@ -123,11 +168,29 @@ run_step_bounded() {
   while kill -0 "$job" 2>/dev/null; do
     if [ "$elapsed" -ge "$PRECOMMIT_STEP_BUDGET_S" ]; then
       # Budget blown — a deadlock or an over-broad related-set. Take out the
-      # whole group (sfw wrapper + workers), TERM then KILL, and fail open.
+      # whole group (sfw wrapper + workers), TERM then KILL.
       # The kills run in an stderr-discarded subshell so the shell's
       # "Terminated" job-control notice doesn't leak into the commit output.
-      { kill -- -"$job"; sleep 1; kill -9 -- -"$job"; } 2>/dev/null
-      wait "$job" 2>/dev/null
+      timeout_signalled=false
+      {
+        if kill -- -"$job"; then timeout_signalled=true; fi
+        sleep 1
+        kill -9 -- -"$job"
+      } 2>/dev/null
+      if wait "$job" 2>/dev/null; then
+        status=0
+      else
+        status=$?
+      fi
+      case "$status:$timeout_signalled" in
+        0:*|137:true|143:true) ;;
+        *)
+          show_step_output
+          printf '\n========== pre-commit: %s FAILED (exit %s) ==========\n' "$step_name" "$status"
+          printf '\n========== full log: %s ==========\n' "$step_log"
+          return "$status"
+          ;;
+      esac
       cat "$step_log" 2>/dev/null
       rm -f "$step_log"
       printf '\n========== pre-commit: %s SKIPPED (budget %ss exceeded) ==========\n' \
@@ -141,9 +204,12 @@ run_step_bounded() {
     ticks=$((ticks + 1))
     elapsed=$((ticks / 5))
   done
-  wait "$job"
-  status=$?
-  cat "$step_log" 2>/dev/null
+  if wait "$job"; then
+    status=0
+  else
+    status=$?
+  fi
+  show_step_output
   if [ "$status" -ne 0 ]; then
     printf '\n========== pre-commit: %s FAILED (exit %s) ==========\n' "$step_name" "$status"
     printf '\n========== full log: %s ==========\n' "$step_log"

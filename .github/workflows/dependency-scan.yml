@@ -58,7 +58,7 @@ jobs:
       vulnerabilities-found: ${{ steps.report.outputs.vulnerabilities-found }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
 
       - name: Resolve revisions and prepare isolated results directory
         id: prepare
@@ -88,28 +88,28 @@ jobs:
           NODE
 
       - name: Checkout base revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
           ref: ${{ steps.prepare.outputs.base }}
           persist-credentials: false
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan existing dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
           results-file: old-results.json
 
       - name: Checkout proposed revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
           ref: ${{ steps.prepare.outputs.head }}
           persist-credentials: false
           submodules: ${{ inputs.checkout-submodules && 'recursive' || 'false' }}
 
       - name: Scan proposed dependencies
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
           scan-args: ${{ inputs.scan-args }}
           results-directory: ${{ steps.prepare.outputs.results }}
@@ -117,7 +117,7 @@ jobs:
 
       - name: Report newly introduced vulnerabilities
         id: report
-        uses: tempoxyz/gh-actions/actions/osv-scanner-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+        uses: tempoxyz/gh-actions/actions/osv-scanner-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
         with:
           mode: report
           results-directory: ${{ steps.prepare.outputs.results }}

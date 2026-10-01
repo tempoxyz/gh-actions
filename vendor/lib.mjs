@@ -211,8 +211,8 @@ export function rewriteUsesText(text, { org, allowedUpstreams, vendored, pinNest
     const at = target.indexOf("@");
     const path = at === -1 ? target : target.slice(0, at), ref = at === -1 ? "" : target.slice(at + 1);
     if (allowedUpstreams.some((p) => path.startsWith(p))) {
-      if (/^[0-9a-f]{40}$/.test(ref)) return m;
       const pin = pinNested[target];
+      if (!pin && /^[0-9a-f]{40}$/.test(ref)) return m;
       if (!pin) { unpinned.add(target); return m; }
       changes.push(`${target} -> ${path}@${pin}`);
       return `${lead}${path}@${pin} # ${target}`;

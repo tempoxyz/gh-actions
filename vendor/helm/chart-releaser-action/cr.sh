@@ -38,6 +38,10 @@ Usage: $(basename "$0") <options>
         --skip-upload             Skip package upload, just create the release. Not needed in case of OCI upload.
     -l, --mark-as-latest          Mark the created GitHub release as 'latest' (default: true)
         --packages-with-index     Upload chart packages directly into publishing branch
+        --oci-registry-url        OCI registry URL (e.g. oci://ghcr.io/myorg/charts). When set, packages are pushed via 'cr push'.
+        --oci-username            Username for OCI registry authentication (falls back to local registry credential store)
+        --oci-password            Password/token for OCI registry authentication (falls back to local registry credential store)
+        --use-arm                 Use ARM64 binary (default: false)
 EOF
 }
 
@@ -55,6 +59,10 @@ main() {
   local mark_as_latest=true
   local packages_with_index=false
   local pages_branch=
+  local oci_registry_url=
+  local oci_username=
+  local oci_password=
+  local use_arm=false
 
   parse_command_line "$@"
 
@@ -91,24 +99,27 @@ main() {
       done
 
       release_charts
+      push_charts
       update_index
       echo "changed_charts=$(
         IFS=,
         echo "${changed_charts[*]}"
       )" >changed_charts.txt
+
+      echo "chart_version=${latest_tag}" >chart_version.txt
     else
       echo "Nothing to do. No chart changes detected."
       echo "changed_charts=" >changed_charts.txt
+      echo "chart_version=" >chart_version.txt
     fi
   else
     install_chart_releaser
     rm -rf .cr-index
     mkdir -p .cr-index
     release_charts
+    push_charts
     update_index
   fi
-
-  echo "chart_version=${latest_tag}" >chart_version.txt
 
   popd >/dev/null
 }
@@ -218,6 +229,30 @@ parse_command_line() {
         shift
       fi
       ;;
+    --oci-registry-url)
+      if [[ -n "${2:-}" ]]; then
+        oci_registry_url="$2"
+        shift
+      fi
+      ;;
+    --oci-username)
+      if [[ -n "${2:-}" ]]; then
+        oci_username="$2"
+        shift
+      fi
+      ;;
+    --oci-password)
+      if [[ -n "${2:-}" ]]; then
+        oci_password="$2"
+        shift
+      fi
+      ;;
+    --use-arm)
+      if [[ -n "${2:-}" ]]; then
+          use_arm="$2"
+          shift
+      fi
+      ;;
     *)
       break
       ;;
@@ -259,9 +294,12 @@ install_chart_releaser() {
 
   if [[ ! -d "$install_dir" ]]; then
     mkdir -p "$install_dir"
-
+    architecture=linux_amd64
+    if [[ "$use_arm" = true ]]; then
+      architecture=linux_arm64
+    fi
     echo "Installing chart-releaser on $install_dir..."
-    curl -sSLo cr.tar.gz "https://github.com/helm/chart-releaser/releases/download/$version/chart-releaser_${version#v}_linux_amd64.tar.gz"
+    curl -sSLo cr.tar.gz "https://github.com/helm/chart-releaser/releases/download/$version/chart-releaser_${version#v}_${architecture}.tar.gz"
     tar -xzf cr.tar.gz -C "$install_dir"
     rm -f cr.tar.gz
   fi
@@ -333,6 +371,26 @@ release_charts() {
 
   echo 'Releasing charts...'
   cr upload "${args[@]}"
+}
+
+push_charts() {
+  if [[ -z "$oci_registry_url" ]]; then
+    return
+  fi
+
+  local args=(--registry-url "$oci_registry_url" --package-path .cr-release-packages)
+  if [[ -n "$oci_username" ]]; then
+    args+=(--username "$oci_username")
+  fi
+  if [[ -n "$oci_password" ]]; then
+    args+=(--password "$oci_password")
+  fi
+  if [[ -n "$skip_existing" ]]; then
+    args+=(--skip-existing)
+  fi
+
+  echo "Pushing charts to OCI registry $oci_registry_url..."
+  cr push "${args[@]}"
 }
 
 update_index() {

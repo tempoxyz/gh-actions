@@ -8,7 +8,7 @@ stdout-capturing wrapper script by default.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `version` | Exact Terraform version, e.g. `1.14.7`. Version constraints and `latest` are rejected. | No | `1.14.7` |
+| `version` | Exact Terraform version, e.g. `1.16.4`. Version constraints and `latest` are rejected. | No | `1.16.4` |
 
 ## Usage
 

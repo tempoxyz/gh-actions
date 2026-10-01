@@ -38,7 +38,7 @@ runs:
 
     - name: Restore Foundry RPC cache
       if: inputs.cache == 'true'
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      uses: actions/cache@3edfce9056124e459a23f683a21433670d47daca # main
       with:
         path: ~/.foundry/cache
         key: ${{ runner.os }}-foundry-chain-fork-${{ inputs.cache-key }}

@@ -53,6 +53,17 @@ test("nested uses: third-party refs get repository pins, GitHub-authored refs st
   assert.deepEqual(r2.unpinned, ["github/codeql-action/upload-sarif@v3"]);
 });
 
+test("nested explicit pins can be refreshed through manifest overrides", () => {
+  const original = "1".repeat(40), updated = "2".repeat(40);
+  const target = `actions/cache@${original}`;
+  const ctx = { org: "tempoxyz/gh-actions", allowedUpstreams: ["actions/"], vendored: new Set(), pinNested: { [target]: updated } };
+  const r = rewriteUsesText(`    - uses: ${target} # old release\n`, ctx);
+  assert.equal(r.text, `    - uses: actions/cache@${updated} # ${target}\n`);
+  assert.deepEqual(r.unpinned, []);
+  assert.deepEqual(r.changes, [`${target} -> actions/cache@${updated}`]);
+  assert.equal(rewriteUsesText(`    - uses: ${target}\n`, { ...ctx, pinNested: {} }).text, `    - uses: ${target}\n`);
+});
+
 test("version comparison prefers numeric order and handles v prefixes", () => {
   assert.deepEqual(["v1.10.0", "v1.9.2", "v2", "1.9.10"].sort(compareVersions), ["v1.9.2", "1.9.10", "v1.10.0", "v2"]);
 });

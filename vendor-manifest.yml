@@ -8,15 +8,16 @@
 # Per action: `ref` is the upstream tag or branch for humans, `sha` is the commit that is vendored,
 # `exclude` lists paths shown to be unused at run time (the reasoning is in `notes`), `keep` wins
 # over any exclude, and `pin_nested` records commits for nested GitHub-authored `uses:` lines that
-# upstream pins by tag (the org policy requires full SHAs). Trees under vendor/ are generated:
+# upstream pins by tag, or overrides an older upstream SHA (the org policy requires full SHAs).
+# Trees under vendor/ are generated:
 # edit this file and re-run the sync instead of editing them.
 org: tempoxyz/gh-actions
 vendor_dir: vendor
 # Nested `uses:` lines pointing at these owners are left in place; the org policy allows them.
 # Every other nested third-party reference is rewritten to a pinned reference into this
 # repository. Keep self_sha and self_tag in sync with the latest published tag.
-self_sha: 55fe3b63d9612623cc51e6c62d9d62fbcb175fb0
-self_tag: 2026-09-29T01-25-15Z-55fe3b63
+self_sha: 392079a54ac0240e1b21417eca38b7c0a50bf55d
+self_tag: 2026-10-01T18-10-09Z-392079a5
 allowed_upstreams:
   - actions/
   - github/
@@ -68,9 +69,9 @@ default_exclude:
   - .yamllint*
 actions:
   - name: 1password/install-cli-action
-    ref: v4.1.0
-    ref_type: tag
-    sha: 1a3160d5e9de1ae0803eaa08a88746f5ae3daa50
+    ref: main
+    ref_type: branch
+    sha: 142aef31e730ad2c57fc9db9db0a5d9186d290f2
     exclude:
       - src/
       - test/
@@ -87,9 +88,9 @@ actions:
       lint-staged.config.*, **/*.test.*
 
   - name: 1password/load-secrets-action
-    ref: v5.0.1
-    ref_type: tag
-    sha: 70062d7a876d3eb6334754fa26efd2fbd90c32f2
+    ref: main
+    ref_type: branch
+    sha: f74a6b504ca74e27d11823059419e7468e72871c
     exclude:
       - src/
       - tests/
@@ -104,9 +105,9 @@ actions:
       **/*.test.*, configure/
 
   - name: CodSpeedHQ/action
-    ref: v4.19.1
-    ref_type: tag
-    sha: f22792bfac16f3e14eb9fbea76f4a48e9cc22b93
+    ref: main
+    ref_type: branch
+    sha: c2058708ea029e949a868d084b0d21d18d9de53a
     exclude:
       - examples/
       - .prettierrc*
@@ -115,11 +116,14 @@ actions:
     notes: >-
       Composite action; loads .codspeed-runner-installer-hashes.json, .codspeed-runner-version from
       the action directory. excluded: examples/, .prettierrc*, CHANGELOG*, scripts/
+    pin_nested:
+      actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7: 3edfce9056124e459a23f683a21433670d47daca
+      actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd: 3a2844b7e9c422d3c10d287c895573f7108da1b3
 
   - name: DeterminateSystems/nix-installer-action
-    ref: v22
-    ref_type: tag
-    sha: ef8a148080ab6020fd15196c2084a2eea5ff2d25
+    ref: main
+    ref_type: branch
+    sha: 3138316df39ed29be04236d7ffc686fa525866aa
     exclude:
       - src/
       - tsconfig*.json
@@ -139,9 +143,9 @@ actions:
       flake.nix
 
   - name: EmbarkStudios/cargo-deny-action
-    ref: v2.1.1
-    ref_type: tag
-    sha: 3c6349835b2b7b196a839186cb8b78e02f7b5f25
+    ref: main
+    ref_type: branch
+    sha: 9c67a826e39827395bfa619cd85cb2aaeb43cfaa
     exclude:
       - src/
       - test/
@@ -163,7 +167,7 @@ actions:
   - name: SocketDev/action
     ref: main
     ref_type: branch
-    sha: be1f253a41351d59095f8d7f1425985097dd1054
+    sha: d1e3aa68ee9fdbfcee6988cd2535cf8e7034a169
     exclude:
       - src/
       - test/
@@ -186,9 +190,9 @@ actions:
       .mcp.json, patches/, pnpm-workspace.yaml, scripts/
 
   - name: Swatinem/rust-cache
-    ref: v2.9.2
-    ref_type: tag
-    sha: 6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+    ref: master
+    ref_type: branch
+    sha: f0d9c3887740aee45f6153b24b3a6b815192ec16
     exclude:
       - src/
       - tests/
@@ -201,9 +205,9 @@ actions:
       rollup.config.*, package-lock.json, CHANGELOG*
 
   - name: amannn/action-semantic-pull-request
-    ref: v6.1.1
-    ref_type: tag
-    sha: 48f256284bd46cdaab1048c3721360e808335d50
+    ref: main
+    ref_type: branch
+    sha: 4e8becf171763c78261f71cd41a7095dde4f74e3
     exclude:
       - src/
       - eslint.config.*
@@ -218,9 +222,9 @@ actions:
       pnpm-lock.yaml, CHANGELOG*, .releaserc*, **/*.test.*, index.js
 
   - name: anchore/sbom-action
-    ref: v0.24.0
-    ref_type: tag
-    sha: e22c389904149dbc22b58101806040fa8d37a610
+    ref: main
+    ref_type: branch
+    sha: 6b31fa7e2d592e47d95d2a5e0520a7352d47ead5
     exclude:
       - src/
       - tests/
@@ -238,28 +242,34 @@ actions:
       .prettierrc*, .prettierignore, package-lock.json, .nvmrc, **/*.test.*, llms.txt
 
   - name: aquasecurity/setup-trivy
-    ref: v0.3.1
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: 81e514348e19b6112ce2a7e3ecbafe19c1e1f567
     exclude:
       - '**'
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+    pin_nested:
+      actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb: 3edfce9056124e459a23f683a21433670d47daca
+      actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8: f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+      actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb: 3edfce9056124e459a23f683a21433670d47daca
 
   - name: aquasecurity/trivy-action
-    ref: v0.36.0
-    ref_type: tag
-    sha: ed142fd0673e97e23eac54620cfb913e5ce36c25
+    ref: master
+    ref_type: branch
+    sha: c03d123cb480c08c69b054af418ea5e69fe6e57e
     exclude: []
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yaml uses the action directory
       itself (working directory, module path or similar)
+    pin_nested:
+      actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9: 3edfce9056124e459a23f683a21433670d47daca
 
   - name: astral-sh/setup-uv
-    ref: v10.0.1
-    ref_type: tag
-    sha: 20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+    ref: main
+    ref_type: branch
+    sha: 0e3884b860e20d3f4d5daa2347130beb51ccde47
     exclude:
       - src/
       - __tests__/
@@ -281,9 +291,9 @@ actions:
       .agents/, action-types.yml, biome.json, scripts/, dist/update-known-checksums/
 
   - name: aws-actions/configure-aws-credentials
-    ref: v6.2.3
-    ref_type: tag
-    sha: e6de054238d6b7531b4efff3b6587d9aade6a06c
+    ref: main
+    ref_type: branch
+    sha: bfb7dd8bb70aaa904cdc53cb6bae2fd43e78589b
     exclude:
       - src/
       - __mocks__/
@@ -307,7 +317,7 @@ actions:
   - name: biomejs/setup-biome
     ref: main
     ref_type: branch
-    sha: 9edb642ea71f227041b81b805d3b36421b94529f
+    sha: 21f9d12eb1adf00171b25b251de1539a153e416f
     exclude:
       - src/
       - test/
@@ -324,9 +334,9 @@ actions:
       tsconfig*.json, bun.lock, .npmrc, **/*.test.*, **/*.ts, .bun-version, lefthook.yml
 
   - name: bullfrogsec/bullfrog
-    ref: v0.11.1
-    ref_type: tag
-    sha: 7dee337d4575320b6d8cbe9a56d48d2fb765963a
+    ref: main
+    ref_type: branch
+    sha: 48c64bce915a545f0911bc9f67aa696f684ac1ea
     exclude:
       - test/
       - CHANGELOG*
@@ -353,9 +363,9 @@ actions:
       - action/scripts/
 
   - name: changesets/action
-    ref: v2.1.1
+    ref: v2.1.2
     ref_type: tag
-    sha: 8488615a623b1b9c987934bb89eae8af6a946ac1
+    sha: ae32849d5ba541f9ae29e40e22a623bc13562f51
     exclude:
       - src/
       - tsconfig*.json
@@ -378,9 +388,9 @@ actions:
       .oxfmtrc.json, pr-comment/, pr-status/, rolldown.config.js, scripts/, select-mode/
 
   - name: cloudflare/wrangler-action
-    ref: v4.0.0
+    ref: v4.1.3
     ref_type: tag
-    sha: ebbaa1584979971c8614a24965b4405ff95890e0
+    sha: 953926a2e2182532811c01a25e53647d93bf07c0
     exclude: []
     notes: >-
       Node action; runs dist/index.mjs.
@@ -394,9 +404,9 @@ actions:
       Node action; runs dist/index.js.
 
   - name: dependabot/fetch-metadata
-    ref: v3.1.0
-    ref_type: tag
-    sha: 25dd0e34f4fe68f24cc83900b1fe3fe149efef98
+    ref: main
+    ref_type: branch
+    sha: 0960109a4dd6d503321a0abfa87b9768962ddd12
     exclude:
       - src/
       - tsconfig*.json
@@ -415,8 +425,8 @@ actions:
       jest-resolver.js
 
   - name: depot/bake-action
-    ref: v1.13.0
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: 1d58c2668346981089b088b7ef36755b206b20e9
     exclude:
       - src/
@@ -429,8 +439,8 @@ actions:
       pnpm-lock.yaml, build.cjs
 
   - name: depot/build-push-action
-    ref: v1.18.0
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: 98e78adca7817480b8185f474a400b451d74e287
     exclude:
       - src/
@@ -445,8 +455,8 @@ actions:
       .prettierignore, pnpm-lock.yaml, build.cjs
 
   - name: depot/pull-action
-    ref: v1.3.1
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: a913e06772c98ecd2361a8cc49bec81592dc6600
     exclude:
       - src/
@@ -459,8 +469,8 @@ actions:
       pnpm-lock.yaml, build.cjs
 
   - name: depot/setup-action
-    ref: v1.7.2
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: 91bc8495a33ebfc504ffc89e5674379ccf23c29c
     exclude:
       - src/
@@ -474,9 +484,9 @@ actions:
       pnpm-lock.yaml, build.cjs, pnpm-workspace.yaml
 
   - name: docker/build-push-action
-    ref: v7.3.0
-    ref_type: tag
-    sha: 53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+    ref: master
+    ref_type: branch
+    sha: c3c9e263c25d99ce0380d002d59b67737d91b0dc
     exclude:
       - src/
       - __tests__/
@@ -499,9 +509,9 @@ actions:
       .dockerignore, codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
 
   - name: docker/login-action
-    ref: v4.6.0
-    ref_type: tag
-    sha: dbcb813823bdd20940b903addbd779551569679f
+    ref: master
+    ref_type: branch
+    sha: 783ae9cac559640a24c9212dfa6cd9e998252f9a
     exclude:
       - src/
       - __tests__/
@@ -523,9 +533,9 @@ actions:
       codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
 
   - name: docker/metadata-action
-    ref: v6.2.0
-    ref_type: tag
-    sha: dc802804100637a589fabce1cb79ff13a1411302
+    ref: master
+    ref_type: branch
+    sha: 8e671d84a3bd81afdfc4fdbb96a42b07c2a80934
     exclude:
       - src/
       - __tests__/
@@ -549,9 +559,9 @@ actions:
       .dockerignore, codecov.yml, **/*.d.ts, **/*.test.*, *.Dockerfile, docker-bake.hcl
 
   - name: docker/setup-buildx-action
-    ref: v4.3.0
-    ref_type: tag
-    sha: 37fe631027851001ddb9b187196cc803df7f5f0e
+    ref: master
+    ref_type: branch
+    sha: f87e5991a6d7451dcb8d9637bfbc97413f497069
     exclude:
       - src/
       - __tests__/
@@ -573,9 +583,9 @@ actions:
       codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
 
   - name: docker/setup-docker-action
-    ref: v5.1.0
-    ref_type: tag
-    sha: b2189fbf2a6592b51fee7cdd93ee2bfaeba733db
+    ref: master
+    ref_type: branch
+    sha: 2bf61fb9464cc67f0cbdeabed6aa0380accd1c70
     exclude:
       - src/
       - __tests__/
@@ -598,9 +608,9 @@ actions:
       .dockerignore, codecov.yml, **/*.test.*, *.Dockerfile, docker-bake.hcl
 
   - name: docker/setup-qemu-action
-    ref: v4.2.0
-    ref_type: tag
-    sha: 96fe6ef7f33517b61c61be40b68a1882f3264fb8
+    ref: master
+    ref_type: branch
+    sha: 99012661954931238ded8c8b007157a8430204e1
     exclude:
       - src/
       - __tests__/
@@ -624,7 +634,7 @@ actions:
   - name: dtolnay/rust-toolchain
     ref: stable
     ref_type: branch
-    sha: 4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+    sha: 6bed0761d98439e5a578e2877258200ad565ba87
     exclude:
       - '**'
     notes: >-
@@ -632,8 +642,8 @@ actions:
       action.yml and LICENSE
 
   - name: expo/expo-github-action
-    ref: 9.0.0
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: eab7a230208c952974db8c3245cfd78402c7b385
     exclude:
       - src/
@@ -667,9 +677,9 @@ actions:
       build/preview-comment/
 
   - name: google-github-actions/auth
-    ref: v3.0.0
-    ref_type: tag
-    sha: 7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+    ref: main
+    ref_type: branch
+    sha: 12060449e87204eca501a11f2f7f1483024afff0
     exclude:
       - src/
       - tests/
@@ -685,9 +695,9 @@ actions:
       tsconfig*.json, eslint.config.*, .prettierrc*, package-lock.json, CHANGELOG*, **/*.test.*
 
   - name: google-github-actions/setup-gcloud
-    ref: v3.0.1
-    ref_type: tag
-    sha: aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+    ref: main
+    ref_type: branch
+    sha: 01af06c41d9aa0790d6fdc8f0b982b768ca4d102
     exclude:
       - src/
       - tests/
@@ -702,9 +712,9 @@ actions:
       .prettierrc*, package-lock.json, CHANGELOG*, **/*.test.*
 
   - name: goreleaser/goreleaser-action
-    ref: v7.2.3
-    ref_type: tag
-    sha: f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
+    ref: master
+    ref_type: branch
+    sha: 73cd4ffe39ceae11aafd47343ff35e8be087f14c
     exclude:
       - src/
       - __tests__/
@@ -725,9 +735,9 @@ actions:
       .node-version, .dockerignore, **/*.test.*
 
   - name: gradle/actions
-    ref: v6.3.0
-    ref_type: tag
-    sha: 9c971963bec38e04b3d30dcc455b5382be2fdbfb
+    ref: main
+    ref_type: branch
+    sha: f9f39a915cd0648dca917c72880100a59df96944
     exclude:
       - docs/
       - .tool-versions
@@ -746,25 +756,25 @@ actions:
       build, dependency-submission/, licenses/, wrapper-validation/
 
   - name: helm/chart-releaser-action
-    ref: v1.7.0
-    ref_type: tag
-    sha: cae68fefc6b5f367a0275617c9f83181ba54714f
+    ref: main
+    ref_type: branch
+    sha: fae9146b935c45c307b67c4495043ea3fd3e3355
     exclude: []
     notes: >-
       Composite action; loads cr.sh from the action directory.
 
   - name: helm/chart-testing-action
-    ref: v2.8.0
-    ref_type: tag
-    sha: 6ec842c01de15ebb84c8627d2744a0c2f2755c9f
+    ref: main
+    ref_type: branch
+    sha: f3ef15d8179cc3d72028604dfbf96178583a50a2
     exclude: []
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yml uses the action directory
       itself (working directory, module path or similar)
 
   - name: imjasonh/setup-crane
-    ref: v0.7
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: feee3b6bb0d4c68370f256a4502498c9227e5c6b
     exclude:
       - '**'
@@ -773,9 +783,9 @@ actions:
       action.yml and LICENSE
 
   - name: jakebailey/pyright-action
-    ref: v3.0.2
-    ref_type: tag
-    sha: 8ec14b5cfe41f26e5f41686a31eb6012758217ef
+    ref: main
+    ref_type: branch
+    sha: f277f677b2586fde498a7165829b97c010e7365f
     exclude:
       - src/
       - tsconfig*.json
@@ -794,9 +804,9 @@ actions:
       smoke-test/
 
   - name: jaxxstorm/action-install-gh-release
-    ref: v3.0.0
-    ref_type: tag
-    sha: 25e24d2d23ae098373794ef1d6faecb48ee52da8
+    ref: master
+    ref_type: branch
+    sha: bf70de40c93c2ff1f57fd656e9f9996d1cbc4f9d
     exclude:
       - src/
       - tsconfig*.json
@@ -809,9 +819,9 @@ actions:
       package-lock.json, Makefile, dist/ kept although usually excludable: lib/ (referenced)
 
   - name: jayanta525/github-pages-directory-listing
-    ref: v4.0.0
-    ref_type: tag
-    sha: 624ac8c4e56893256d3772f61a88e3b14d54314e
+    ref: main
+    ref_type: branch
+    sha: c5ac9e85017f0b2d89e895481755243411004208
     exclude:
       - docs/
     notes: >-
@@ -819,9 +829,9 @@ actions:
       kept although usually excludable: src/ (referenced)
 
   - name: lycheeverse/lychee-action
-    ref: v2.9.0
-    ref_type: tag
-    sha: e7477775783ea5526144ba13e8db5eec57747ce8
+    ref: master
+    ref_type: branch
+    sha: 649b0e4890508ea3e11ea6b3ee35ce899a25afd5
     exclude:
       - .lycheeignore
       - fixtures/
@@ -830,9 +840,9 @@ actions:
       fixtures/
 
   - name: mobile-dev-inc/action-maestro-cloud
-    ref: v2.0.2
-    ref_type: tag
-    sha: 34906065ba3e85fd57ed533b178187eefb042aed
+    ref: main
+    ref_type: branch
+    sha: 854f4005c1ef637d20b7007d428d23afe17c9665
     exclude:
       - __tests__/
       - tsconfig*.json
@@ -848,8 +858,8 @@ actions:
       .prettierrc*, package-lock.json, .nvmrc, **/*.test.*, **/*.ts, _release.sh
 
   - name: mozilla-actions/sccache-action
-    ref: v0.0.11
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: fc920bf0ec8de6ee65d409111f7ec508035751ba
     exclude:
       - src/
@@ -862,17 +872,19 @@ actions:
       tsconfig*.json, .eslintrc*, .prettierrc*, package-lock.json
 
   - name: openai/codex-action
-    ref: v1.12
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: 86365089eb2b84e0a8fb0717b304f8bdcb13b20e
     exclude: []
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yml uses the action directory
       itself (working directory, module path or similar)
+    pin_nested:
+      actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f: 7f84f1d52d0c56afb45c62fee31a93b843cea4d6
 
   - name: oven-sh/setup-bun
-    ref: v2.2.0
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: 0c5077e51419868618aeaa5fe8019c62421857d6
     exclude:
       - src/
@@ -916,9 +928,9 @@ actions:
       although usually excludable: lib/ (referenced)
 
   - name: peter-evans/create-pull-request
-    ref: v8.1.1
-    ref_type: tag
-    sha: 5f6978faf089d4d20b00c7766989d076bb2fc7f1
+    ref: main
+    ref_type: branch
+    sha: 59910dc44801a4d984ba473b7c2f20b850f9a584
     exclude:
       - src/
       - __test__/
@@ -940,9 +952,9 @@ actions:
       pinned release's dependency versions instead of current versions from manifest ranges.
 
   - name: planetscale/setup-pscale-action
-    ref: v1
-    ref_type: tag
-    sha: b6a50ee45b4b24944e1d8de6e57b3a5f6476a1af
+    ref: main
+    ref_type: branch
+    sha: 8b6055d4d012db7edc513e2aa5c2493f89c48832
     exclude:
       - src/
       - doc/
@@ -958,9 +970,9 @@ actions:
       .eslintrc*, .eslintignore, .prettierrc*, .prettierignore, package-lock.json
 
   - name: pnpm/action-setup
-    ref: v6.0.10
-    ref_type: tag
-    sha: 0977fd99725f1db4007ccb2928dbb4e90d06cc86
+    ref: master
+    ref_type: branch
+    sha: ea17c68df8912ef543352723c149a84f56e3d413
     exclude:
       - src/
       - tsconfig*.json
@@ -973,9 +985,9 @@ actions:
       pnpm-workspace.yaml, run.sh, scripts/
 
   - name: ruby/setup-ruby
-    ref: v1.321.0
-    ref_type: tag
-    sha: 95ef2b042f9d7a56d8268cba8559e2842e2ad01b
+    ref: master
+    ref_type: branch
+    sha: 14594264cd68ce8a2345dd349bc3d138a4ef85c8
     exclude:
       - yarn.lock
       - Rakefile
@@ -1004,9 +1016,9 @@ actions:
       windows.js
 
   - name: rust-lang/crates-io-auth-action
-    ref: v1.0.5
-    ref_type: tag
-    sha: c6f97d42243bad5fab37ca0427f495c86d5b1a18
+    ref: main
+    ref_type: branch
+    sha: 9c067fc5d5c254b33978fed918cb50c032549d0e
     exclude:
       - src/
       - tsconfig*.json
@@ -1025,9 +1037,9 @@ actions:
       pnpm-workspace.yaml
 
   - name: shallwefootball/upload-s3-action
-    ref: v1.3.3
-    ref_type: tag
-    sha: 4350529f410221787ccf424e50133cbc1b52704e
+    ref: master
+    ref_type: branch
+    sha: 0d261a6f15b3b2e209dfebdecace4b100c04f95b
     exclude:
       - yarn.lock
       - index.js
@@ -1035,9 +1047,9 @@ actions:
       Node action; runs dist/index.js. excluded: yarn.lock, index.js
 
   - name: sigstore/cosign-installer
-    ref: v4.1.2
-    ref_type: tag
-    sha: 6f9f17788090df1f26f669e9d70d6ae9567deba6
+    ref: main
+    ref_type: branch
+    sha: 828df1e55de306ba29db814d6057ddae71883cda
     exclude:
       - '**'
     notes: >-
@@ -1046,8 +1058,8 @@ actions:
       version the org uses directly.
 
   - name: step-security/harden-runner
-    ref: v2.21.1
-    ref_type: tag
+    ref: main
+    ref_type: branch
     sha: e14015d583714f6e62063499dc959a02595150a1
     strip_dev_dependencies: true
     exclude:
@@ -1067,38 +1079,43 @@ actions:
       checked-in dist bundles run directly and no packages are installed at runtime.
 
   - name: taiki-e/install-action
-    ref: v2.85.2
-    ref_type: tag
-    sha: 41049aa56687c35e0afa74eed4f09cec4f9afabf
+    ref: main
+    ref_type: branch
+    sha: 83ac0ad63c0167e6f06796fab0fce28db1bf3db0
     exclude: []
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yml uses the action directory
       itself (working directory, module path or similar)
 
   - name: tailscale/github-action
-    ref: v3.3.0
-    ref_type: tag
-    sha: 6cae46e2d796f265265cfcf628b72a32b4d7cade
+    ref: main
+    ref_type: branch
+    sha: d1b6cd204f8dceda5b3eaad7f1f767be390056cd
     exclude:
-      - '**'
+      - src/
+      - tsconfig*.json
+      - package-lock.json
+      - Makefile
     notes: >-
-      Composite action; every step is inline, only action.yml is loaded. excluded: everything except
-      action.yml and LICENSE
+      Node action; runs dist/index.js, dist/logout/index.js. excluded: src/, tsconfig*.json,
+      package-lock.json, Makefile
 
   - name: tailscale/gitops-acl-action
-    ref: v1.5.1
-    ref_type: tag
-    sha: 4105afd651aa659e0eec9031a10360c39fbc0804
+    ref: main
+    ref_type: branch
+    sha: 5a4a17f5708e9bf96f4ee915a95e9f83c2eebe1a
     exclude:
       - '**'
     notes: >-
       Composite action; every step is inline, only action.yml is loaded. excluded: everything except
       action.yml and LICENSE
+    pin_nested:
+      actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c: 90ad2b35f69faf97585ad74d28fa006d2739b7af
 
   - name: wevm/frog
-    ref: v1
-    ref_type: tag
-    sha: 702c4eadefe175a208290a99c36e7f4ac1390e53
+    ref: main
+    ref_type: branch
+    sha: 242e306ebb19fbe77b6b3bcffcd9430743f5117a
     exclude:
       - '**'
     keep:
@@ -1108,10 +1125,12 @@ actions:
       action.yml and LICENSE
 
   - name: zizmorcore/zizmor-action
-    ref: v0.6.2
-    ref_type: tag
-    sha: 3dc1ecc9bcb9e94e9b2c709687979e1298497054
+    ref: main
+    ref_type: branch
+    sha: ee3f1bf153a9caa7d162d7324ef8314ec3f91862
     exclude: []
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yml uses the action directory
       itself (working directory, module path or similar)
+    pin_nested:
+      github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63: 61817fadad823920a8924645dd5f67985d6a1d94

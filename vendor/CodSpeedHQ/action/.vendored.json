@@ -1,12 +1,15 @@
 {
   "upstream": "https://github.com/CodSpeedHQ/action",
-  "ref": "v4.19.1",
-  "ref_type": "tag",
-  "sha": "f22792bfac16f3e14eb9fbea76f4a48e9cc22b93",
-  "upstream_commit_date": "2026-07-27T19:11:10+02:00",
-  "readme_url": "https://github.com/CodSpeedHQ/action/blob/f22792bfac16f3e14eb9fbea76f4a48e9cc22b93/README.md",
+  "ref": "main",
+  "ref_type": "branch",
+  "sha": "c2058708ea029e949a868d084b0d21d18d9de53a",
+  "upstream_commit_date": "2026-10-01T11:48:54+02:00",
+  "readme_url": "https://github.com/CodSpeedHQ/action/blob/c2058708ea029e949a868d084b0d21d18d9de53a/README.md",
   "description": "Continuous benchmarking and performance checks",
   "consume_as": "tempoxyz/gh-actions/vendor/CodSpeedHQ/action@<gh-actions-sha>",
   "files_removed": 15,
-  "nested_rewrites": []
+  "nested_rewrites": [
+    "actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 -> actions/cache@3edfce9056124e459a23f683a21433670d47daca",
+    "actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd -> actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3"
+  ]
 }

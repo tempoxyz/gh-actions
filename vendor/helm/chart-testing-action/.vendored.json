@@ -1,15 +1,15 @@
 {
   "upstream": "https://github.com/helm/chart-testing-action",
-  "ref": "v2.8.0",
-  "ref_type": "tag",
-  "sha": "6ec842c01de15ebb84c8627d2744a0c2f2755c9f",
-  "upstream_commit_date": "2025-11-05T12:59:54+01:00",
-  "readme_url": "https://github.com/helm/chart-testing-action/blob/6ec842c01de15ebb84c8627d2744a0c2f2755c9f/README.md",
+  "ref": "main",
+  "ref_type": "branch",
+  "sha": "f3ef15d8179cc3d72028604dfbf96178583a50a2",
+  "upstream_commit_date": "2026-09-21T14:10:50Z",
+  "readme_url": "https://github.com/helm/chart-testing-action/blob/f3ef15d8179cc3d72028604dfbf96178583a50a2/README.md",
   "description": "Install the Helm chart-testing tool",
   "consume_as": "tempoxyz/gh-actions/vendor/helm/chart-testing-action@<gh-actions-sha>",
-  "files_removed": 6,
+  "files_removed": 7,
   "nested_rewrites": [
-    "sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad -> tempoxyz/gh-actions/vendor/sigstore/cosign-installer@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0",
-    "astral-sh/setup-uv@eb1897b8dc4b5d5bfe39a428a8f2304605e0983c -> tempoxyz/gh-actions/vendor/astral-sh/setup-uv@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0"
+    "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 -> tempoxyz/gh-actions/vendor/sigstore/cosign-installer@392079a54ac0240e1b21417eca38b7c0a50bf55d",
+    "astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 -> tempoxyz/gh-actions/vendor/astral-sh/setup-uv@392079a54ac0240e1b21417eca38b7c0a50bf55d"
   ]
 }

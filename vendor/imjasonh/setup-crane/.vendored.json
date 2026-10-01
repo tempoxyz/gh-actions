@@ -1,7 +1,7 @@
 {
   "upstream": "https://github.com/imjasonh/setup-crane",
-  "ref": "v0.7",
-  "ref_type": "tag",
+  "ref": "main",
+  "ref_type": "branch",
   "sha": "feee3b6bb0d4c68370f256a4502498c9227e5c6b",
   "upstream_commit_date": "2026-06-26T18:37:04-04:00",
   "readme_url": "https://github.com/imjasonh/setup-crane/blob/feee3b6bb0d4c68370f256a4502498c9227e5c6b/README.md",

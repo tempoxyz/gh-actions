@@ -1,7 +1,7 @@
 {
   "upstream": "https://github.com/depot/build-push-action",
-  "ref": "v1.18.0",
-  "ref_type": "tag",
+  "ref": "main",
+  "ref_type": "branch",
   "sha": "98e78adca7817480b8185f474a400b451d74e287",
   "upstream_commit_date": "2026-05-23T12:53:55+01:00",
   "readme_url": "https://github.com/depot/build-push-action/blob/98e78adca7817480b8185f474a400b451d74e287/README.md",

@@ -6,26 +6,41 @@ branding:
   icon: anchor
 inputs:
   version:
-    description: "The chart-testing version to install (default: 3.12.0)"
+    description: "The chart-testing version to install"
     required: false
     default: '3.14.0'
   yamllint_version:
-    description: "The yamllint version to install (default: 1.27.1)"
+    description: "The yamllint version to install"
     required: false
     default: '1.33.0'
   yamale_version:
-    description: "The yamale version to install (default: 6.0.0)"
+    description: "The yamale version to install"
     required: false
     default: '6.0.0'
+  uv_version:
+    description: "The uv version to install (default: latest)"
+    required: false
+    default: 'latest'
+  github_token:
+    description: "GitHub token for authenticating with the GitHub API (default: github.token)"
+    required: false
+    default: ${{ github.token }}
 runs:
   using: composite
   steps:
-    - uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
-    - uses: tempoxyz/gh-actions/vendor/astral-sh/setup-uv@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+    - uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+    - uses: tempoxyz/gh-actions/vendor/astral-sh/setup-uv@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+      with:
+        version: ${{ inputs.uv_version }}
+        github-token: ${{ inputs.github_token }}
     - run: |
-        cd $GITHUB_ACTION_PATH \
+        cd "$GITHUB_ACTION_PATH" \
         && ./ct.sh \
-            --version ${{ inputs.version }} \
-            --yamllint-version ${{ inputs.yamllint_version }} \
-            --yamale-version ${{ inputs.yamale_version }}
+            --version "$CHART_TESTING_VERSION" \
+            --yamllint-version "$YAMLLINT_VERSION" \
+            --yamale-version "$YAMALE_VERSION"
       shell: bash
+      env:
+        CHART_TESTING_VERSION: ${{ inputs.version }}
+        YAMLLINT_VERSION: ${{ inputs.yamllint_version }}
+        YAMALE_VERSION: ${{ inputs.yamale_version }}

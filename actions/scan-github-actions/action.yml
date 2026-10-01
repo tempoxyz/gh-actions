@@ -23,7 +23,7 @@ runs:
   using: "composite"
   steps:
     - name: Scan GitHub Actions
-      uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+      uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
       with:
         inputs: ${{ inputs.paths }}
         persona: regular

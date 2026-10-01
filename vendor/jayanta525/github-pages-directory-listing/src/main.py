@@ -78,7 +78,7 @@ def get_file_modified_time(filepath):
     """
     get file modified time
     """
-    return dt.datetime.fromtimestamp(os.path.getmtime(filepath)).strftime('%Y-%m-%d %H:%M:%S')
+    return dt.datetime.fromtimestamp(os.path.getmtime(filepath)).strftime('%Y-%m-%d %H:%M:%S UTC')
     # return time.ctime(os.path.getmtime(filepath)).strftime('%X %x')
 
 
@@ -86,6 +86,14 @@ def get_template_head(foldername):
     """
     get template head
     """
+
+    # remove the dot (.) at the beginning of foldername
+    if foldername.startswith('.'):
+        if not foldername.startswith('/', 1):
+            return get_template_head('/' + foldername[1:])
+        else:
+            return get_template_head(foldername[1:])
+
     with open("/src/template/head.html", "r", encoding="utf-8") as file:
         head = file.read()
     head = head.replace("{{foldername}}", foldername)
@@ -98,7 +106,7 @@ def get_template_foot():
     """
     with open("/src/template/foot.html", "r", encoding="utf-8") as file:
         foot = file.read()
-    foot = foot.replace("{{buildtime}}", "at " + dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    foot = foot.replace("{{buildtime}}", "at " + dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'))
     return foot
 
 def get_icon_base64(filename):

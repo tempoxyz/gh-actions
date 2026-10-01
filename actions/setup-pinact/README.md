@@ -8,7 +8,7 @@ binary through aqua from inside a 6 MB Node bundle.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `version` | Immutable pinact release tag (e.g., `v4.1.1`). Mutable `latest` is rejected. | No | `v4.1.1` |
+| `version` | Immutable pinact release tag (e.g., `v5.0.0`). Mutable `latest` is rejected. | No | `v5.0.0` |
 
 ## Usage
 
@@ -19,7 +19,7 @@ steps:
   - name: Check action pins
     env:
       GITHUB_TOKEN: ${{ github.token }}
-    run: pinact run -fix=false --verify-min-age
+    run: pinact run --fix=false --verify-min-age
 ```
 
 The action downloads `pinact_linux_<arch>.tar.gz`, checks it against
@@ -32,8 +32,8 @@ release compromised end to end; the attestation binds the file to the publisher'
 identity. `gh` is preinstalled on GitHub-hosted runners and the check takes a few seconds, so
 no extra tooling (such as cosign) is downloaded. It needs a token with access to public
 attestations; `github.token` is used. Flags map
-one-to-one onto the old action's inputs: `fix: "false"` is `-fix=false`, `no_api` is
-`--no-api`, `verify` is `--verify`, `verify_min_age` is `--verify-min-age`, `includes` is
+one-to-one onto the old action's inputs: `fix: "false"` is `--fix=false`, `no_api` is
+`--no-api`, `verify` is `--verify-comment`, `verify_min_age` is `--verify-min-age`, `includes` is
 `-i <regex>`, `config` is `-c <path>`, and `github_token` is the `GITHUB_TOKEN` environment
 variable. A global policy file can still be supplied through `PINACT_GLOBAL_CONFIG`.
 

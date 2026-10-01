@@ -1,7 +1,7 @@
 {
   "upstream": "https://github.com/step-security/harden-runner",
-  "ref": "v2.21.1",
-  "ref_type": "tag",
+  "ref": "main",
+  "ref_type": "branch",
   "sha": "e14015d583714f6e62063499dc959a02595150a1",
   "upstream_commit_date": "2026-08-30T16:21:59-07:00",
   "readme_url": "https://github.com/step-security/harden-runner/blob/e14015d583714f6e62063499dc959a02595150a1/README.md",

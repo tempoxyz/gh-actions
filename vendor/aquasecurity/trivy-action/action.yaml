@@ -98,7 +98,7 @@ inputs:
   version:
     description: 'Trivy version to use'
     required: false
-    default: 'v0.70.0'
+    default: 'v0.75.0'
   cache:
     description: 'Used to specify whether caching is needed. Set to false, if you would like to disable caching.'
     required: false
@@ -126,9 +126,10 @@ runs:
       # "allowing select actions" feature can be used to whitelist the dependent action by a hash.
       # This is needed since some organizations have a policy to only allow pinned 3rd party actions to 
       # be used.
-      uses: tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+      uses: tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
       with:
-        version: ${{ inputs.version }}
+        # version is pinned by default; using a floating tag like `latest` is the caller's responsibility
+        version: ${{ inputs.version }} # zizmor: ignore[unpinned-tools]
         cache: ${{ inputs.cache }}
         token: ${{ inputs.token-setup-trivy }}
 
@@ -139,7 +140,7 @@ runs:
 
     - name: Restore DB from cache
       if: ${{ inputs.cache == 'true' }}
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      uses: actions/cache@3edfce9056124e459a23f683a21433670d47daca # actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ${{ inputs.cache-dir }}
         key: cache-trivy-${{ steps.date.outputs.date }}

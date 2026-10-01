@@ -3,9 +3,9 @@ description: "Spell-check source with typos, installed from an attested release"
 
 inputs:
   version:
-    description: "typos release tag (e.g., v1.49.0). Mutable 'latest' is rejected."
+    description: "typos release tag (e.g., v1.50.3). Mutable 'latest' is rejected."
     required: false
-    default: "v1.49.0"
+    default: "v1.50.3"
   files:
     description: "Paths to check (space separated)"
     required: false
@@ -30,7 +30,7 @@ runs:
       run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
         set -euo pipefail
         if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "::error::typos requires an immutable release tag such as v1.49.0 (got '$VERSION')"
+          echo "::error::typos requires an immutable release tag such as v1.50.3 (got '$VERSION')"
           exit 1
         fi
         case "$(uname -m)" in

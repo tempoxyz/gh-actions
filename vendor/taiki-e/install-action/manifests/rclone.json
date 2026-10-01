@@ -27,10 +27,65 @@
     }
   },
   "latest": {
-    "version": "1.74.4"
+    "version": "1.75.1"
   },
   "1": {
-    "version": "1.74.4"
+    "version": "1.75.1"
+  },
+  "1.75": {
+    "version": "1.75.1"
+  },
+  "1.75.1": {
+    "x86_64_linux_musl": {
+      "etag": "0x8DF0AA650A2E97D",
+      "hash": "982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab"
+    },
+    "x86_64_macos": {
+      "etag": "0x8DF0AA7406692F7",
+      "hash": "29253d0288b8fbbac46baad6e5f6add6cb01d462c79f10805bbd4631c4cdf82c"
+    },
+    "x86_64_windows": {
+      "etag": "0x8DF0AA78223E50F",
+      "hash": "200eb602c126d82aa38b51e0f6b9ae837473ff99b51278d3f6f837574c494d6e"
+    },
+    "aarch64_linux_musl": {
+      "etag": "0x8DF0AA66BFF0DE8",
+      "hash": "03f2504174034b6d004152ed7369251c9a9ec1f7e0836eda420f5c7a5ec0dff9"
+    },
+    "aarch64_macos": {
+      "etag": "0x8DF0AA74A82723C",
+      "hash": "c61d7a371c62bcbbe882c3423aa4b8bf63485c248dd0f692997b8f0c3f6d0c6f"
+    },
+    "aarch64_windows": {
+      "etag": "0x8DF0AA78AE3828F",
+      "hash": "c3c6cd0424dd49076ad179c30c3f9e5cde2c004ec07ea9fe6911f23e32eafe0f"
+    }
+  },
+  "1.75.0": {
+    "x86_64_linux_musl": {
+      "etag": "0x8DEEF2564F501F1",
+      "hash": "aa2804e08f48250e71009c727124b6341cd0288465804a9a09d14663cabafbaa"
+    },
+    "x86_64_macos": {
+      "etag": "0x8DEEF264F517CD8",
+      "hash": "19edbb8e5e73096eb66e92a42abbc5c34bfa8981ea3986a53872c7eef85a22f4"
+    },
+    "x86_64_windows": {
+      "etag": "0x8DEEF268D478D74",
+      "hash": "203581f0a7baeae873f2347483a798c79e2eaf5c384a4e9d866aa374f1c89ac0"
+    },
+    "aarch64_linux_musl": {
+      "etag": "0x8DEEF257FA22B8A",
+      "hash": "d0ad88ba4c8e285b7c9efa591e0ab643280a91741e13c27f3a9c0957ccfa5203"
+    },
+    "aarch64_macos": {
+      "etag": "0x8DEEF2659230C9B",
+      "hash": "35e8f2a666ce789b29111db0dd843ddabc0d59c6b609d07bcaae5d1a07cba6f8"
+    },
+    "aarch64_windows": {
+      "etag": "0x8DEEF2695C889F6",
+      "hash": "bcf628fa6bb3b6ae9fdf105d04acafb40ec77841f686dc6dd7d126dde04c5f6a"
+    }
   },
   "1.74": {
     "version": "1.74.4"

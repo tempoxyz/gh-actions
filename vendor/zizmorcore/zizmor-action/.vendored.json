@@ -1,12 +1,14 @@
 {
   "upstream": "https://github.com/zizmorcore/zizmor-action",
-  "ref": "v0.6.2",
-  "ref_type": "tag",
-  "sha": "3dc1ecc9bcb9e94e9b2c709687979e1298497054",
-  "upstream_commit_date": "2026-08-01T17:19:20-04:00",
-  "readme_url": "https://github.com/zizmorcore/zizmor-action/blob/3dc1ecc9bcb9e94e9b2c709687979e1298497054/README.md",
+  "ref": "main",
+  "ref_type": "branch",
+  "sha": "ee3f1bf153a9caa7d162d7324ef8314ec3f91862",
+  "upstream_commit_date": "2026-09-29T00:13:06-04:00",
+  "readme_url": "https://github.com/zizmorcore/zizmor-action/blob/ee3f1bf153a9caa7d162d7324ef8314ec3f91862/README.md",
   "description": "Run zizmor from GitHub Actions 🌈",
   "consume_as": "tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@<gh-actions-sha>",
   "files_removed": 9,
-  "nested_rewrites": []
+  "nested_rewrites": [
+    "github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 -> github/codeql-action/upload-sarif@61817fadad823920a8924645dd5f67985d6a1d94"
+  ]
 }

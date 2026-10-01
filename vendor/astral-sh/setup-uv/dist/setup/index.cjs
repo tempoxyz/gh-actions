@@ -8546,7 +8546,7 @@ var require_proxy_agent = __commonJS({
         return this.#client.destroy(err);
       }
     };
-    var ProxyAgent3 = class extends DispatcherBase {
+    var ProxyAgent2 = class extends DispatcherBase {
       constructor(opts) {
         super();
         if (!opts || typeof opts === "object" && !(opts instanceof URL3) && !opts.uri) {
@@ -8687,7 +8687,7 @@ var require_proxy_agent = __commonJS({
         throw new InvalidArgumentError("Proxy-Authorization should be sent in ProxyAgent constructor");
       }
     }
-    module2.exports = ProxyAgent3;
+    module2.exports = ProxyAgent2;
   }
 });
 
@@ -8697,14 +8697,14 @@ var require_env_http_proxy_agent = __commonJS({
     "use strict";
     var DispatcherBase = require_dispatcher_base();
     var { kClose, kDestroy, kClosed, kDestroyed, kDispatch, kNoProxyAgent, kHttpProxyAgent, kHttpsProxyAgent } = require_symbols();
-    var ProxyAgent3 = require_proxy_agent();
+    var ProxyAgent2 = require_proxy_agent();
     var Agent3 = require_agent();
     var DEFAULT_PORTS = {
       "http:": 80,
       "https:": 443
     };
     var experimentalWarned = false;
-    var EnvHttpProxyAgent = class extends DispatcherBase {
+    var EnvHttpProxyAgent2 = class extends DispatcherBase {
       #noProxyValue = null;
       #noProxyEntries = null;
       #opts = null;
@@ -8721,13 +8721,13 @@ var require_env_http_proxy_agent = __commonJS({
         this[kNoProxyAgent] = new Agent3(agentOpts);
         const HTTP_PROXY2 = httpProxy ?? process.env.http_proxy ?? process.env.HTTP_PROXY;
         if (HTTP_PROXY2) {
-          this[kHttpProxyAgent] = new ProxyAgent3({ ...agentOpts, uri: HTTP_PROXY2 });
+          this[kHttpProxyAgent] = new ProxyAgent2({ ...agentOpts, uri: HTTP_PROXY2 });
         } else {
           this[kHttpProxyAgent] = this[kNoProxyAgent];
         }
         const HTTPS_PROXY2 = httpsProxy ?? process.env.https_proxy ?? process.env.HTTPS_PROXY;
         if (HTTPS_PROXY2) {
-          this[kHttpsProxyAgent] = new ProxyAgent3({ ...agentOpts, uri: HTTPS_PROXY2 });
+          this[kHttpsProxyAgent] = new ProxyAgent2({ ...agentOpts, uri: HTTPS_PROXY2 });
         } else {
           this[kHttpsProxyAgent] = this[kHttpProxyAgent];
         }
@@ -8823,7 +8823,7 @@ var require_env_http_proxy_agent = __commonJS({
         return process.env.no_proxy ?? process.env.NO_PROXY ?? "";
       }
     };
-    module2.exports = EnvHttpProxyAgent;
+    module2.exports = EnvHttpProxyAgent2;
   }
 });
 
@@ -10833,7 +10833,7 @@ var require_mock_interceptor = __commonJS({
 var require_mock_client = __commonJS({
   "node_modules/@actions/http-client/node_modules/undici/lib/mock/mock-client.js"(exports2, module2) {
     "use strict";
-    var { promisify: promisify5 } = require("node:util");
+    var { promisify: promisify6 } = require("node:util");
     var Client = require_client();
     var { buildMockDispatch } = require_mock_utils();
     var {
@@ -10873,7 +10873,7 @@ var require_mock_client = __commonJS({
         return new MockInterceptor(opts, this[kDispatches]);
       }
       async [kClose]() {
-        await promisify5(this[kOriginalClose])();
+        await promisify6(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -10886,7 +10886,7 @@ var require_mock_client = __commonJS({
 var require_mock_pool = __commonJS({
   "node_modules/@actions/http-client/node_modules/undici/lib/mock/mock-pool.js"(exports2, module2) {
     "use strict";
-    var { promisify: promisify5 } = require("node:util");
+    var { promisify: promisify6 } = require("node:util");
     var Pool = require_pool();
     var { buildMockDispatch } = require_mock_utils();
     var {
@@ -10926,7 +10926,7 @@ var require_mock_pool = __commonJS({
         return new MockInterceptor(opts, this[kDispatches]);
       }
       async [kClose]() {
-        await promisify5(this[kOriginalClose])();
+        await promisify6(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -18458,8 +18458,8 @@ var require_undici = __commonJS({
     var Pool = require_pool();
     var BalancedPool = require_balanced_pool();
     var Agent3 = require_agent();
-    var ProxyAgent3 = require_proxy_agent();
-    var EnvHttpProxyAgent = require_env_http_proxy_agent();
+    var ProxyAgent2 = require_proxy_agent();
+    var EnvHttpProxyAgent2 = require_env_http_proxy_agent();
     var RetryAgent = require_retry_agent();
     var errors = require_errors();
     var util7 = require_util();
@@ -18481,8 +18481,8 @@ var require_undici = __commonJS({
     module2.exports.Pool = Pool;
     module2.exports.BalancedPool = BalancedPool;
     module2.exports.Agent = Agent3;
-    module2.exports.ProxyAgent = ProxyAgent3;
-    module2.exports.EnvHttpProxyAgent = EnvHttpProxyAgent;
+    module2.exports.ProxyAgent = ProxyAgent2;
+    module2.exports.EnvHttpProxyAgent = EnvHttpProxyAgent2;
     module2.exports.RetryAgent = RetryAgent;
     module2.exports.RetryHandler = RetryHandler;
     module2.exports.DecoratorHandler = DecoratorHandler;
@@ -40228,7 +40228,7 @@ var require_proxy_agent2 = __commonJS({
         return this.#client.destroy(err);
       }
     };
-    var ProxyAgent3 = class extends DispatcherBase {
+    var ProxyAgent2 = class extends DispatcherBase {
       constructor(opts) {
         if (!opts || typeof opts === "object" && !(opts instanceof URL) && !opts.uri) {
           throw new InvalidArgumentError("Proxy uri is mandatory");
@@ -40427,7 +40427,7 @@ var require_proxy_agent2 = __commonJS({
     function throwProxyAuthError() {
       throw new InvalidArgumentError("Proxy-Authorization should be sent in ProxyAgent constructor");
     }
-    module2.exports = ProxyAgent3;
+    module2.exports = ProxyAgent2;
   }
 });
 
@@ -40437,13 +40437,13 @@ var require_env_http_proxy_agent2 = __commonJS({
     "use strict";
     var DispatcherBase = require_dispatcher_base2();
     var { kClose, kDestroy, kClosed, kDestroyed, kDispatch, kNoProxyAgent, kHttpProxyAgent, kHttpsProxyAgent } = require_symbols6();
-    var ProxyAgent3 = require_proxy_agent2();
+    var ProxyAgent2 = require_proxy_agent2();
     var Agent3 = require_agent2();
     var DEFAULT_PORTS = {
       "http:": 80,
       "https:": 443
     };
-    var EnvHttpProxyAgent = class extends DispatcherBase {
+    var EnvHttpProxyAgent2 = class extends DispatcherBase {
       #noProxyValue = null;
       #noProxyEntries = null;
       #opts = null;
@@ -40454,13 +40454,13 @@ var require_env_http_proxy_agent2 = __commonJS({
         this[kNoProxyAgent] = new Agent3(agentOpts);
         const HTTP_PROXY2 = httpProxy ?? process.env.http_proxy ?? process.env.HTTP_PROXY;
         if (HTTP_PROXY2) {
-          this[kHttpProxyAgent] = new ProxyAgent3({ ...agentOpts, uri: HTTP_PROXY2 });
+          this[kHttpProxyAgent] = new ProxyAgent2({ ...agentOpts, uri: HTTP_PROXY2 });
         } else {
           this[kHttpProxyAgent] = this[kNoProxyAgent];
         }
         const HTTPS_PROXY2 = httpsProxy ?? process.env.https_proxy ?? process.env.HTTPS_PROXY;
         if (HTTPS_PROXY2) {
-          this[kHttpsProxyAgent] = new ProxyAgent3({ ...agentOpts, uri: HTTPS_PROXY2 });
+          this[kHttpsProxyAgent] = new ProxyAgent2({ ...agentOpts, uri: HTTPS_PROXY2 });
         } else {
           this[kHttpsProxyAgent] = this[kHttpProxyAgent];
         }
@@ -40561,7 +40561,7 @@ var require_env_http_proxy_agent2 = __commonJS({
         return process.env.no_proxy ?? process.env.NO_PROXY ?? "";
       }
     };
-    module2.exports = EnvHttpProxyAgent;
+    module2.exports = EnvHttpProxyAgent2;
   }
 });
 
@@ -43099,7 +43099,7 @@ var require_mock_interceptor2 = __commonJS({
 var require_mock_client2 = __commonJS({
   "node_modules/undici/lib/mock/mock-client.js"(exports2, module2) {
     "use strict";
-    var { promisify: promisify5 } = require("node:util");
+    var { promisify: promisify6 } = require("node:util");
     var Client = require_client2();
     var { buildMockDispatch } = require_mock_utils2();
     var {
@@ -43147,7 +43147,7 @@ var require_mock_client2 = __commonJS({
         this[kDispatches] = [];
       }
       async [kClose]() {
-        await promisify5(this[kOriginalClose])();
+        await promisify6(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -43360,7 +43360,7 @@ var require_mock_call_history = __commonJS({
 var require_mock_pool2 = __commonJS({
   "node_modules/undici/lib/mock/mock-pool.js"(exports2, module2) {
     "use strict";
-    var { promisify: promisify5 } = require("node:util");
+    var { promisify: promisify6 } = require("node:util");
     var Pool = require_pool2();
     var { buildMockDispatch } = require_mock_utils2();
     var {
@@ -43408,7 +43408,7 @@ var require_mock_pool2 = __commonJS({
         this[kDispatches] = [];
       }
       async [kClose]() {
-        await promisify5(this[kOriginalClose])();
+        await promisify6(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -55691,9 +55691,9 @@ var require_undici2 = __commonJS({
     var RoundRobinPool = require_round_robin_pool();
     var Agent3 = require_agent2();
     var Dispatcher1Wrapper = require_dispatcher1_wrapper();
-    var ProxyAgent3 = require_proxy_agent2();
+    var ProxyAgent2 = require_proxy_agent2();
     var Socks5ProxyAgent = require_socks5_proxy_agent();
-    var EnvHttpProxyAgent = require_env_http_proxy_agent2();
+    var EnvHttpProxyAgent2 = require_env_http_proxy_agent2();
     var RetryAgent = require_retry_agent2();
     var H2CClient = require_h2c_client();
     var errors = require_errors2();
@@ -55719,9 +55719,9 @@ var require_undici2 = __commonJS({
     module2.exports.RoundRobinPool = RoundRobinPool;
     module2.exports.Agent = Agent3;
     module2.exports.Dispatcher1Wrapper = Dispatcher1Wrapper;
-    module2.exports.ProxyAgent = ProxyAgent3;
+    module2.exports.ProxyAgent = ProxyAgent2;
     module2.exports.Socks5ProxyAgent = Socks5ProxyAgent;
-    module2.exports.EnvHttpProxyAgent = EnvHttpProxyAgent;
+    module2.exports.EnvHttpProxyAgent = EnvHttpProxyAgent2;
     module2.exports.RetryAgent = RetryAgent;
     module2.exports.H2CClient = H2CClient;
     module2.exports.RetryHandler = RetryHandler;
@@ -94506,8 +94506,314 @@ var ASTRAL_MIRROR_PREFIX = "https://releases.astral.sh/github/uv/releases/downlo
 var crypto6 = __toESM(require("node:crypto"), 1);
 var fs10 = __toESM(require("node:fs"), 1);
 
-// src/download/checksum/known-checksums.ts
-var KNOWN_CHECKSUMS = {
+// src/download/checksum/known-checksums.json
+var known_checksums_default = {
+  "aarch64-apple-darwin-0.12.21": "b88bda573e566ef9bced66b155fe0408626fbbc053aee1c30ba686f0728c9447",
+  "aarch64-pc-windows-msvc-0.12.21": "93ed53b94e9cec000cacdfd18ca67bc4cb2b6a5f5ec041edd7f2a3dae365ce79",
+  "aarch64-unknown-linux-gnu-0.12.21": "030b69227b40af8c1981b7301793dc66e71ed3c796ea8688209dd268bd91ec51",
+  "aarch64-unknown-linux-musl-0.12.21": "67389a674e62adffa5a395d9a3b80688731c4aa7b33a6def3e62d00f7fec821f",
+  "arm-unknown-linux-musleabihf-0.12.21": "047c43febfaabcf06f6e20361bf99a4fd57b9c391a99e0bff2d410dd647829a6",
+  "armv7-unknown-linux-gnueabihf-0.12.21": "ddb4826a23a9a994da3d868c57b74b1fcb22e29691fc89f8b1702c6a1a9e0df7",
+  "armv7-unknown-linux-musleabihf-0.12.21": "eeb8edc4e5b74ec4521da4d3911153ba8ce24ed8557e2dbbe55d04a6d7a7f45e",
+  "i686-pc-windows-msvc-0.12.21": "66b7ffe136362b8522748c4d43b7e82b846e37e4e9272fcfadffaad8bf7b5a75",
+  "i686-unknown-linux-gnu-0.12.21": "b9ff98d9e6303f8d403af3f002ff1a429867cfcf915f1fa296689b43d9defd52",
+  "i686-unknown-linux-musl-0.12.21": "1492353034d106f2067eeec8f8b6aad1354e13fbb3f91c25a40eb5d44215fd6f",
+  "powerpc64le-unknown-linux-gnu-0.12.21": "c76a8589ed7f447d1e14dc20f060861fecd457a44a287047ef6a49bc6f22ae25",
+  "riscv64gc-unknown-linux-gnu-0.12.21": "202b30dff0f35cd8094e97949c8694b31951f404dd99802e1c997d65d752cf58",
+  "riscv64gc-unknown-linux-musl-0.12.21": "ca1dcb18c0e81c31d006d1ab808fcb4e3a95dde780b1e58805039f84a8ae0b2d",
+  "s390x-unknown-linux-gnu-0.12.21": "556bd11fca37f43a5ec051b5ed82e64b54fe536d6dea2fa84f8b34d2eb3a77d0",
+  "x86_64-apple-darwin-0.12.21": "2b336763b396ec6afa20c5a8b083538ca7402445b868311979d740a4344c17d8",
+  "x86_64-pc-windows-msvc-0.12.21": "5d223efa0bf00208c3853246af09420419dfbd352536aa6bb8163d6170e23890",
+  "x86_64-unknown-linux-gnu-0.12.21": "23f02075b652bb1df64178cfae41b5caf160822e720e2663568f3f5d63bc52c0",
+  "x86_64-unknown-linux-musl-0.12.21": "d69d543a55ec9cdf9d3d9f2648b0a161847e3dbddc477e3be6b5813a6d46f639",
+  "aarch64-apple-darwin-0.12.20": "848fdeb602ff1a1baacd4f6c8b7bdc6cf1ad026a6d9cf59475fda17c179743ca",
+  "aarch64-pc-windows-msvc-0.12.20": "b6bd9218855591742ffd3b00fcf2044b4d2fb6446b6a3545e0dfee447e950388",
+  "aarch64-unknown-linux-gnu-0.12.20": "8a7aad7bc76a2fae5151566ff3e43eacce0b2a113d5e4de3e4afe3e58fa2441e",
+  "aarch64-unknown-linux-musl-0.12.20": "94bb13feeebc6b59a4124016c957cdc9ee406d1476ce2b2ce2991e95b8e820b7",
+  "arm-unknown-linux-musleabihf-0.12.20": "6aeef64cf07b43135d6b1c20bd57809f2d965d0f8a2d5602230d5d55b8245477",
+  "armv7-unknown-linux-gnueabihf-0.12.20": "e1c53318608448ad3b8e7f2e9b069936730a6e7b47831ba5446e4b4f436ee715",
+  "armv7-unknown-linux-musleabihf-0.12.20": "a4c3a0e12e5489f092c93b232ddc4a811a6ea9a03f447f91f88e96867c0bac8d",
+  "i686-pc-windows-msvc-0.12.20": "1a372c273370ae9a7e9aa84020ce91fc1d9ebecbd287c3447e7e99cada0b14f3",
+  "i686-unknown-linux-gnu-0.12.20": "f1e83cc88970ed799b507a8392152d19916dfa0b6c9ae9c8145742035a40d5cb",
+  "i686-unknown-linux-musl-0.12.20": "11d541dd32dd779adbdfef69fe30d7d325036f50d394d3f260a0042998e05499",
+  "powerpc64le-unknown-linux-gnu-0.12.20": "39224a5bfc21a8041afc0315e5d47c86acecf4e669944564950996b516fb5987",
+  "riscv64gc-unknown-linux-gnu-0.12.20": "5cb9df36ca64fb72673c59a77b955b50f3bb907689a98d1d8d640aa3e71f2660",
+  "riscv64gc-unknown-linux-musl-0.12.20": "360e91a317a27bd33978577c57b6f3ed778bdfe8c30c9b613e46fdc33bf8aee8",
+  "s390x-unknown-linux-gnu-0.12.20": "25485439b52cb029afa724c442418ca08a53122100f8cce68ccceb88323ccde2",
+  "x86_64-apple-darwin-0.12.20": "ac54283d211fd77cdc152b67606dbaf6406ff4ab03f3af4ae99468fa8e887141",
+  "x86_64-pc-windows-msvc-0.12.20": "95f9bc30fbb3574d276e28ac4a6de932d25153645853d13da8c21eec3bc88d06",
+  "x86_64-unknown-linux-gnu-0.12.20": "6590717592ace991ff83a63fef799e3ad9d33ecc8f96c5d6bdd732496e79337f",
+  "x86_64-unknown-linux-musl-0.12.20": "14114d66a094f1907af0fcbc863f34226bbb7f5e430e13dce6676ba40dcc6891",
+  "aarch64-apple-darwin-0.12.19": "a9a8df1eedeb192f2e47e40e2faabfb387db4b850209118786d42f89dde3e0ba",
+  "aarch64-pc-windows-msvc-0.12.19": "115b54cb823bc48260670f5782001add6067ac8d98d18c8263a833704e287de9",
+  "aarch64-unknown-linux-gnu-0.12.19": "0804e9b164c64b6914182d5920c08551958a095986f10a3731056df701126436",
+  "aarch64-unknown-linux-musl-0.12.19": "ad8d8448a2ff642ba62c2f684d7dd22a03f8eb3fc9918c2c3e8ec975f4ed6710",
+  "arm-unknown-linux-musleabihf-0.12.19": "173b6b118e444dc3b3a0b6337dd87d66fa79835aa5e059d79e942ae33a850e20",
+  "armv7-unknown-linux-gnueabihf-0.12.19": "f47fe74244c4adcff20637c1aee2550dbc31c81ccf0b2a9537bf98b24bc4028a",
+  "armv7-unknown-linux-musleabihf-0.12.19": "0df353aac087509c47fe660837ca5d284858ef4a5eec4042cbcdeb0118ba0f1b",
+  "i686-pc-windows-msvc-0.12.19": "e1c2d19d1173a0e9f81ba3f95881ad741808133e372610889ff6870629218c7f",
+  "i686-unknown-linux-gnu-0.12.19": "952b0bae707e19b2b5d012b46519a2159be929273d466a1437759f0961be0b93",
+  "i686-unknown-linux-musl-0.12.19": "f923ac32e0e5139950fe1b63abab74d48cabb94b15c90637bc380dadcaf4da40",
+  "powerpc64le-unknown-linux-gnu-0.12.19": "e30649ad846a14bd96440efd45fdb60dcdf8db088fb143064aa78632048ad957",
+  "riscv64gc-unknown-linux-gnu-0.12.19": "50a83ea999ea861a6a853ae1ad0982baad96cc6451e46a5d7e366c4d9475f1bb",
+  "riscv64gc-unknown-linux-musl-0.12.19": "051de9eda7e09dab4c8a304ab2e119317649fee0e24efd0358f410d0c5b3407f",
+  "s390x-unknown-linux-gnu-0.12.19": "e6a9149ea122c1b3b9719ca3577c321376e3c400e004c3cc18231fdb1d35107b",
+  "x86_64-apple-darwin-0.12.19": "cb5fa57bafe68fc0fb94b17f06bee0b0b9a7feb94ccbd110445afa0696e39273",
+  "x86_64-pc-windows-msvc-0.12.19": "6dbb02d79e419522f1c500f0adb1cddcff0cda7d59b0d66ea7f5e3b4a1b2f5f0",
+  "x86_64-unknown-linux-gnu-0.12.19": "23bf5552d220e0842b65c862097b2ebaeba0064b74eda5e565e77fd25969d8c8",
+  "x86_64-unknown-linux-musl-0.12.19": "db7278c9f57981338fddff1fb250e11964bc0a4fafcb9eed8303fdb117dc067b",
+  "aarch64-apple-darwin-0.12.18": "cf40e0c6a202190ccd9e0406dcfdd5b2d6668a9a5c779b17948963df32aafe5b",
+  "aarch64-pc-windows-msvc-0.12.18": "17f27b1c64eacc757ae603579f116a014881e486c5e79ae81877980d4699e943",
+  "aarch64-unknown-linux-gnu-0.12.18": "afb6291f3f0a6b4521fc67b947822506c41dde5b60d2189dd8f3695b2ac8c9e7",
+  "aarch64-unknown-linux-musl-0.12.18": "0796973fb3eea8095078c3d0659bd17a5f6789a71b8dd85caff2483178f78ac3",
+  "arm-unknown-linux-musleabihf-0.12.18": "a37127fb331d5e6228efc1f8549d2447b50c907eee4629347f150a649083619c",
+  "armv7-unknown-linux-gnueabihf-0.12.18": "a38e82350e1e95d5526d1ab81d9b4eb676815c51646243b3b3fbc55b218732d1",
+  "armv7-unknown-linux-musleabihf-0.12.18": "41f0808328f65910bacdb487638475715f949900c7a23b393b3754e2156ff15a",
+  "i686-pc-windows-msvc-0.12.18": "e04c0f1fd9a8703761f9edd64d797ddb2c9a3e6eec0e2fed234a7bd2c2e868b9",
+  "i686-unknown-linux-gnu-0.12.18": "278dbc5dfc6bdde33a553fdba53174cc49daf512a857db1b3c1b5d663290196f",
+  "i686-unknown-linux-musl-0.12.18": "ebfdaaafc447fb2a7329cde879a7748b2ab40ecdcd3d5f04fc0a5d1ab79bb0bd",
+  "powerpc64le-unknown-linux-gnu-0.12.18": "332d174248230ed599a9df0e4e77d6921dbb42ca0fdfbe26eb2a6c999da936b3",
+  "riscv64gc-unknown-linux-gnu-0.12.18": "be88652a03225acbd6bf7204d006b244b0743c8c756a35137c209fa4ff731c41",
+  "riscv64gc-unknown-linux-musl-0.12.18": "29d34dcc833b99b09f78fa11c66fa3c490c3e37c4f0d754e7b84f7147850190e",
+  "s390x-unknown-linux-gnu-0.12.18": "ac412f7ab2a096a7302e0ae8828c7ef84db8a1f7ff97acba8ff8987d46d39cec",
+  "x86_64-apple-darwin-0.12.18": "2e4108f5395397c8bc5d43bf83d3bdbb2d0e92b90d0efa607756be704905fa33",
+  "x86_64-pc-windows-msvc-0.12.18": "cae6a3bc25239f83dffb467a4b180508d9da23986c04639ebfa44e43e6a84bff",
+  "x86_64-unknown-linux-gnu-0.12.18": "89eadd7c76fc063887959510d5ba0ab1264dfd5f1143b925ddb73021a40acf16",
+  "x86_64-unknown-linux-musl-0.12.18": "e38d97460b98ebfd31b197de0fe9fa578add4bc8ba0179b203dd3f87b99f98e6",
+  "aarch64-apple-darwin-0.12.17": "85f00cbdc6dd3e97eba4c31b4d014375a9fdfe8f570023b84e5102fc3456896b",
+  "aarch64-pc-windows-msvc-0.12.17": "3e1aa6849d77f0e00dc865e4afab5c5b32de053e21fe35bf5ad5cec3734ec976",
+  "aarch64-unknown-linux-gnu-0.12.17": "d636d1b678e9e7f367ecb22b46bd1cabbed234d6bc3b4d96365d2b507f72f86c",
+  "aarch64-unknown-linux-musl-0.12.17": "a6096da273d548cb9f277d237a01ac7344a39ef0f455c0e148e4dc9737c1596b",
+  "arm-unknown-linux-musleabihf-0.12.17": "16a98a65ef8545f7c32cf717683aac44248369ffaa41c43e665341489359c654",
+  "armv7-unknown-linux-gnueabihf-0.12.17": "796e101976e18a0f92d90b6f3efd289f77fbc5afd1aaa6fdedd3c84c209eabab",
+  "armv7-unknown-linux-musleabihf-0.12.17": "421c5f9c53d49088e705e7a64fea147082a2191178ea1d8c51d9ad758ca899f6",
+  "i686-pc-windows-msvc-0.12.17": "1d3653cb6eafd1e675e979d7cd8eeac1456202f8927a2216419993077a4c473f",
+  "i686-unknown-linux-gnu-0.12.17": "3faa79a70e2a1aa6eb3cd78eba02263f3e4b17b6be584a01429968f92ff74966",
+  "i686-unknown-linux-musl-0.12.17": "fc05220cfa1c6585e0e209877c228393b25a96e17cd43028b06566ac894cd078",
+  "powerpc64le-unknown-linux-gnu-0.12.17": "eb6dbedaaa622af32cba2388e0d2d47e34c8724d4214a129d614b96f071d8e53",
+  "riscv64gc-unknown-linux-gnu-0.12.17": "65b807b24357133c49d97ca9394ee7e13ca62822e1095376c809654b35f39cf2",
+  "riscv64gc-unknown-linux-musl-0.12.17": "87c339a735b578f285b961bebdefe0a671f3652477d1e84dc69cd1a829f45e92",
+  "s390x-unknown-linux-gnu-0.12.17": "d99f69f47fc5e0975d6e7a5745cf2332317015caffb3bb81e5154cc7b66fa77a",
+  "x86_64-apple-darwin-0.12.17": "8dcf05a8c809bb3c471d2b614788ba27a6e41298fc8c31ac84b5f4339fd468e5",
+  "x86_64-pc-windows-msvc-0.12.17": "a252121d5b59398fcb137c6ea448176459a44010f33f67e0072305a637119ca7",
+  "x86_64-unknown-linux-gnu-0.12.17": "fa82fd8dde8e8eefdecada6aa0889666556cfceb690d06e0c3bca49eb3070a63",
+  "x86_64-unknown-linux-musl-0.12.17": "6401c4665d8fa2a9893e087c91f585430738e3170f5398a1141483efb4a93310",
+  "aarch64-apple-darwin-0.12.16": "b6e03fae61704b1aa622f12b792a69483e837b83068e44f4fd34f8a07a8f74a3",
+  "aarch64-pc-windows-msvc-0.12.16": "9977129f89c4036edfcb200d2484755571e51fa74517f02e478c1d7bcc353b2e",
+  "aarch64-unknown-linux-gnu-0.12.16": "36d913ee9c647481d64f1a0a0485f85ff2feaee605c341fc22e73398f9212c26",
+  "aarch64-unknown-linux-musl-0.12.16": "5beba1f35c0922fd086cce850ce919e55bc4e873c4fcda891343526afdb4c5b3",
+  "arm-unknown-linux-musleabihf-0.12.16": "d91fa9dede60e851e4bb3ae8060300042bc6bf924476fae71898d2c08c46a9cf",
+  "armv7-unknown-linux-gnueabihf-0.12.16": "fbdfca5d4ace4a5abbf343c0f10a0b68c5eac0201073d2a504e32c57c0873669",
+  "armv7-unknown-linux-musleabihf-0.12.16": "f5a3b6c7fbd4c7ea66cbd704d821ffed0d20abbfa8a12c2e68d6dd22476d308b",
+  "i686-pc-windows-msvc-0.12.16": "0d4889cc6c4058f4fbc28f6c50ec09b528ef998547cac5c3425e1a0b8169e847",
+  "i686-unknown-linux-gnu-0.12.16": "0e8743e653ed124c526a9e86ee6a08fa6eee7618a3f12cc9033c74674bd2047f",
+  "i686-unknown-linux-musl-0.12.16": "f609686cbe67884eeb57daebd58eb0fef35f930dd92fd2c14e931da7515c7454",
+  "powerpc64le-unknown-linux-gnu-0.12.16": "312dc82f441debff371fe5fc0068b538787678d6d79edc86f028b011920a2f6a",
+  "riscv64gc-unknown-linux-gnu-0.12.16": "8b0142eee9d291c602218126e3fc558fe9bc1b7c8f1cc0b03dcd8df9f2f218a1",
+  "riscv64gc-unknown-linux-musl-0.12.16": "188af30f025c35569b302b84793a4c286f6740902885d054917375edbfd0193c",
+  "s390x-unknown-linux-gnu-0.12.16": "b90cc954c2cd52b695104e215189a0c8d9e6ceaee753c9be1a871bb8d969e9c3",
+  "x86_64-apple-darwin-0.12.16": "a42bcc9ce97eb8b364d7f162233a9c6b8c0ee25388e551d362809795127e0c31",
+  "x86_64-pc-windows-msvc-0.12.16": "f730454bf09019754e5e5abd71a8aa18683cb739cba0d9c720bac2e7c901160f",
+  "x86_64-unknown-linux-gnu-0.12.16": "8e5c6e5523dffc2dcf615bd995554c84c9feb4e577808a3fb8698a639d3f8d9c",
+  "x86_64-unknown-linux-musl-0.12.16": "a01206ffbd60f3a7ee30949be1863527986f5307494a064042c69ce7e6d44799",
+  "aarch64-apple-darwin-0.12.15": "dc304b9ed1b24174572290fba60ac3f6fe63c73a671f0439e62a91375841964d",
+  "aarch64-pc-windows-msvc-0.12.15": "a37c8e96cb1260488c8510b64c848533a3a82a2fdf9e905de7c2700ceebf6437",
+  "aarch64-unknown-linux-gnu-0.12.15": "0e9a3499b0587d449c9ff684c0160da607826e4af1cee220bc87f378702d3e08",
+  "aarch64-unknown-linux-musl-0.12.15": "93b801abb146e6431fb0434346a0162e65d3f0d1cd7360144d04c43488fd7f7d",
+  "arm-unknown-linux-musleabihf-0.12.15": "9b0204dbd368a7a5f84d3ef015684c3b0e830911641ebf4575f44ad4901c1b3e",
+  "armv7-unknown-linux-gnueabihf-0.12.15": "a0afe9cfc7dc4acc18e613f68c5b010b849323b3a3d6e9311b29d289dc94f95e",
+  "armv7-unknown-linux-musleabihf-0.12.15": "a113c782e6f96a56f73aba601cde73ddbe877e0a4179eabeb5b6e86be9bb75d9",
+  "i686-pc-windows-msvc-0.12.15": "cc8b28f77cf19f7ed88569d6d9163e503ebc94e1b70069889852bcf38839c559",
+  "i686-unknown-linux-gnu-0.12.15": "6fa19118f01ee547d5b9a3f4af389c5c929a34e0074a4313d3cdb3ce9c97fdcd",
+  "i686-unknown-linux-musl-0.12.15": "b66d6cf7916addeda13fbb61abe003ecc62f048e3a213d6bd2494ca7e8022989",
+  "powerpc64le-unknown-linux-gnu-0.12.15": "5f49c97ae7ec25c45513466e00a32cacb148f3824367c7e498c0b53a270bc1e2",
+  "riscv64gc-unknown-linux-gnu-0.12.15": "4c8f75c5969737b67621957010df5337bb721a8d48fdbb1620f5d35c3f1dd268",
+  "riscv64gc-unknown-linux-musl-0.12.15": "8c03514f57e517eb87a376deb3d6475045f6ce550956c6082910b4a529d08a47",
+  "s390x-unknown-linux-gnu-0.12.15": "1f5701cb5eedc5a34d3dd5896ca3bf509b15d382b3448f370df46e0a631889c1",
+  "x86_64-apple-darwin-0.12.15": "e9ca61775532368fe518ab03e7a354c7ecab8ccb3c7d941c775fcc4a362b801b",
+  "x86_64-pc-windows-msvc-0.12.15": "477bd99a84e34891f2bd4c9152ddeb74e971accccbc59c0f0301f11f08a32d46",
+  "x86_64-unknown-linux-gnu-0.12.15": "f97935763c04be3e692460a7aaeaaab8fc3b78fcf8b389da820b38ae7423a638",
+  "x86_64-unknown-linux-musl-0.12.15": "999c0c3da986953e508985c3932d283d2c62eb167b4f8d81e79f565e34104959",
+  "aarch64-apple-darwin-0.12.14": "dfed5683c5873d65eff8476eb93526059b81e5646a68305b5c94a26b29990894",
+  "aarch64-pc-windows-msvc-0.12.14": "46b930bdbb338099c7d9da711b751240eb97876eda6a553a2c28323967232041",
+  "aarch64-unknown-linux-gnu-0.12.14": "7fb91bd5d10529c60723eaec3caf44726f89280e5aeed78af8fc63fcad004c9b",
+  "aarch64-unknown-linux-musl-0.12.14": "571b5c73c9bcc294f8087f22613edb7c7ceb191f4dbf8cafd3f2ff15e6147d36",
+  "arm-unknown-linux-musleabihf-0.12.14": "6e0df0e690d5c29ce65ec6962d8b262a93e9951077f05d78943f858e7d6e9185",
+  "armv7-unknown-linux-gnueabihf-0.12.14": "c20a18bb275a6fc2599bc321d37e52650a449237c6111da203a1d73b45921b25",
+  "armv7-unknown-linux-musleabihf-0.12.14": "a128725e1e40226a9309d603cbb4c36e272932092a77f4d0478ef2fb8eacaa05",
+  "i686-pc-windows-msvc-0.12.14": "ddd9afd789c60a38d82f3021239e22daacc67b9ef0719345ee6f0dcc37ab93ae",
+  "i686-unknown-linux-gnu-0.12.14": "de65ccdb90dd818248161db761ae3b6713b1b3230a1b55068ad327598b3a14b8",
+  "i686-unknown-linux-musl-0.12.14": "268538a3b90c90f7d68d31ed781f0f2cb8618188019c8bb09ce0e7876bb54829",
+  "powerpc64le-unknown-linux-gnu-0.12.14": "6a6c2a91d6240700eb36895c3fb0533bd5e9c696a95e0a55f7a7ae844cbde537",
+  "riscv64gc-unknown-linux-gnu-0.12.14": "df2c854c77b1d32f75ef08282511b050066b3db9d7abc4dc2c23ea26227c6b74",
+  "riscv64gc-unknown-linux-musl-0.12.14": "c6d0824ebdf23811dfa659148ae2c224b385d07ae1b4c282e5bf6abe3d603a74",
+  "s390x-unknown-linux-gnu-0.12.14": "e01aec9706c88f93f90409eab42324571e2b2c9c2938aaa266ad048b37c52c6f",
+  "x86_64-apple-darwin-0.12.14": "e11a70264ceca38e929ecaeed953c323e517af7b960ebf9722d5918e8c7f0375",
+  "x86_64-pc-windows-msvc-0.12.14": "02cecb254f37f3396da625680796d3990164a590fb5611d46f719ad83e7b9a89",
+  "x86_64-unknown-linux-gnu-0.12.14": "18ef5c3888ae59828cb13f38d57e9389b8173ecc719eff163bfafc74b38f5936",
+  "x86_64-unknown-linux-musl-0.12.14": "df163630683e5a2106d3320e2a448fde8eda5e7b9b47f617c5c332769728e735",
+  "aarch64-apple-darwin-0.12.13": "7e6ddb9316acc00f2296c82ff4d99977870ee34b2f0ddcae9444d714db9364ed",
+  "aarch64-pc-windows-msvc-0.12.13": "1efb2654b06e7063d4ac1fc9d49a9bda9a6704d82f035b589a2751a592f14151",
+  "aarch64-unknown-linux-gnu-0.12.13": "2eaa5d94f5db7b3a1a092156b9420459e42ab0217d917fe74a876309cef9b5e9",
+  "aarch64-unknown-linux-musl-0.12.13": "f44bc1037a17889fe562fffd2002d4ed108e499fbe68b4f022af244dc7b8244f",
+  "arm-unknown-linux-musleabihf-0.12.13": "2c7644f891edcf1e74a1b9dde96ea4ba00b41301c936c87e843683656703ada2",
+  "armv7-unknown-linux-gnueabihf-0.12.13": "19252c4d21fce112817b9e07bef6b2e9c90cef80fe82659533105b37a772d067",
+  "armv7-unknown-linux-musleabihf-0.12.13": "54e2c10e4e6c18a3efbac645ea02d7e6b768ae2f975275595915a7039e802b75",
+  "i686-pc-windows-msvc-0.12.13": "4ddcdf859d3bd337a156a2fc567e685e4b3d61e07b4a2dbbed7aeb4325e116ac",
+  "i686-unknown-linux-gnu-0.12.13": "beb56f6eda61bc69a8acc1bca07929365aa5cd2e912e35c35003a45e266d8a0e",
+  "i686-unknown-linux-musl-0.12.13": "6c93a9703b6145266240cb2aeb31d3574c21b33570fddf92461707b906eb3a65",
+  "powerpc64le-unknown-linux-gnu-0.12.13": "cd45ac73fc711e717602a4dc0c9e19d9c6563d15b14515a9a5dd49b00172a8b6",
+  "riscv64gc-unknown-linux-gnu-0.12.13": "ff1fb4d7e4c1d3a4acc6eff69b2530e846964260469df345e0239059517c0a21",
+  "riscv64gc-unknown-linux-musl-0.12.13": "b88312b410c1183e33ae9fa7738f35b7cd7396b2aa0e82836d7e88dbf23e5fb5",
+  "s390x-unknown-linux-gnu-0.12.13": "d41e4784c2187c76970690a9e9a288231f5ec8d2160ad8464be74aa9c06717e8",
+  "x86_64-apple-darwin-0.12.13": "5e287ef61cb6a9b61b3a83fef124fd143e400468a7dac794230147a810e17119",
+  "x86_64-pc-windows-msvc-0.12.13": "a86c9dc7bad9b03f388583b7187c05fe9951c2e0d392217e8fd43d97787f6ec2",
+  "x86_64-unknown-linux-gnu-0.12.13": "745765a3b6e360ad76743599ae5c42e9278c7edf8bbff9fc76d05bf2623a04dd",
+  "x86_64-unknown-linux-musl-0.12.13": "4e2bfd0c9007b1032a50e539e965fd0a6037d87ad93ae1580d220a92d4c94098",
+  "aarch64-apple-darwin-0.12.12": "46740540b63fdee9a6cb2e19baf3f1f475b850c440a33e63455087a6871263f1",
+  "aarch64-pc-windows-msvc-0.12.12": "36559da51ecee83b2b1d80aa1a0ede2f80e2d9e5761fffcbb9e9366a7f3d022a",
+  "aarch64-unknown-linux-gnu-0.12.12": "fe08db50cc1b56cd1da7801065ed1103d27ed3f9571cd122386cfc7faf1b8df5",
+  "aarch64-unknown-linux-musl-0.12.12": "82e59fff633cbd96fb675f37c7a748c056d909a59ecf476f8ff0e5bee76b9b23",
+  "arm-unknown-linux-musleabihf-0.12.12": "72ac215cb44636c62de5a672c9ff822acd1ffd90b96f751c359902c8de11c75b",
+  "armv7-unknown-linux-gnueabihf-0.12.12": "ed00794f3750bcf405556ac28e8aff0480a4e309e4ab1505df9f96b83088b230",
+  "armv7-unknown-linux-musleabihf-0.12.12": "74220d4b9df5507f527478313f17190cdff1078532efb8547483804372f77f47",
+  "i686-pc-windows-msvc-0.12.12": "5d6ea94bc2fdbcd39710e0bac00db2a771aae05d09a34387841187958af48362",
+  "i686-unknown-linux-gnu-0.12.12": "ce4411f863d3bd0cf97699eecebce9331ae72d69cf57735806321bf60b637b03",
+  "i686-unknown-linux-musl-0.12.12": "b0a733aa67b9ea4d5dd28c1ae2c8393ce1be4b032c3d51642d6b05190f21fb6a",
+  "powerpc64le-unknown-linux-gnu-0.12.12": "b5d05f6cb74605da9bb371ee9f8128bb8611ba1fab324bd4abc6e70a83abe0c7",
+  "riscv64gc-unknown-linux-gnu-0.12.12": "7b0b054d9a7d7b2c32e9ca111b271091240c81cb41487bcbe65992a2baca9c97",
+  "riscv64gc-unknown-linux-musl-0.12.12": "d2324e24ad526bbc45ac8a40f4d846c315efef9d4c91bb25725f29ccf2382b8a",
+  "s390x-unknown-linux-gnu-0.12.12": "53135d16813f9ad961c809828da06f2339d49510c110668fe2e0353fef46b213",
+  "x86_64-apple-darwin-0.12.12": "0dc8cd6c961582b0d140b5398f96b23502885277fb3464241456a2435e460dfa",
+  "x86_64-pc-windows-msvc-0.12.12": "3d54912924c36e862c14f427d04f2ed70a99e8001d1c30caa101f6d5711626d5",
+  "x86_64-unknown-linux-gnu-0.12.12": "ab9b309d4586403f024e100abaceb396616e178a553e2500c36087d180f09509",
+  "x86_64-unknown-linux-musl-0.12.12": "0b0bbd7144f91d9b694e29c920fca3a060322bd134e8507e5eb92049a3e2edf0",
+  "aarch64-apple-darwin-0.12.11": "e01b69ee15e81918d5e8fc9cf39b3db7f59c5576e5e306cd9b7aeb2c7b7321c3",
+  "aarch64-pc-windows-msvc-0.12.11": "7a70f46305d28a95f913ef2888254a9f9c183a406daeeb8937134afc9ed434d2",
+  "aarch64-unknown-linux-gnu-0.12.11": "e9933d907fb9cd27d606d819bbded419f2844c0e2efc98225ecfa409288eb28d",
+  "aarch64-unknown-linux-musl-0.12.11": "de99cafdeb5ee6f61ac3acd6d9dc6a1ef166f9398fa5623c436246ee1ecea099",
+  "arm-unknown-linux-musleabihf-0.12.11": "dd8576a7194e69861cd9def865f3a26613bb116109f075e64925a38cdd509429",
+  "armv7-unknown-linux-gnueabihf-0.12.11": "8975dd185f9e34f93733fdcd7ae7ae552ecd7d3bd5792ff06ab3dc104f50e327",
+  "armv7-unknown-linux-musleabihf-0.12.11": "b1cb2600a61c8d780a7ef365f69f4a336e4657494e13b9a757b4d10bb55d65af",
+  "i686-pc-windows-msvc-0.12.11": "c5fb5da8a9578ccaf9dadd3622413c347661847ededb4a93d9d3dbf9304a9ea4",
+  "i686-unknown-linux-gnu-0.12.11": "ab2d67fa9d3cfbdfa616b6e91eda4ae0d159dca09b446226935458f9cd28bd3e",
+  "i686-unknown-linux-musl-0.12.11": "bc894f6f1c6aa2caef10caa3890948c2fec5159c678bae432c5aab88c2a71961",
+  "powerpc64le-unknown-linux-gnu-0.12.11": "7d7fccdd92328b3732bffc1ded64d430f8bd7a59dc575e4804256f907f10c957",
+  "riscv64gc-unknown-linux-gnu-0.12.11": "279a560bb492e92275ab96b1b601fc2a2feec84499d8b67160e07001496602b7",
+  "riscv64gc-unknown-linux-musl-0.12.11": "f24d2434251e9a9ea4b1dec014e28299a936fc387087ae953677c389b21f09f5",
+  "s390x-unknown-linux-gnu-0.12.11": "ac48ff502ee64983b904bcbe73559409f9a0ca950c788cd4ea77db510258f233",
+  "x86_64-apple-darwin-0.12.11": "96d773bf5fda4f9b08c4444847f9183d1c14bc8a28ff9c0490e261a8fc6e5309",
+  "x86_64-pc-windows-msvc-0.12.11": "e94225dea91e051472847bd6d146d7d66c4f54ffcd1f106678866a99580845f9",
+  "x86_64-unknown-linux-gnu-0.12.11": "4ae93e0f148a18434cc094072547cec88912fc4a72b984183c7d0d0e9586cb5e",
+  "x86_64-unknown-linux-musl-0.12.11": "3343303ad6b4f9537ae0abfb36f1926a90c0445ba8f23d0e0a840a66a124cffd",
+  "aarch64-apple-darwin-0.12.10": "51c6170e8e3a01cef9f33b94f582b7b81ac65046f55d40afb35f9cff5a68c179",
+  "aarch64-pc-windows-msvc-0.12.10": "ee985c51c0c9c1f82267a5d80f959b34a7ff888c109182bd3b2b35c4661bbcde",
+  "aarch64-unknown-linux-gnu-0.12.10": "9ff6b9d4665edcdd3a88dcc73cd1eb641754deb927f14e8c62ebfde6bf4f5f5e",
+  "aarch64-unknown-linux-musl-0.12.10": "3983cb642fae84eab33756109bb266f126eb61763d8d220dd662af589c5b3da5",
+  "arm-unknown-linux-musleabihf-0.12.10": "984d3539667b2d97d85aa07788f78f3aa87accc9b27c63913c3177d118f5df81",
+  "armv7-unknown-linux-gnueabihf-0.12.10": "682a52fea5deb07238420d7197e2d7cc10d558872f008a9b6799fb5326c8e420",
+  "armv7-unknown-linux-musleabihf-0.12.10": "4062b9eb018afdde9b3dfeceabe41aad4cc5ea7fe658b74fda0e8f36decef507",
+  "i686-pc-windows-msvc-0.12.10": "cbf375fe6bf8a4e9ffb2f09c1ff4f8ed29ba96594a604749f84fa4e08c9a4586",
+  "i686-unknown-linux-gnu-0.12.10": "d943d0c0af37ad884bef24972753f7c93e5765b458e6492a3eb0c2b855c83a58",
+  "i686-unknown-linux-musl-0.12.10": "9ab3d4ae061abcb8b000d7b472236f09998ddd466215753fc2eb4cdf372ba147",
+  "powerpc64le-unknown-linux-gnu-0.12.10": "2e6beb653888d2d2721b46d3d8aa328a2339a6cc20d4df98bbf206e728a92174",
+  "riscv64gc-unknown-linux-gnu-0.12.10": "38071e8f894acb0629a6f72017489e23642c1acee82953e3060635dd251cba8e",
+  "riscv64gc-unknown-linux-musl-0.12.10": "268ac2854b3c56370d68e94d819f5a3ee2dd7dfe81b17135d080a3648276d3b7",
+  "s390x-unknown-linux-gnu-0.12.10": "2192d8fb1d72860e8c0a85ccb074dcd4de0369c9fbd52a9041e16d5ba3f4467f",
+  "x86_64-apple-darwin-0.12.10": "5296d5aa2b9143360405eea866f8ef4d5dc8986b164eb0dc35e8f876a9304d30",
+  "x86_64-pc-windows-msvc-0.12.10": "f65744f94072152b1f86ba2aace4d01f1124d9a8ecb235805039e3718c36cac2",
+  "x86_64-unknown-linux-gnu-0.12.10": "173d95a0c32d18c896c46ba6fafbf3cf9c14ab74b033f81b76c883ef492a976b",
+  "x86_64-unknown-linux-musl-0.12.10": "848d0e261119e5b8f35db10164635e46a48bec29ceb1f8ec14a6fc76004973ee",
+  "aarch64-apple-darwin-0.12.9": "301f72afaf54060f92da7016cb0115bd077f43a9c8e39c1d8170a0bac80fd398",
+  "aarch64-pc-windows-msvc-0.12.9": "d3360363a3cb671f2c854f4ef48cf4a57fe8664f8ec6a248076d68b797a8acc0",
+  "aarch64-unknown-linux-gnu-0.12.9": "c36fe17937ff6bd16dc42fc13854b5465999fcab2efe0af559381e945e3c6001",
+  "aarch64-unknown-linux-musl-0.12.9": "7eb9bf48516448c9db6a9e436d8e747ac9c8a9cac74717160a29918249b080a6",
+  "arm-unknown-linux-musleabihf-0.12.9": "de6f5b904a6735bca2a6061bbc3a3a09718128b806e11981e37019e32292288b",
+  "armv7-unknown-linux-gnueabihf-0.12.9": "ac24ad959c4dee04c6cf42597a947828f661fda184db5fe82b3e72a07d391316",
+  "armv7-unknown-linux-musleabihf-0.12.9": "8c33bdfedafc27d73ca4850071383336671b9ce92a36cf53300fff799d8580b3",
+  "i686-pc-windows-msvc-0.12.9": "62396154da2dc04a9fffb027e75ae3d971ca3ac7d3f0ffa7dd2c27c94798ce3f",
+  "i686-unknown-linux-gnu-0.12.9": "c3669a2adfd83a9220b1da1ec8f2ef3624eca1ba1db3c45107b455694e9ef6dd",
+  "i686-unknown-linux-musl-0.12.9": "3c2a21d4dcb08cae133bb4ebd5cf40764bc5f076829fc2eab00df0a50d834eb9",
+  "powerpc64le-unknown-linux-gnu-0.12.9": "3da749e1a1d6e290811736aecdb13184e4732a07afe0e4162e9163f843f0315d",
+  "riscv64gc-unknown-linux-gnu-0.12.9": "7fd415b73bd19045e027d099209bb3fc4a59c36ee6d825caf40db2b8e2f3bd0d",
+  "riscv64gc-unknown-linux-musl-0.12.9": "3d6b761164444e1fe12be08f771583ed495354bcbd73631c65a62ae443d6a06a",
+  "s390x-unknown-linux-gnu-0.12.9": "d45e862e2001fa8a88e68cf8be91231a14143cdd1ac8351d8d8e4fdf44fbac1e",
+  "x86_64-apple-darwin-0.12.9": "e1ca175824f1056589ce9908f7631879ebc3c36535b5e63dc06510beb370b4c1",
+  "x86_64-pc-windows-msvc-0.12.9": "ddbfcee1ac615a0499f6aa97b5ec8ebdf3ee4a7714a48055ec2ba0030e3cf810",
+  "x86_64-unknown-linux-gnu-0.12.9": "ec7a99cd05e0cd7f80243f135ce1361c76835cb0ee60055d14d20eba8eba1460",
+  "x86_64-unknown-linux-musl-0.12.9": "aa4b1f8770910f7c7c543c7acc980e4270e52e70750c996acef813ea1c7c2912",
+  "aarch64-apple-darwin-0.12.8": "8ce083658dbff20143607ca7af8e0c1d64b6fd7bf03a5cdcb62bf3d47d991b5f",
+  "aarch64-pc-windows-msvc-0.12.8": "84b821c551802c200a32e25f9d1d960ef15e248f54f6a1bd9e1eb62934669da8",
+  "aarch64-unknown-linux-gnu-0.12.8": "ba8661f4fd207c8e94814191598e619b355ac10d5014e851e21eb800f9ef2b00",
+  "aarch64-unknown-linux-musl-0.12.8": "975917badc8370163989e5bbe5a7c69bf922d19f8e57cb2652531bbffc935f84",
+  "arm-unknown-linux-musleabihf-0.12.8": "0e0e733a33e229602c14a5c7af271917ef4b13b8bc50fd774d32bd4b18a09a3b",
+  "armv7-unknown-linux-gnueabihf-0.12.8": "bc80826f631f8836a974a88b8cf797935bc83f15552828ad5de0195f6246e333",
+  "armv7-unknown-linux-musleabihf-0.12.8": "794b2099dd9db9c359958fa8fcd0407bf3bc2682e020d40b8d20e046f3490a18",
+  "i686-pc-windows-msvc-0.12.8": "9b38cad9b06e0a910e606510cdb4ad2c4eb4f320c4f4c4ba90dd13ed1115c5b0",
+  "i686-unknown-linux-gnu-0.12.8": "739cfea6b2958da57106e6ff1b0f95ecb17522ce84fc8e07c8606b2f427a4e39",
+  "i686-unknown-linux-musl-0.12.8": "83d712e60c019b58015834804ffe4c9a4cdb7dc90c305be8c7e04bf14194158f",
+  "powerpc64le-unknown-linux-gnu-0.12.8": "5a39773f28a172d4ab62598306db2010c0e3bf3b278b2684afde86794af8ad71",
+  "riscv64gc-unknown-linux-gnu-0.12.8": "fd1905fbc62d5fff73994a48cf90149717541a6e30d097aef17626cbc5f8b734",
+  "riscv64gc-unknown-linux-musl-0.12.8": "1078863595c13c655f847111bd812468e7e6e0cb6b83c1cc6fd4bfc9337030cf",
+  "s390x-unknown-linux-gnu-0.12.8": "3a3b1fe41dea61afe6af2b8b59529ef2c4712d28dbb942a5e338fc9ff7578384",
+  "x86_64-apple-darwin-0.12.8": "bfcd4407de99e0a2c1904df0902fa1795653d4edd145358e6561527e746a4f16",
+  "x86_64-pc-windows-msvc-0.12.8": "e07acf3f8a29fe41f9e04b799c3325cb0e0893836bb222bf102829b45c679ad6",
+  "x86_64-unknown-linux-gnu-0.12.8": "2e2b37e9811e17675a9e70bed5e1a58fc8c0388be63d751d72cc735188c149ff",
+  "x86_64-unknown-linux-musl-0.12.8": "6ca4597639c97e921fb915e113061ce8e4a14ead9e42a1ead521dbb0a6763795",
+  "aarch64-apple-darwin-0.12.7": "127ebdda7ad953cdf198e964b570ea5771b85467ea93eb7cb6d6f8e6f55408f3",
+  "aarch64-pc-windows-msvc-0.12.7": "1611d0f4be72b0a354ad9a6ae954093dd4c91e93e36b8b490326a05a039ffe14",
+  "aarch64-unknown-linux-gnu-0.12.7": "66393193038dd7eb108abd7a218d9cec04ac70ab98242b0720fa94de19223b7c",
+  "aarch64-unknown-linux-musl-0.12.7": "6dcf60e3c085de88ace3671b949ca99f0652be561ff5627f0d21394140f041db",
+  "arm-unknown-linux-musleabihf-0.12.7": "7716bce33408494d7b46395504b9fc1ea3ea93b7d0e4b77ef15ca7d7e1ae245a",
+  "armv7-unknown-linux-gnueabihf-0.12.7": "e5b9a25ff397f593e9fff236c4d72ada28aff7da4540868dbca74f391a86d546",
+  "armv7-unknown-linux-musleabihf-0.12.7": "4b82298033bf6d20ee7c585a5da1448d681945f29b0dae5e73b72f83496f0e61",
+  "i686-pc-windows-msvc-0.12.7": "b4842ca13ae8ac33879341170eea32df1d9c41d0468a524e73375facddefb4b1",
+  "i686-unknown-linux-gnu-0.12.7": "edc692ff9b0dc2833b1490a420fac9bdc4c85257b383aff7467cb23a7c1ec16a",
+  "i686-unknown-linux-musl-0.12.7": "a1cccfea5d8063fd44ef0154691066f0c7607f04236a51360c113e29da3b3fca",
+  "powerpc64le-unknown-linux-gnu-0.12.7": "cf3d2cb9f156de68e827bed822ce85952c331d739abc0a214bc75f378ef81cb4",
+  "riscv64gc-unknown-linux-gnu-0.12.7": "0218ed3ecbd7c56e7811b46dce30319cf727f6fbf989080c5eeac1976216f22f",
+  "riscv64gc-unknown-linux-musl-0.12.7": "5b8d5113a5d0a975dec33f9569237181f06d0d4cffd110e7899321ffe64ca578",
+  "s390x-unknown-linux-gnu-0.12.7": "afebbf174931be732ed1e372dbdfecc6c053ab4148243196b449c9973adb79c5",
+  "x86_64-apple-darwin-0.12.7": "06b8ae1da8c2661c5434507a66f8c2b0b835933bf955b5958a9ac357a37d1959",
+  "x86_64-pc-windows-msvc-0.12.7": "bf1518af459a3915511a11fdc6e2f43ef9a2afa138b9d498eeb9642fe9d85218",
+  "x86_64-unknown-linux-gnu-0.12.7": "788f18abea7c5f55d6216e4f5613fd89d4d59b631efeec117b2b07fe72f1da21",
+  "x86_64-unknown-linux-musl-0.12.7": "3d64d44ed67da7908dc7f5c4d64ebb44bad326fa17f8a0a52fc9a7793017bbe1",
+  "aarch64-apple-darwin-0.12.6": "14b459d51ea2e71eeba28c45a268c922bdf8607fc6455e3f40b4e082895d160d",
+  "aarch64-pc-windows-msvc-0.12.6": "6dda514fbbe3152d980758e0f6347116060114d7d24932fc0ea5d8063f8b253a",
+  "aarch64-unknown-linux-gnu-0.12.6": "d58030acd26159499ac82f32da12d1b3c12a3a1bfc414232d9082070c03e128d",
+  "aarch64-unknown-linux-musl-0.12.6": "3719891de9ab41c878a84331e55826d2a46421976a346a65326513a6795b089a",
+  "arm-unknown-linux-musleabihf-0.12.6": "917aa56d9318f8ad9509d941625feb49d2a444363c82143b7f79ebef0df7cecc",
+  "armv7-unknown-linux-gnueabihf-0.12.6": "2bde552a6288852ce4858e740d9434b64cd9edbba1956f6170c43ad93867a5ac",
+  "armv7-unknown-linux-musleabihf-0.12.6": "ad000efcd6e82ee76f01c523e5fdf267638625307d8d211fd73d6acaee7968e6",
+  "i686-pc-windows-msvc-0.12.6": "ddec1f1ca7b96fbd3822b5dff3fbade7add64a03afc334e2fd31d4820911f447",
+  "i686-unknown-linux-gnu-0.12.6": "2c93b0ef748675555a2af0cbc45a51f7b2e7014f9a0e34ae28d092e0293990d8",
+  "i686-unknown-linux-musl-0.12.6": "3cdda2dd5ad434399cd4788ae70d8057a4549e91f725135c07d2a09a6c4f1c5a",
+  "powerpc64le-unknown-linux-gnu-0.12.6": "474660a7d36d10ae156e0acfe3d1fac6ce9a684f6d6d92287c370d9b7a2f4173",
+  "riscv64gc-unknown-linux-gnu-0.12.6": "978541918503866f21863353570c702d981596210bd3b05a816f037a97897f31",
+  "riscv64gc-unknown-linux-musl-0.12.6": "83357df6b043c3e1f0d8e91cd90ccbe835ecc2f8bf4d6be6cb220b20b8b67a32",
+  "s390x-unknown-linux-gnu-0.12.6": "05a05615e8227bf89902301ea29a7bf424d8caef8d9dca682c149ad34df2d31a",
+  "x86_64-apple-darwin-0.12.6": "2a26ea71bbeff1c7e12c2cc40245c96a041deff276bc921e7038e304d5d3e04c",
+  "x86_64-pc-windows-msvc-0.12.6": "df7cb9f243eae1621400d4fcf5b1b3d90f20e264ece91b64deb3b0078abca6ef",
+  "x86_64-unknown-linux-gnu-0.12.6": "8681d8921e7d520fb368991dcf5f9c1905b80f5bf2a265a0ed085c8d8e342477",
+  "x86_64-unknown-linux-musl-0.12.6": "14e4172aace66a475062cebec7ca04f497d5619e95325dfcc9e4447b9c516846",
+  "aarch64-apple-darwin-0.12.5": "5bb0e5fe008a773c3dbcb97ff79cd89e1241464fe9d2f986d52ad8f1b037bd62",
+  "aarch64-pc-windows-msvc-0.12.5": "724279317fee6e5fa8ad1908e4eba2bbe764ef1ece5b3f4597927b62b1fe562a",
+  "aarch64-unknown-linux-gnu-0.12.5": "9bf43b4d1a07665bf64d4c4e710930b382321a785e0eb10aac07f46471f86a31",
+  "aarch64-unknown-linux-musl-0.12.5": "8767a0e77f2cd45436401b1b42bf7e9ed5a4a91a74a5305d6fe93249d0f6dbc5",
+  "arm-unknown-linux-musleabihf-0.12.5": "970f86ddcd1373120c1e7ee246b533c2e75366294098e1406f07ecf3bb55d260",
+  "armv7-unknown-linux-gnueabihf-0.12.5": "63f86f3cd92de223c2680dee5149ed3f317ad7aeac774fd7e6fe1f86f53e85da",
+  "armv7-unknown-linux-musleabihf-0.12.5": "62f838f29cad6fda061b1566168555978c544a4107697cd1967398b7f8efea84",
+  "i686-pc-windows-msvc-0.12.5": "a5993a7c2e75b418e60d5ed733204222330085b14e85269545b084c273c1629b",
+  "i686-unknown-linux-gnu-0.12.5": "4875a06092c3b0aa8ece5265a42b053dfef649adba26434b5e40eeb58c2a2aa5",
+  "i686-unknown-linux-musl-0.12.5": "b920f32f0910be363f770485117e08494eec0b09abb4f3f9f1f9b9f53a29394c",
+  "powerpc64le-unknown-linux-gnu-0.12.5": "af3f868fc8af2c3a688b1a202cbed507ec5bb32522876141f1b7f4200ed0395f",
+  "riscv64gc-unknown-linux-gnu-0.12.5": "2a6fe4a685225082d82f8afba169d038d669f85bf6cff7f5f733079a7b7282d5",
+  "riscv64gc-unknown-linux-musl-0.12.5": "c7fc653d16f0214eaaf2b3af537ec917af4861e3d00c0f10e0784fe4cbc1dcd6",
+  "s390x-unknown-linux-gnu-0.12.5": "858d51fd178fe99c69923cef568fbac3f297f3767c0e0d985aa172bc1f3e2274",
+  "x86_64-apple-darwin-0.12.5": "b3b2137477cf96c9686ebfb71524614cec780c673fd73e59bce099aef02e70e8",
+  "x86_64-pc-windows-msvc-0.12.5": "4c4d49d8738847d9b71ba319e49a5688c93eac0fe6204b1df24e98528dddf39a",
+  "x86_64-unknown-linux-gnu-0.12.5": "68a509da24b06b4223a1c0175fb5eb5bc79342b76cbeff0cfe51ac3f5b17b6b2",
+  "x86_64-unknown-linux-musl-0.12.5": "a4742988791c9aeae68c78150d6cba762062ad2a47e53738c2779d2b596bfcdb",
   "aarch64-apple-darwin-0.12.4": "99a913b606194867b43086404412c1afe079547fee72ecfb6af7e7b0dd54b0c6",
   "aarch64-pc-windows-msvc-0.12.4": "3290abffee78c30e3113f5113e26684fd057287e89124a588dcdcdd6ceec0fea",
   "aarch64-unknown-linux-gnu-0.12.4": "49d881b3403187e1f1789720881e77e4251ad4259d86c4844862657d2a35d13f",
@@ -99654,16 +99960,24 @@ var KNOWN_CHECKSUMS = {
   "x86_64-unknown-linux-musl-0.0.5": "705bbe04a93a9d4d9db5224c2f980a88bba272538a33a78ea2e966f46b4d5eb7"
 };
 
+// src/download/checksum/known-checksums.ts
+var KNOWN_CHECKSUMS = known_checksums_default;
+
 // src/download/checksum/checksum.ts
-async function validateChecksum(checksum, downloadPath, arch3, platform2, version3) {
+async function validateChecksum(checksum, downloadPath, arch3, platform2, version3, manifestChecksum) {
   const key = `${arch3}-${platform2}-${version3}`;
   const hasProvidedChecksum = checksum !== void 0 && checksum !== "";
-  const checksumToUse = hasProvidedChecksum ? checksum : KNOWN_CHECKSUMS[key];
+  const knownChecksum = KNOWN_CHECKSUMS[key];
+  const hasManifestChecksum = manifestChecksum !== void 0 && manifestChecksum !== "";
+  const checksumToUse = hasProvidedChecksum ? checksum : knownChecksum ?? (hasManifestChecksum ? manifestChecksum : void 0);
   if (checksumToUse === void 0) {
+    if (manifestChecksum !== void 0) {
+      throw new Error(`No checksum found for ${key} in manifest.`);
+    }
     debug(`No checksum found for ${key}.`);
     return;
   }
-  const checksumSource = hasProvidedChecksum ? "provided checksum" : `KNOWN_CHECKSUMS entry for ${key}`;
+  const checksumSource = hasProvidedChecksum ? "provided checksum" : knownChecksum !== void 0 ? `KNOWN_CHECKSUMS entry for ${key}` : "manifest checksum";
   debug(`Validating checksum using ${checksumSource}.`);
   const isValid = await validateFileCheckSum(downloadPath, checksumToUse);
   if (!isValid) {
@@ -99692,23 +100006,12 @@ var import_node_stream5 = require("node:stream");
 
 // src/utils/fetch.ts
 var import_undici2 = __toESM(require_undici2(), 1);
-function getProxyAgent() {
-  const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy;
-  if (httpProxy) {
-    return new import_undici2.ProxyAgent(httpProxy);
-  }
-  const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
-  if (httpsProxy) {
-    return new import_undici2.ProxyAgent(httpsProxy);
-  }
-  return void 0;
-}
 var fetch = async (url2, opts) => {
   const timeoutSignal = AbortSignal.timeout(5e3);
   const existingSignal = opts.signal;
   const mergedSignal = existingSignal ? AbortSignal.any([timeoutSignal, existingSignal]) : timeoutSignal;
   return await (0, import_undici2.fetch)(url2, {
-    dispatcher: getProxyAgent(),
+    dispatcher: new import_undici2.EnvHttpProxyAgent(),
     ...opts,
     signal: mergedSignal
   });
@@ -100556,57 +100859,111 @@ ${codeblock}`, options);
   }
 };
 
+// node_modules/smol-toml/dist/util.js
+function indexOfNewline(str, start = 0) {
+  let idx = str.indexOf("\n", start);
+  if (str.charCodeAt(idx - 1) === 13)
+    idx--;
+  return idx;
+}
+function skipComment(ctx) {
+  for (; ctx.p < ctx.s.length; ctx.p++) {
+    let c = ctx.s.charCodeAt(ctx.p);
+    if (c === 10)
+      break;
+    if (c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10) {
+      ctx.p++;
+      break;
+    }
+    if (c < 32 && c !== 9 || c === 127) {
+      throw new TomlError("control characters are not allowed in comments", {
+        toml: ctx.s,
+        ptr: ctx.p
+      });
+    }
+  }
+}
+function skipVoid(ctx, banNewLines, banComments) {
+  let c;
+  while (1) {
+    while ((c = ctx.s.charCodeAt(ctx.p)) === 32 || c === 9 || !banNewLines && (c === 10 || c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10))
+      ctx.p++;
+    if (banComments || c !== 35)
+      break;
+    skipComment(ctx);
+  }
+}
+function skipUntil(ctx, sep9, end) {
+  let ptr = ctx.p;
+  if (!end) {
+    ptr = indexOfNewline(ctx.s, ptr);
+    ctx.p = ptr < 0 ? ctx.s.length : ptr;
+    return;
+  }
+  for (; ctx.p < ctx.s.length; ctx.p++) {
+    let c = ctx.s.charCodeAt(ctx.p);
+    if (c === 35) {
+      skipComment(ctx);
+    } else if (c === end || c === sep9) {
+      return;
+    }
+  }
+  throw new TomlError("cannot find end of structure", {
+    toml: ctx.s,
+    ptr
+  });
+}
+
 // node_modules/smol-toml/dist/primitive.js
 var INT_REGEX = /^((0x[0-9a-fA-F](_?[0-9a-fA-F])*)|(([+-]|0[ob])?\d(_?\d)*))$/;
 var FLOAT_REGEX = /^[+-]?\d(_?\d)*(\.\d(_?\d)*)?([eE][+-]?\d(_?\d)*)?$/;
 var LEADING_ZERO = /^[+-]?0[0-9_]/;
-function parseString(str, ptr) {
-  let c = str[ptr++];
+function parseString(ctx) {
+  let start = ctx.p;
+  let c = ctx.s.charCodeAt(ctx.p++);
   let first = c;
-  let isLiteral = c === "'";
-  let isMultiline = c === str[ptr] && c === str[ptr + 1];
+  let isLiteral = c === 39;
+  let isMultiline = c === ctx.s.charCodeAt(ctx.p) && c === ctx.s.charCodeAt(ctx.p + 1);
   if (isMultiline) {
-    if (str[ptr += 2] === "\n")
-      ptr++;
-    else if (str[ptr] === "\r" && str[ptr + 1] === "\n")
-      ptr += 2;
+    if ((c = ctx.s.charCodeAt(ctx.p += 2)) === 10)
+      ctx.p++;
+    else if (c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10)
+      ctx.p += 2;
   }
   let parsed = "";
-  let sliceStart = ptr;
+  let sliceStart = ctx.p;
   let state3 = 0;
-  for (let i = ptr; i < str.length; i++) {
-    c = str[i];
-    if (isMultiline && (c === "\n" || c === "\r" && str[i + 1] === "\n")) {
+  for (; ctx.p < ctx.s.length; ctx.p++) {
+    c = ctx.s.charCodeAt(ctx.p);
+    if (isMultiline && (c === 10 || c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10)) {
       state3 = state3 && 3;
-    } else if (c < " " && c !== "	" || c === "\x7F") {
+    } else if (c < 32 && c !== 9 || c === 127) {
       throw new TomlError("control characters are not allowed in strings", {
-        toml: str,
-        ptr: i
+        toml: ctx.s,
+        ptr: ctx.p
       });
-    } else if ((!state3 || state3 === 3) && c === first && (!isMultiline || str[i + 1] === first && str[i + 2] === first)) {
+    } else if ((!state3 || state3 === 3) && c === first && (!isMultiline || ctx.s.charCodeAt(ctx.p + 1) === first && ctx.s.charCodeAt(ctx.p + 2) === first)) {
       if (isMultiline) {
-        if (str[i + 3] === first)
-          i++;
-        if (str[i + 3] === first)
-          i++;
+        if (ctx.s.charCodeAt(ctx.p + 3) === first)
+          ctx.p++;
+        if (ctx.s.charCodeAt(ctx.p + 3) === first)
+          ctx.p++;
       }
-      return [
-        // If we're in a newline escape still, then there's nothing to add.
-        // Also try to avoid concat if there's nothing to add to parsed, or nothing has been added to parsed.
-        state3 ? parsed : parsed + str.slice(sliceStart, i),
-        i + (isMultiline ? 3 : 1)
-      ];
+      if (!state3)
+        parsed += ctx.s.slice(sliceStart, ctx.p);
+      ctx.p += isMultiline ? 3 : 1;
+      return parsed;
     } else if (!state3) {
-      if (!isLiteral && c === "\\") {
-        parsed += str.slice(sliceStart, sliceStart = i);
+      if (!isLiteral && c === 92) {
+        parsed += ctx.s.slice(sliceStart, sliceStart = ctx.p);
         state3 = 1;
       }
     } else if (state3 === 1) {
-      if (c === "x" || c === "u" || c === "U") {
+      if (c === 120 || c === 117 || c === 85) {
         let value = 0;
-        let len = c === "x" ? 2 : c === "u" ? 4 : 8;
-        for (let j = 0; j < len; j++, i++) {
-          let hex = str.charCodeAt(i + 1);
+        let len = c === 120 ? 2 : c === 117 ? 4 : 8;
+        for (let j = 0; j < len; j++, ctx.p++) {
+          let hex = ctx.s.charCodeAt(ctx.p + 1);
           let digit = (
             /* 0-9 */
             hex >= 48 && hex <= 57 ? hex - 48 : (
@@ -100618,57 +100975,68 @@ function parseString(str, ptr) {
             )
           );
           if (digit < 0)
-            throw new TomlError("invalid non-hex character in unicode escape", { toml: str, ptr: i + 1 });
+            throw new TomlError("invalid non-hex character in unicode escape", { toml: ctx.s, ptr: ctx.p + 1 });
           value = value << 4 | digit;
         }
         if (value < 0 || value > 1114111 || value >= 55296 && value <= 57343) {
-          throw new TomlError("invalid unicode escape", { toml: str, ptr: i });
+          throw new TomlError("invalid unicode escape", { toml: ctx.s, ptr: ctx.p });
         }
         parsed += String.fromCodePoint(value);
-        sliceStart = i + 1;
+        sliceStart = ctx.p + 1;
         state3 = 0;
-      } else if (c === " " || c === "	") {
+      } else if (c === 32 || c === 9) {
         state3 = 2;
       } else {
-        if (c === "b")
+        if (c === 98)
           parsed += "\b";
-        else if (c === "t")
+        else if (c === 116)
           parsed += "	";
-        else if (c === "n")
+        else if (c === 110)
           parsed += "\n";
-        else if (c === "f")
+        else if (c === 102)
           parsed += "\f";
-        else if (c === "r")
+        else if (c === 114)
           parsed += "\r";
-        else if (c === "e")
+        else if (c === 101)
           parsed += "\x1B";
-        else if (c === '"')
+        else if (c === 34)
           parsed += '"';
-        else if (c === "\\")
+        else if (c === 92)
           parsed += "\\";
         else
-          throw new TomlError("unrecognized escape sequence", { toml: str, ptr: i });
-        sliceStart = i + 1;
+          throw new TomlError("unrecognized escape sequence", { toml: ctx.s, ptr: ctx.p });
+        sliceStart = ctx.p + 1;
         state3 = 0;
       }
-    } else if (c !== " " && c !== "	") {
+    } else if (c !== 32 && c !== 9) {
       if (state3 === 2) {
         throw new TomlError("invalid escape: only line-ending whitespace may be escaped", {
-          toml: str,
+          toml: ctx.s,
           ptr: sliceStart
         });
       }
-      state3 = !isLiteral && c === "\\" ? 1 : 0;
-      sliceStart = i;
+      state3 = !isLiteral && c === 92 ? 1 : 0;
+      sliceStart = ctx.p;
     }
   }
-  throw new TomlError("unfinished string", { toml: str, ptr });
+  throw new TomlError("unfinished string", { toml: ctx.s, ptr: start });
 }
-function parseValue2(value, toml, ptr, integersAsBigInt) {
-  if (value === "true")
-    return true;
-  if (value === "false")
-    return false;
+function sliceAndTrimEndOf(ctx, start, end) {
+  let value = ctx.s.slice(start, end);
+  let commentIdx = value.indexOf("#");
+  if (commentIdx > 0) {
+    skipComment({ s: value, p: commentIdx, d: 0 });
+    value = value.slice(0, commentIdx);
+  }
+  return value.trimEnd();
+}
+function parseValue2(ctx, integersAsBigInt, end) {
+  let ptr = ctx.p;
+  let err = { toml: ctx.s, ptr };
+  skipUntil(ctx, 44, end);
+  let value = sliceAndTrimEndOf(ctx, ptr, ctx.p);
+  if (!value)
+    throw new TomlError("incomplete declaration: value expected", err);
   if (value === "-inf")
     return -Infinity;
   if (value === "inf" || value === "+inf")
@@ -100680,25 +101048,16 @@ function parseValue2(value, toml, ptr, integersAsBigInt) {
   let isInt = INT_REGEX.test(value);
   if (isInt || FLOAT_REGEX.test(value)) {
     if (LEADING_ZERO.test(value)) {
-      throw new TomlError("leading zeroes are not allowed", {
-        toml,
-        ptr
-      });
+      throw new TomlError("leading zeroes are not allowed", err);
     }
     value = value.replace(/_/g, "");
     let numeric2 = +value;
     if (isNaN(numeric2)) {
-      throw new TomlError("invalid number", {
-        toml,
-        ptr
-      });
+      throw new TomlError("invalid number", err);
     }
     if (isInt) {
       if ((isInt = !Number.isSafeInteger(numeric2)) && !integersAsBigInt) {
-        throw new TomlError("integer value cannot be represented losslessly", {
-          toml,
-          ptr
-        });
+        throw new TomlError("integer value cannot be represented losslessly", err);
       }
       if (isInt || integersAsBigInt === true)
         numeric2 = BigInt(value);
@@ -100706,279 +101065,184 @@ function parseValue2(value, toml, ptr, integersAsBigInt) {
     return numeric2;
   }
   const date = new TomlDate(value);
-  if (!date.isValid()) {
-    throw new TomlError("invalid value", {
-      toml,
-      ptr
-    });
-  }
+  if (!date.isValid())
+    throw new TomlError("invalid value", err);
   return date;
 }
 
-// node_modules/smol-toml/dist/util.js
-function indexOfNewline(str, start = 0, end = str.length) {
-  let idx = str.indexOf("\n", start);
-  if (str[idx - 1] === "\r")
-    idx--;
-  return idx <= end ? idx : -1;
-}
-function skipComment(str, ptr) {
-  for (let i = ptr; i < str.length; i++) {
-    let c = str[i];
-    if (c === "\n")
-      return i;
-    if (c === "\r" && str[i + 1] === "\n")
-      return i + 1;
-    if (c < " " && c !== "	" || c === "\x7F") {
-      throw new TomlError("control characters are not allowed in comments", {
-        toml: str,
+// node_modules/smol-toml/dist/extract.js
+function extractValue(ctx, end, integersAsBigInt) {
+  let ptr = ctx.p;
+  let c = ctx.s.charCodeAt(ptr);
+  if (c === 91 || c === 123) {
+    if (!ctx.d--) {
+      throw new TomlError("document contains excessively nested structures. aborting.", {
+        toml: ctx.s,
         ptr
       });
     }
+    let value = c === 91 ? parseArray(ctx, integersAsBigInt) : parseInlineTable(ctx, integersAsBigInt);
+    ctx.d++;
+    return value;
   }
-  return str.length;
-}
-function skipVoid(str, ptr, banNewLines, banComments) {
-  let c;
-  while (1) {
-    while ((c = str[ptr]) === " " || c === "	" || !banNewLines && (c === "\n" || c === "\r" && str[ptr + 1] === "\n"))
-      ptr++;
-    if (banComments || c !== "#")
-      break;
-    ptr = skipComment(str, ptr);
+  if (c === 34 || c === 39) {
+    return parseString(ctx);
   }
-  return ptr;
-}
-function skipUntil(str, ptr, sep9, end, banNewLines = false) {
-  if (!end) {
-    ptr = indexOfNewline(str, ptr);
-    return ptr < 0 ? str.length : ptr;
+  if (c === 116) {
+    if (ctx.s.charCodeAt(++ctx.p) !== 114 || ctx.s.charCodeAt(++ctx.p) !== 117 || ctx.s.charCodeAt(++ctx.p) !== 101)
+      throw new TomlError("invalid value", { toml: ctx.s, ptr });
+    ctx.p++;
+    return true;
   }
-  for (let i = ptr; i < str.length; i++) {
-    let c = str[i];
-    if (c === "#") {
-      i = indexOfNewline(str, i);
-      if (i < 0)
-        break;
-    } else if (c === sep9) {
-      return i + 1;
-    } else if (c === end || banNewLines && (c === "\n" || c === "\r" && str[i + 1] === "\n")) {
-      return i;
-    }
+  if (c === 102) {
+    if (ctx.s.charCodeAt(++ctx.p) !== 97 || ctx.s.charCodeAt(++ctx.p) !== 108 || ctx.s.charCodeAt(++ctx.p) !== 115 || ctx.s.charCodeAt(++ctx.p) !== 101)
+      throw new TomlError("invalid value", { toml: ctx.s, ptr });
+    ctx.p++;
+    return false;
   }
-  throw new TomlError("cannot find end of structure", {
-    toml: str,
-    ptr
-  });
-}
-
-// node_modules/smol-toml/dist/extract.js
-function sliceAndTrimEndOf(str, startPtr, endPtr) {
-  let value = str.slice(startPtr, endPtr);
-  let commentIdx = value.indexOf("#");
-  if (commentIdx > -1) {
-    skipComment(str, commentIdx);
-    value = value.slice(0, commentIdx);
-  }
-  return [value.trimEnd(), commentIdx];
-}
-function extractValue(str, ptr, end, depth, integersAsBigInt) {
-  if (depth === 0) {
-    throw new TomlError("document contains excessively nested structures. aborting.", {
-      toml: str,
-      ptr
-    });
-  }
-  let c = str[ptr];
-  if (c === "[" || c === "{") {
-    let [value, endPtr2] = c === "[" ? parseArray(str, ptr, depth, integersAsBigInt) : parseInlineTable(str, ptr, depth, integersAsBigInt);
-    if (end) {
-      endPtr2 = skipVoid(str, endPtr2);
-      if (str[endPtr2] === ",")
-        endPtr2++;
-      else if (str[endPtr2] !== end) {
-        throw new TomlError("expected comma or end of structure", {
-          toml: str,
-          ptr: endPtr2
-        });
-      }
-    }
-    return [value, endPtr2];
-  }
-  if (c === '"' || c === "'") {
-    let [parsed, endPtr2] = parseString(str, ptr);
-    if (end) {
-      endPtr2 = skipVoid(str, endPtr2);
-      if (str[endPtr2] && str[endPtr2] !== "," && str[endPtr2] !== end && str[endPtr2] !== "\n" && str[endPtr2] !== "\r") {
-        throw new TomlError("unexpected character encountered", {
-          toml: str,
-          ptr: endPtr2
-        });
-      }
-      if (str[endPtr2] === ",")
-        endPtr2++;
-    }
-    return [parsed, endPtr2];
-  }
-  let endPtr = skipUntil(str, ptr, ",", end);
-  let slice = sliceAndTrimEndOf(str, ptr, endPtr - (str[endPtr - 1] === "," ? 1 : 0));
-  if (!slice[0]) {
-    throw new TomlError("incomplete key-value declaration: no value specified", {
-      toml: str,
-      ptr
-    });
-  }
-  if (end && slice[1] > -1) {
-    endPtr = skipVoid(str, ptr + slice[1]);
-    if (str[endPtr] === ",")
-      endPtr++;
-  }
-  return [
-    parseValue2(slice[0], str, ptr, integersAsBigInt),
-    endPtr
-  ];
+  return parseValue2(ctx, integersAsBigInt, end);
 }
 
 // node_modules/smol-toml/dist/struct.js
 var KEY_PART_RE = /^[a-zA-Z0-9-_]+[ \t]*$/;
-function parseKey(str, ptr, end = "=") {
-  let dot = ptr - 1;
+function parseKey(ctx, end = "=") {
+  let start = ctx.p;
+  let dot = start - 1;
   let parsed = [];
-  let endPtr = str.indexOf(end, ptr);
+  let endPtr = ctx.s.indexOf(end, start);
   if (endPtr < 0) {
     throw new TomlError("incomplete key-value: cannot find end of key", {
-      toml: str,
-      ptr
+      toml: ctx.s,
+      ptr: start
     });
   }
   do {
-    let c = str[ptr = ++dot];
-    if (c !== " " && c !== "	") {
-      if (c === '"' || c === "'") {
-        if (c === str[ptr + 1] && c === str[ptr + 2]) {
+    let c = ctx.s.charCodeAt(ctx.p = ++dot);
+    if (c !== 32 && c !== 9) {
+      if (c === 34 || c === 39) {
+        if (c === ctx.s.charCodeAt(ctx.p + 1) && c === ctx.s.charCodeAt(ctx.p + 2)) {
           throw new TomlError("multiline strings are not allowed in keys", {
-            toml: str,
-            ptr
+            toml: ctx.s,
+            ptr: ctx.p
           });
         }
-        let [part, eos] = parseString(str, ptr);
-        dot = str.indexOf(".", eos);
-        let strEnd = str.slice(eos, dot < 0 || dot > endPtr ? endPtr : dot);
+        let part = parseString(ctx);
+        dot = ctx.s.indexOf(".", ctx.p);
+        let strEnd = ctx.s.slice(ctx.p, dot < 0 || dot > endPtr ? endPtr : dot);
         let newLine = indexOfNewline(strEnd);
         if (newLine > -1) {
           throw new TomlError("newlines are not allowed in keys", {
-            toml: str,
-            ptr: ptr + dot + newLine
+            toml: ctx.s,
+            ptr: newLine
           });
         }
         if (strEnd.trimStart()) {
           throw new TomlError("found extra tokens after the string part", {
-            toml: str,
-            ptr: eos
+            toml: ctx.s,
+            ptr: ctx.p
           });
         }
-        if (endPtr < eos) {
-          endPtr = str.indexOf(end, eos);
+        if (endPtr < ctx.p) {
+          endPtr = ctx.s.indexOf(end, ctx.p);
           if (endPtr < 0) {
             throw new TomlError("incomplete key-value: cannot find end of key", {
-              toml: str,
-              ptr
+              toml: ctx.s,
+              ptr: start
             });
           }
         }
         parsed.push(part);
       } else {
-        dot = str.indexOf(".", ptr);
-        let part = str.slice(ptr, dot < 0 || dot > endPtr ? endPtr : dot);
+        dot = ctx.s.indexOf(".", ctx.p);
+        let part = ctx.s.slice(ctx.p, dot < 0 || dot > endPtr ? endPtr : dot);
         if (!KEY_PART_RE.test(part)) {
           throw new TomlError("only letter, numbers, dashes and underscores are allowed in keys", {
-            toml: str,
-            ptr
+            toml: ctx.s,
+            ptr: ctx.p
           });
         }
         parsed.push(part.trimEnd());
       }
     }
   } while (dot + 1 && dot < endPtr);
-  return [parsed, skipVoid(str, endPtr + 1, true, true)];
+  ctx.p = endPtr + 1;
+  skipVoid(ctx, true, true);
+  return parsed;
 }
-function parseInlineTable(str, ptr, depth, integersAsBigInt) {
+function parseInlineTable(ctx, integersAsBigInt) {
   let res = {};
   let seen = /* @__PURE__ */ new Set();
   let c;
-  ptr++;
-  while ((c = str[ptr++]) !== "}" && c) {
-    if (c === ",") {
-      throw new TomlError("expected value, found comma", {
-        toml: str,
-        ptr: ptr - 1
-      });
-    } else if (c === "#")
-      ptr = skipComment(str, ptr);
-    else if (c !== " " && c !== "	" && c !== "\n" && c !== "\r") {
-      let k;
-      let t = res;
-      let hasOwn = false;
-      let [key, keyEndPtr] = parseKey(str, ptr - 1);
-      for (let i = 0; i < key.length; i++) {
-        if (i)
-          t = hasOwn ? t[k] : t[k] = {};
-        k = key[i];
-        if ((hasOwn = Object.hasOwn(t, k)) && (typeof t[k] !== "object" || seen.has(t[k]))) {
-          throw new TomlError("trying to redefine an already defined value", {
-            toml: str,
-            ptr
-          });
-        }
-        if (!hasOwn && k === "__proto__") {
-          Object.defineProperty(t, k, { enumerable: true, configurable: true, writable: true });
-        }
-      }
-      if (hasOwn) {
+  ctx.p++;
+  while (ctx.p < ctx.s.length) {
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p)) === 125) {
+      ctx.p++;
+      return res;
+    }
+    let k;
+    let t = res;
+    let hasOwn = false;
+    let p = ctx.p;
+    let key = parseKey(ctx);
+    for (let i = 0; i < key.length; i++) {
+      if (i)
+        t = hasOwn ? t[k] : t[k] = {};
+      k = key[i];
+      if ((hasOwn = Object.hasOwn(t, k)) && (typeof t[k] !== "object" || seen.has(t[k]))) {
         throw new TomlError("trying to redefine an already defined value", {
-          toml: str,
-          ptr
+          toml: ctx.s,
+          ptr: p
         });
       }
-      let [value, valueEndPtr] = extractValue(str, keyEndPtr, "}", depth - 1, integersAsBigInt);
-      seen.add(value);
-      t[k] = value;
-      ptr = valueEndPtr;
+      if (!hasOwn && k === "__proto__") {
+        Object.defineProperty(t, k, { enumerable: true, configurable: true, writable: true });
+      }
+    }
+    if (hasOwn) {
+      throw new TomlError("trying to redefine an already defined value", {
+        toml: ctx.s,
+        ptr: ctx.p
+      });
+    }
+    let value = extractValue(ctx, 125, integersAsBigInt);
+    seen.add(t[k] = value);
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p++)) === 125) {
+      return res;
+    }
+    if (c !== 44) {
+      throw new TomlError("expected comma or end of structure", { toml: ctx.s, ptr: ctx.p - 1 });
     }
   }
-  if (!c) {
-    throw new TomlError("unfinished table encountered", {
-      toml: str,
-      ptr
-    });
-  }
-  return [res, ptr];
+  throw new TomlError("unfinished table encountered", {
+    toml: ctx.s,
+    ptr: ctx.p
+  });
 }
-function parseArray(str, ptr, depth, integersAsBigInt) {
+function parseArray(ctx, integersAsBigInt) {
   let res = [];
   let c;
-  ptr++;
-  while ((c = str[ptr++]) !== "]" && c) {
-    if (c === ",") {
-      throw new TomlError("expected value, found comma", {
-        toml: str,
-        ptr: ptr - 1
-      });
-    } else if (c === "#")
-      ptr = skipComment(str, ptr);
-    else if (c !== " " && c !== "	" && c !== "\n" && c !== "\r") {
-      let e = extractValue(str, ptr - 1, "]", depth - 1, integersAsBigInt);
-      res.push(e[0]);
-      ptr = e[1];
+  ctx.p++;
+  while (ctx.p < ctx.s.length) {
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p)) === 93) {
+      ctx.p++;
+      return res;
+    }
+    res.push(extractValue(ctx, 93, integersAsBigInt));
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p++)) === 93) {
+      return res;
+    }
+    if (c !== 44) {
+      throw new TomlError("expected comma or end of structure", { toml: ctx.s, ptr: ctx.p - 1 });
     }
   }
-  if (!c) {
-    throw new TomlError("unfinished array encountered", {
-      toml: str,
-      ptr
-    });
-  }
-  return [res, ptr];
+  throw new TomlError("unfinished array encountered", {
+    toml: ctx.s,
+    ptr: ctx.p
+  });
 }
 
 // node_modules/smol-toml/dist/parse.js
@@ -101042,25 +101306,29 @@ function peekTable(key, table, meta, type) {
   return [k, t, state3.c];
 }
 function parse4(toml, { maxDepth = 1e3, integersAsBigInt } = {}) {
+  let ctx = { s: toml, p: 0, d: maxDepth };
   let res = {};
   let meta = {};
+  let tmp;
   let tbl = res;
   let m = meta;
-  for (let ptr = skipVoid(toml, 0); ptr < toml.length; ) {
-    if (toml[ptr] === "[") {
-      let isTableArray = toml[++ptr] === "[";
-      let k = parseKey(toml, ptr += +isTableArray, "]");
+  skipVoid(ctx);
+  while (ctx.p < toml.length) {
+    if (toml.charCodeAt(ctx.p) === 91) {
+      let isTableArray = toml.charCodeAt(++ctx.p) === 91;
+      tmp = ctx.p += +isTableArray;
+      let k = parseKey(ctx, "]");
       if (isTableArray) {
-        if (toml[k[1] - 1] !== "]") {
+        if (toml.charCodeAt(ctx.p - 1) !== 93) {
           throw new TomlError("expected end of table declaration", {
             toml,
-            ptr: k[1] - 1
+            ptr: ctx.p - 1
           });
         }
-        k[1]++;
+        ctx.p++;
       }
       let p = peekTable(
-        k[0],
+        k,
         res,
         meta,
         isTableArray ? 2 : 1
@@ -101069,16 +101337,16 @@ function parse4(toml, { maxDepth = 1e3, integersAsBigInt } = {}) {
       if (!p) {
         throw new TomlError("trying to redefine an already defined table or value", {
           toml,
-          ptr
+          ptr: tmp
         });
       }
       m = p[2];
       tbl = p[1];
-      ptr = k[1];
     } else {
-      let k = parseKey(toml, ptr);
+      tmp = ctx.p;
+      let k = parseKey(ctx);
       let p = peekTable(
-        k[0],
+        k,
         tbl,
         m,
         0
@@ -101087,21 +101355,19 @@ function parse4(toml, { maxDepth = 1e3, integersAsBigInt } = {}) {
       if (!p) {
         throw new TomlError("trying to redefine an already defined table or value", {
           toml,
-          ptr
+          ptr: tmp
         });
       }
-      let v = extractValue(toml, k[1], void 0, maxDepth, integersAsBigInt);
-      p[1][p[0]] = v[0];
-      ptr = v[1];
+      p[1][p[0]] = extractValue(ctx, void 0, integersAsBigInt);
     }
-    ptr = skipVoid(toml, ptr, true);
-    if (toml[ptr] && toml[ptr] !== "\n" && toml[ptr] !== "\r") {
+    skipVoid(ctx, true);
+    if (ctx.p < toml.length && (tmp = toml.charCodeAt(ctx.p)) !== 10 && tmp !== 13) {
       throw new TomlError("each key-value declaration must be followed by an end-of-line", {
         toml,
-        ptr
+        ptr: ctx.p
       });
     }
-    ptr = skipVoid(toml, ptr);
+    skipVoid(ctx);
   }
   return res;
 }
@@ -101581,6 +101847,7 @@ async function downloadVersion(platform2, arch3, version3, checksum, githubToken
     );
   }
   const resolvedChecksum = manifestUrl === void 0 ? checksum : resolveChecksum(checksum, artifact.checksum);
+  const manifestChecksum = artifact.checksum;
   const mirrorUrl = downloadFromAstralMirror ? rewriteToMirror(artifact.downloadUrl) : void 0;
   const downloadUrl = mirrorUrl ?? artifact.downloadUrl;
   try {
@@ -101591,6 +101858,7 @@ async function downloadVersion(platform2, arch3, version3, checksum, githubToken
       arch3,
       version3,
       resolvedChecksum,
+      manifestChecksum,
       githubTokenForUrl(downloadUrl, githubToken)
     );
   } catch (err) {
@@ -101607,6 +101875,7 @@ async function downloadVersion(platform2, arch3, version3, checksum, githubToken
       arch3,
       version3,
       resolvedChecksum,
+      manifestChecksum,
       githubTokenForUrl(artifact.downloadUrl, githubToken)
     );
   }
@@ -101624,14 +101893,21 @@ function githubTokenForUrl(downloadUrl, githubToken) {
     return void 0;
   }
 }
-async function downloadArtifact(downloadUrl, artifactName, platform2, arch3, version3, checksum, githubToken) {
+async function downloadArtifact(downloadUrl, artifactName, platform2, arch3, version3, checksum, manifestChecksum, githubToken) {
   info2(`Downloading uv from "${downloadUrl}" ...`);
   const downloadPath = await downloadTool(
     downloadUrl,
     void 0,
     githubToken
   );
-  await validateChecksum(checksum, downloadPath, arch3, platform2, version3);
+  await validateChecksum(
+    checksum,
+    downloadPath,
+    arch3,
+    platform2,
+    version3,
+    manifestChecksum
+  );
   let uvDir;
   if (platform2 === "pc-windows-msvc") {
     try {
@@ -101684,7 +101960,7 @@ function loadInputs() {
   const checksum = getInput("checksum");
   const enableCache = getEnableCache();
   const restoreCache3 = getInput("restore-cache") === "true";
-  const saveCache2 = getInput("save-cache") === "true";
+  const saveCache2 = getSaveCache();
   const cacheSuffix = getInput("cache-suffix") || "";
   const cacheLocalPath = getCacheLocalPath(
     workingDirectory,
@@ -101793,6 +102069,17 @@ function getEnableCache() {
     return true;
   }
   return enableCacheInput === "true";
+}
+function getSaveCache() {
+  const saveCacheInput = getInput("save-cache");
+  if (saveCacheInput === "auto") {
+    if (process.env.GITHUB_EVENT_NAME === "merge_group") {
+      info2("Cache saving is disabled for the merge_group event");
+      return false;
+    }
+    return true;
+  }
+  return saveCacheInput === "true";
 }
 function getToolBinDir(workingDirectory) {
   const toolBinDirInput = getInput("tool-bin-dir");
@@ -101958,6 +102245,40 @@ function getResolutionStrategy() {
   );
 }
 
+// src/utils/python-runtime.ts
+var import_node_child_process = require("node:child_process");
+var import_node_util4 = require("node:util");
+var execFileAsync = (0, import_node_util4.promisify)(import_node_child_process.execFile);
+async function getPythonRuntimeId(inputs) {
+  if (!inputs.activateEnvironment) {
+    return "";
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      "uv",
+      [
+        "python",
+        "list",
+        inputs.venvPath,
+        "--only-installed",
+        "--output-format",
+        "json"
+      ],
+      { encoding: "utf8" }
+    );
+    const pythons = JSON.parse(stdout);
+    if (!Array.isArray(pythons) || pythons.length !== 1 || typeof pythons[0]?.key !== "string" || pythons[0].key === "") {
+      throw new Error("Expected one installed Python with a runtime key");
+    }
+    return pythons[0].key;
+  } catch (error2) {
+    throw new Error(
+      `Failed to identify the activated environment's Python runtime: ${error2 instanceof Error ? error2.message : String(error2)}`,
+      { cause: error2 }
+    );
+  }
+}
+
 // src/setup-uv.ts
 var sourceDir = __dirname;
 function formatUnexpectedFailure(error2) {
@@ -102028,6 +102349,7 @@ async function run() {
     info2(`Successfully installed uv version ${setupResult.version}`);
     const detectedPythonVersion = await getPythonVersion2(inputs);
     setOutput("python-version", detectedPythonVersion);
+    setOutput("python-runtime-id", await getPythonRuntimeId(inputs));
     if (inputs.enableCache) {
       await restoreCache2(inputs, detectedPythonVersion);
     }
@@ -102201,8 +102523,8 @@ undici/lib/web/websocket/frame.js:
 
 smol-toml/dist/date.js:
 smol-toml/dist/error.js:
-smol-toml/dist/primitive.js:
 smol-toml/dist/util.js:
+smol-toml/dist/primitive.js:
 smol-toml/dist/extract.js:
 smol-toml/dist/struct.js:
 smol-toml/dist/parse.js:
