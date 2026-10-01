@@ -55,7 +55,7 @@ test("is a node24 action with no pre hook or nested pins and the expected inputs
   const implementation = ["main.cjs", "post.cjs", "oidc.cjs"]
     .map((filename) => fs.readFileSync(path.join(__dirname, filename), "utf8"))
     .join("\n");
-  assert.doesNotMatch(implementation, /GITHUB_ENV|STEPSECURITY_API_KEY/);
+  assert.doesNotMatch(implementation, /STEPSECURITY_API_KEY/);
   assert.ok(!fs.existsSync(path.join(__dirname, "DESIGN.md")));
 });
 
@@ -204,6 +204,7 @@ function pipelineDeps(overrides = {}) {
     readIdentity: (config) => `identity-of-${config.test_token_url}`,
     retireIncumbent: record("retire", undefined),
     install: record("install", { binary: "/usr/bin/aegis", report: "/var/log/aegis/service.jsonl" }),
+    exportTrust: () => {},
     ...overrides,
   };
   return { calls, tokens, deps };
@@ -220,6 +221,7 @@ function pipelineEnv(extra = {}) {
       ...oidcEnv,
       GITHUB_STATE: path.join(directory, "state"),
       GITHUB_OUTPUT: path.join(directory, "output"),
+      GITHUB_ENV: path.join(directory, "env"),
       GITHUB_STEP_SUMMARY: path.join(directory, "summary"),
       GITHUB_ACTION: "__tempoxyz_gh-actions_actions_secure-runner",
       GITHUB_EVENT_NAME: "push",
@@ -275,6 +277,41 @@ test("main passes an exact Aegis release tag to the server downloader", async ()
   const { calls, deps } = pipelineDeps({ prepareConfig: async () => config });
   await captured(() => mainMain({ env, platform: "linux", deps }));
   assert.equal(calls.find((call) => call[0] === "download")[1].version, "20260927T194115Z-5e7bd8b807b2");
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("main exports Node trust only after successful Aegis installation", async () => {
+  const { env, config, directory } = pipelineEnv();
+  let installed = false;
+  let exported = false;
+  const { deps } = pipelineDeps({
+    prepareConfig: async () => config,
+    install: async () => { installed = true; return { binary: "/usr/bin/aegis" }; },
+    exportTrust: (options) => {
+      assert.equal(installed, true);
+      assert.deepEqual(options, { env, platform: "linux" });
+      exported = true;
+    },
+  });
+  await captured(() => mainMain({ env, platform: "linux", deps }));
+  assert.equal(exported, true);
+  exported = false;
+  deps.install = async () => { throw new Error("installation failed"); };
+  await captured(() => mainMain({ env, platform: "linux", deps }));
+  assert.equal(exported, false);
+  await captured(() => mainMain({ env: { ...env, "INPUT_DISABLE-ENFORCEMENT": "true" }, platform: "linux", deps }));
+  assert.equal(exported, false);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("main fails if Node trust cannot be exported after installation", async () => {
+  const { env, config, directory } = pipelineEnv();
+  const { deps } = pipelineDeps({
+    prepareConfig: async () => config,
+    exportTrust: () => { throw new Error("Node trust export failed"); },
+  });
+  await assert.rejects(captured(() => mainMain({ env, platform: "linux", deps })), /Node trust export failed/);
+  assert.equal(fs.existsSync(env.GITHUB_STEP_SUMMARY), false);
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
@@ -418,6 +455,7 @@ test("main degrades at the failing stage, installs nothing after it, and says wh
     };
     const { calls, deps } = pipelineDeps({
       prepareConfig: dep === "prepareConfig" ? failing : async () => config,
+      exportTrust: () => assert.fail("failed Aegis setup must not change Node trust"),
       [dep]: dep === "prepareConfig" ? failing : (dep === "exchangeSocket" || dep === "ensureCli" || dep === "download" || dep === "install" || dep === "retireIncumbent"
         ? (...args) => { calls.push([name, ...args]); return failing(); }
         : failing),

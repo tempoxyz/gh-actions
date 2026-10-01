@@ -154,6 +154,22 @@ still fails, since that indicates a bug rather than an outage. On self-hosted
 Linux runners a failed Aegis cleanup still fails the job, because a leftover
 managed installation would affect the next job there.
 
+## Node certificate trust
+
+After Aegis installs successfully, Secure Runner exports `NODE_EXTRA_CA_CERTS`
+through `GITHUB_ENV` for later steps. On Linux it points to
+`/etc/aegis/bundle.pem`; macOS and Windows use their installed Aegis bundle.
+If the job already sets `NODE_EXTRA_CA_CERTS`, Secure Runner creates a private
+combined bundle under `RUNNER_TEMP` containing both the existing certificates
+and Aegis's certificates.
+
+This covers Node fetch clients such as pnpm 11's trusted-publishing OIDC token
+exchange, which does not apply `.npmrc`'s `cafile` setting. TLS verification and
+Aegis package policy remain enabled; registry writes already pass through
+without package scanning. Disabled or unsuccessful installations do not change
+Node trust. A failure to export trust after installation fails setup rather
+than leaving later Node requests unable to authenticate Aegis's certificates.
+
 ## Usage
 
 Pin this action to a full commit SHA in production:

@@ -522,6 +522,8 @@ jobs:
           echo "policy=$policy" >> "$GITHUB_OUTPUT"
       - name: Install pinact
         uses: tempoxyz/gh-actions/actions/setup-pinact@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+        with:
+          version: v5.0.0
       - name: Verify timestamp tag comment
         env:
           GITHUB_TOKEN: ${{ github.token }}
