@@ -16,6 +16,7 @@ const availabilityReasons = new Set([
 async function scanRuntimeWarnings(file) {
   const counts = new Map();
   let total = 0;
+  let blocked = 0;
   const lines = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
   for await (const line of lines) {
     let record;
@@ -25,12 +26,17 @@ async function scanRuntimeWarnings(file) {
       continue;
     }
     // Count decisions, not the separate lookup/attempt diagnostic records.
-    if (!record || record.msg !== "package decision" || record.action !== "warn") continue;
+    if (!record || record.msg !== "package decision") continue;
+    if (record.action === "block") {
+      blocked += 1;
+      continue;
+    }
+    if (record.action !== "warn") continue;
     total += 1;
     const reason = availabilityReasons.has(record.reason) ? record.reason : "other warning verdicts";
     counts.set(reason, (counts.get(reason) || 0) + 1);
   }
-  return { total, counts };
+  return { total, counts, blocked };
 }
 
 function runtimeWarningMessage({ total, counts }) {
