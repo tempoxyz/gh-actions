@@ -54,3 +54,6 @@ rules:
   - min_age: 0
     conditions:
       - expr: ActionName matches "^tempoxyz/gh-actions(/|$)" && ActionVersion == "392079a54ac0240e1b21417eca38b7c0a50bf55d"
+  - min_age: 0
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/actions/secure-runner" && ActionVersion == "d3efa0f3c3121a949e342d9a52240f988fbfd4ee"

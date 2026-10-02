@@ -110,7 +110,7 @@ jobs:
       matrix: ${{ steps.matrix.outputs.json }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+        uses: tempoxyz/gh-actions/actions/secure-runner@d3efa0f3c3121a949e342d9a52240f988fbfd4ee # 2026-10-01T21-14-33Z-d3efa0f3
 
       - name: Validate inputs and resolve the build matrix
         id: matrix
@@ -170,7 +170,7 @@ jobs:
       EXTENSION_VERSION: ${{ inputs.version }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+        uses: tempoxyz/gh-actions/actions/secure-runner@d3efa0f3c3121a949e342d9a52240f988fbfd4ee # 2026-10-01T21-14-33Z-d3efa0f3
 
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
@@ -281,7 +281,7 @@ jobs:
       VERSION: ${{ inputs.version }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+        uses: tempoxyz/gh-actions/actions/secure-runner@d3efa0f3c3121a949e342d9a52240f988fbfd4ee # 2026-10-01T21-14-33Z-d3efa0f3
 
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
