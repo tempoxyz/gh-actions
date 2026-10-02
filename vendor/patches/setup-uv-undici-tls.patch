@@ -1,0 +1,19 @@
+--- a/dist/setup/index.cjs
++++ b/dist/setup/index.cjs
+@@ -38966,12 +38966,14 @@
+       return new Pool(origin, opts);
+     }
+     var BalancedPool = class extends PoolBase {
+-      constructor(upstreams = [], { factory = defaultFactory, ...opts } = {}) {
++      constructor(upstreams = [], { factory = defaultFactory, connect, tls, ...opts } = {}) {
+         if (typeof factory !== "function") {
+           throw new InvalidArgumentError("factory must be a function.");
+         }
+         super();
+-        this[kOptions] = { ...util7.deepClone(opts) };
++        if (connect && typeof connect !== "function") connect = { ...connect };
++        if (tls && typeof tls !== "function") tls = { ...tls };
++        this[kOptions] = { ...util7.deepClone(opts), connect, tls };
+         this[kIndex] = -1;
+         this[kCurrentWeight] = 0;
+         this[kMaxWeightPerServer] = this[kOptions].maxWeightPerServer || 100;

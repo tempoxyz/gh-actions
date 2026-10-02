@@ -270,6 +270,8 @@ actions:
     ref: main
     ref_type: branch
     sha: 0e3884b860e20d3f4d5daa2347130beb51ccde47
+    security_patches:
+      - vendor/patches/setup-uv-undici-tls.patch
     exclude:
       - src/
       - __tests__/

@@ -8,6 +8,10 @@ table of what is vendored lives in the [root README](../README.md#3rd-party-acti
 Never edit a vendored tree by hand. Change the manifest and re-run the sync; CI rebuilds every
 tree from the manifest and fails on any difference.
 
+For a security fix not yet bundled upstream, list reviewed patch files under an entry's
+`security_patches`, using paths under `vendor/patches/`. Sync applies them with zero fuzz
+and records them in the provenance stamp; remove the patch when updating to fixed upstream code.
+
 ## Commands
 
 | Command | What it does |
@@ -20,7 +24,7 @@ tree from the manifest and fails on any difference.
 | `node vendor/update.mjs --apply <name>...` | Bump `ref`/`sha`, resolve any new nested pins, re-sync. Used by `.github/workflows/vendor-update.yml`, run manually (optionally for a single action), which opens one PR per updated action. |
 | `node --test vendor/lib.test.js` | Unit tests for glob matching, `uses:` rewriting, README rendering. |
 
-Requirements: Node 20+, git, tar, `yq` (GitHub-hosted runners ship all four; locally `brew install yq`).
+Requirements: Node 20+, git, tar, patch, `yq` (GitHub-hosted runners provide these; locally `brew install yq`).
 
 ## What the sync does per entry
 
