@@ -332,6 +332,7 @@ jobs:
     name: tempo-extension build
     uses: ./.github/workflows/tempo-extension.yml
     permissions:
+      actions: read
       attestations: write
       contents: read
       id-token: write
@@ -359,8 +360,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Test PR audit comment authorization and completion gate
-        run: node --test actions/pr-audit-comment/pr_audit_comment.test.js testdata/pr-audit.test.js
+      - name: Test PR audit gates and extension artifact recovery
+        run: node --test actions/pr-audit-comment/pr_audit_comment.test.js testdata/pr-audit.test.js testdata/extension-artifacts.test.js
 
       # Guard: the reusable workflow and composite action must use the same
       # pinned vendored tool, since they duplicate the zizmor + actionlint steps.

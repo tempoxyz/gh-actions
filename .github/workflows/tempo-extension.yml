@@ -64,6 +64,16 @@ on:
         required: false
         type: boolean
         default: false
+      artifact-run-id:
+        description: Previous main-branch run whose attested build artifacts should be reused. Zero builds fresh artifacts.
+        required: false
+        type: number
+        default: 0
+      promote-latest:
+        description: Update latest pointers after uploading immutable versioned objects. Disable for manual recovery.
+        required: false
+        type: boolean
+        default: true
       environment:
         description: GitHub environment that holds the publishing secrets.
         required: false
@@ -104,6 +114,7 @@ jobs:
   resolve:
     name: resolve targets
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       id-token: write
     outputs:
@@ -115,11 +126,16 @@ jobs:
       - name: Validate inputs and resolve the build matrix
         id: matrix
         env:
+          ARTIFACT_RUN_ID: ${{ inputs.artifact-run-id }}
           PACKAGE: ${{ inputs.package }}
           TARGETS: ${{ inputs.targets }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+          if [[ ! "$ARTIFACT_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::artifact-run-id must be a nonnegative integer"
+            exit 1
+          fi
           # Both values become R2 object keys and manifest URLs, so keep them path-safe.
           if [[ ! "$PACKAGE" =~ ^tempo-[a-z0-9][a-z0-9-]*$ ]]; then
             echo "::error::package must look like tempo-<name>, got: $PACKAGE"
@@ -153,7 +169,9 @@ jobs:
   build:
     name: build (${{ matrix.suffix }})
     needs: resolve
+    if: inputs.artifact-run-id == 0
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     permissions:
       attestations: write
       contents: read
@@ -187,11 +205,13 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
+        timeout-minutes: 10
         env:
           INSTALL_COMMAND: ${{ inputs.install-command }}
         run: bash -euo pipefail -c "$INSTALL_COMMAND"
 
       - name: Build
+        timeout-minutes: 15
         env:
           BUILD_COMMAND: ${{ inputs.build-command }}
         run: |
@@ -254,6 +274,26 @@ jobs:
         if: inputs.publish
         run: cosign sign-blob --yes --bundle "$EXTENSION_OUTPUT.sigstore.json" "$EXTENSION_OUTPUT"
 
+      - name: Record artifact source and checksums
+        if: inputs.publish
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const childProcess = require('node:child_process');
+          const path = require('node:path');
+          const output = process.env.EXTENSION_OUTPUT;
+          const files = Object.fromEntries(fs.readdirSync('artifacts').filter(name => name.startsWith(path.basename(output))).sort().map(name => [name, crypto.createHash('sha256').update(fs.readFileSync(path.join('artifacts', name))).digest('hex')]));
+          const source = childProcess.execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
+          fs.writeFileSync(`${output}.receipt.json`, JSON.stringify({files, package: process.env.EXTENSION_PACKAGE, run: process.env.GITHUB_RUN_ID, source, version: process.env.EXTENSION_VERSION}));
+          NODE
+
+      - name: Attest artifact receipt
+        if: inputs.publish
+        uses: actions/attest@a0eb68d51f3a5d373e107cfa9c8455ba800479cd # main
+        with:
+          subject-path: ${{ env.EXTENSION_OUTPUT }}.receipt.json
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
@@ -264,11 +304,14 @@ jobs:
   # stays read-only and build-only callers need no write access to contents.
   publish:
     name: publish
-    needs: build
-    if: inputs.publish
+    needs: [resolve, build]
+    if: always() && !cancelled() && inputs.publish && needs.resolve.result == 'success' && (needs.build.result == 'success' || (inputs.artifact-run-id > 0 && needs.build.result == 'skipped'))
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     environment: ${{ inputs.environment }}
     permissions:
+      actions: read
+      attestations: read
       contents: read
       id-token: write
     env:
@@ -279,6 +322,9 @@ jobs:
       SKILL_FILE: ${{ inputs.skill-file }}
       URL_PREFIX: ${{ inputs.base-url }}/${{ inputs.package }}
       VERSION: ${{ inputs.version }}
+      ARTIFACT_RUN_ID: ${{ inputs.artifact-run-id }}
+      TARGETS: ${{ inputs.targets }}
+      PROMOTE_LATEST: ${{ inputs.promote-latest }}
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@d3efa0f3c3121a949e342d9a52240f988fbfd4ee # 2026-10-01T21-14-33Z-d3efa0f3
@@ -293,6 +339,46 @@ jobs:
           merge-multiple: true
           path: artifacts
           pattern: ${{ inputs.package }}-*
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.artifact-run-id > 0 && inputs.artifact-run-id || github.run_id }}
+
+      - name: Verify saved artifact provenance and checksums
+        if: inputs.artifact-run-id > 0
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          default_branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ARTIFACT_RUN_ID" > "$RUNNER_TEMP/artifact-run.json"
+          jq -e --arg branch "$default_branch" '.head_branch == $branch and (.event == "workflow_run" or .event == "workflow_dispatch" or .event == "push")' "$RUNNER_TEMP/artifact-run.json" >/dev/null
+          for target in $TARGETS; do
+            receipt="artifacts/${PACKAGE}-${target}.receipt.json"
+            gh attestation verify "$receipt" --repo "$GITHUB_REPOSITORY" --signer-workflow tempoxyz/gh-actions/.github/workflows/tempo-extension.yml --source-ref "refs/heads/$default_branch"
+          done
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const childProcess = require('node:child_process');
+          const path = require('node:path');
+          const source = childProcess.execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
+          const allowed = new Set();
+          for (const target of process.env.TARGETS.trim().split(/\s+/)) {
+            const prefix = `${process.env.PACKAGE}-${target}`;
+            const receiptName = `${prefix}.receipt.json`;
+            const receipt = JSON.parse(fs.readFileSync(path.join('artifacts', receiptName), 'utf8'));
+            if (receipt.source !== source || receipt.version !== process.env.VERSION || receipt.package !== process.env.PACKAGE || receipt.run !== process.env.ARTIFACT_RUN_ID) throw new Error(`Artifact source mismatch: ${target}`);
+            for (const name of [prefix, `${prefix}.sha256`, `${prefix}.spdx.json`, `${prefix}.sigstore.json`]) if (!receipt.files[name]) throw new Error(`Incomplete artifact: ${name}`);
+            for (const [name, digest] of Object.entries(receipt.files)) {
+              if (path.basename(name) !== name || !name.startsWith(prefix) || !/^[0-9a-f]{64}$/.test(digest)) throw new Error(`Invalid receipt file: ${name}`);
+              const actual = crypto.createHash('sha256').update(fs.readFileSync(path.join('artifacts', name))).digest('hex');
+              if (actual !== digest) throw new Error(`Artifact checksum mismatch: ${name}`);
+              allowed.add(name);
+            }
+            allowed.add(receiptName);
+          }
+          for (const name of fs.readdirSync('artifacts')) if (!allowed.has(name)) throw new Error(`Unexpected artifact: ${name}`);
+          NODE
 
       - name: Check publishing inputs
         env:
@@ -323,6 +409,7 @@ jobs:
           repository: tempoxyz/wallet-rs
 
       - name: Build release signer
+        timeout-minutes: 20
         working-directory: wallet-release-tools
         run: |
           set -euo pipefail
@@ -386,6 +473,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Upload to R2
+        timeout-minutes: 10
         env:
           BUCKET: ${{ inputs.bucket }}
         run: |
@@ -436,6 +524,8 @@ jobs:
 
           for file in "artifacts/${PACKAGE}"-linux-* "artifacts/${PACKAGE}"-darwin-*; do
             [ -f "$file" ] || continue
+            # Receipts bind CI provenance, not public release content or immutable R2 keys.
+            [[ "$file" == *.receipt.json ]] && continue
             put_immutable "$file" "${versioned}/$(basename "$file")"
           done
           put_immutable "artifacts/${PACKAGE}-manifest.json" "${versioned}/manifest.json"
@@ -444,8 +534,12 @@ jobs:
           fi
 
           # The latest pointers move last, after every versioned object exists.
-          put_latest "artifacts/${PACKAGE}-manifest.json" "${prefix}/manifest.json"
-          printf '%s\n' "$VERSION" > "artifacts/${PACKAGE}-VERSION"
-          put_latest "artifacts/${PACKAGE}-VERSION" "${prefix}/VERSION" text/plain
+          if [ "$PROMOTE_LATEST" = true ]; then
+            put_latest "artifacts/${PACKAGE}-manifest.json" "${prefix}/manifest.json"
+            printf '%s\n' "$VERSION" > "artifacts/${PACKAGE}-VERSION"
+            put_latest "artifacts/${PACKAGE}-VERSION" "${prefix}/VERSION" text/plain
+          else
+            echo "Recovery uploaded versioned objects without changing latest pointers."
+          fi
 
           echo "Released ${PACKAGE}@${VERSION}"
