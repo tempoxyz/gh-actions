@@ -124,6 +124,7 @@ async function runScript(script, { inputHost, rateLimited = false, probe = { sta
   const calls = [];
   const writes = [];
   const delays = [];
+  const timeouts = [];
   const logs = [];
   const fakeProcess = {
     env: {
@@ -147,7 +148,10 @@ async function runScript(script, { inputHost, rateLimited = false, probe = { sta
       module,
       process: fakeProcess,
       Buffer,
-      setTimeout,
+      setTimeout(callback, timeoutMs) {
+        timeouts.push(timeoutMs);
+        return setTimeout(callback, timeoutMs);
+      },
       clearTimeout,
       console: { log: (line) => logs.push(String(line)), error() {} },
       ...extra,
@@ -227,8 +231,20 @@ async function runScript(script, { inputHost, rateLimited = false, probe = { sta
     },
   );
   await new Promise((resolve) => setImmediate(resolve));
-  return { host, probes, calls, writes, delays, logs, fakeProcess };
+  return { host, probes, calls, writes, delays, timeouts, logs, fakeProcess };
 }
+
+test("main allows token readiness beyond ten seconds without extending OIDC or status timeouts", async () => {
+  const { timeouts, fakeProcess } = await runScript("main.cjs", { inputHost: "" });
+  assert.equal(fakeProcess.exitCode, undefined);
+  assert.deepEqual(timeouts, [10_000, 10_000, 60_000]);
+});
+
+test("post keeps ten-second timeouts for OIDC and revocation", async () => {
+  const { timeouts, fakeProcess } = await runScript("post.cjs", { inputHost: "" });
+  assert.equal(fakeProcess.exitCode, undefined);
+  assert.deepEqual(timeouts, [10_000, 10_000]);
+});
 
 for (const rateLimited of [false, true]) {
   for (const script of ["main.cjs", "post.cjs"]) {

@@ -122,3 +122,50 @@ test("network and 5xx failures retain bounded backoff, while 409 is terminal", a
   assert.equal(calls, 3);
   assert.deepEqual(sleeps, [1000, 2000]);
 });
+
+test("a slow token exchange completes without retrying inside its request timeout", async () => {
+  let time = 0;
+  let calls = 0;
+  const response = await retry(
+    async (timeoutMs) => {
+      calls++;
+      assert.equal(timeoutMs, 60_000);
+      time += 35_000;
+      return { status: 200 };
+    },
+    {
+      requestTimeoutMs: 60_000,
+      now: () => time,
+      sleep: async () => assert.fail("must not retry a successful exchange"),
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 1);
+});
+
+test("long exchange timeouts remain clipped to the ninety-second retry budget", async () => {
+  let time = 0;
+  const timeouts = [];
+  const sleeps = [];
+  await assert.rejects(
+    retry(
+      async (timeoutMs) => {
+        timeouts.push(timeoutMs);
+        time += timeoutMs;
+        throw new Error("timed out");
+      },
+      {
+        requestTimeoutMs: 60_000,
+        now: () => time,
+        sleep: async (delayMs) => {
+          sleeps.push(delayMs);
+          time += delayMs;
+        },
+      },
+    ),
+    /retry budget/,
+  );
+  assert.deepEqual(timeouts, [60_000, 29_000]);
+  assert.deepEqual(sleeps, [1000]);
+  assert.equal(time, 90_000);
+});

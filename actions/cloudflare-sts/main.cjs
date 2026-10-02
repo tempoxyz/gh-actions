@@ -109,6 +109,7 @@ async function main() {
       }),
     {
       label: "Cloudflare STS exchange",
+      requestTimeoutMs: 60_000,
       isTransient: (response) => isTransientStatus(response.status),
     },
   );
