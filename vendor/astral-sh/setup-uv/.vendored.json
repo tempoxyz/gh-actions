@@ -8,5 +8,8 @@
   "description": "Set up your GitHub Actions workflow with a specific version of uv.",
   "consume_as": "tempoxyz/gh-actions/vendor/astral-sh/setup-uv@<gh-actions-sha>",
   "files_removed": 112,
-  "nested_rewrites": []
+  "nested_rewrites": [],
+  "transforms": [
+    "vendor/patches/setup-uv-undici-tls.patch"
+  ]
 }

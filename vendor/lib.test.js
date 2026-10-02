@@ -1,9 +1,55 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyPackageTransforms, globToRegExp, matchesAny, rewriteUsesText, compareVersions, normalizeCommitDate, updateReadmeText, README_BEGIN, README_END } from "./lib.mjs";
+import { ROOT, applyPackageTransforms, applySecurityPatches, globToRegExp, matchesAny, rewriteUsesText, compareVersions, normalizeCommitDate, updateReadmeText, README_BEGIN, README_END } from "./lib.mjs";
+import { runInNewContext } from "node:vm";
+
+test("vendored setup-uv BalancedPool preserves TLS callbacks and connectors", () => {
+  const bundle = readFileSync(join(ROOT, "vendor/astral-sh/setup-uv/dist/setup/index.cjs"), "utf8");
+  const section = bundle.split('// node_modules/undici/lib/dispatcher/balanced-pool.js')[1];
+  assert.ok(section);
+  const constructor = section.slice(section.indexOf("constructor(upstreams"), section.indexOf("      addUpstream(upstream)"));
+  const symbols = Object.fromEntries([...constructor.matchAll(/\[(k\w+)\]/g)].map((match) => [match[1], Symbol(match[1])]));
+  const Pool = runInNewContext(`(class extends PoolBase { ${constructor} _updateBalancedPoolStats() {} })`, {
+    ...symbols,
+    PoolBase: class {},
+    defaultFactory() {},
+    InvalidArgumentError: Error,
+    util7: { deepClone: (value) => JSON.parse(JSON.stringify(value)) },
+  });
+  const callback = () => new Error("rejected");
+  const connector = () => {};
+  const connect = { checkServerIdentity: callback };
+  const tls = { checkServerIdentity: callback };
+  const pool = new Pool([], { connect, tls, maxWeightPerServer: 200 });
+  const options = pool[symbols.kOptions];
+  assert.equal(options.connect.checkServerIdentity, callback);
+  assert.equal(options.tls.checkServerIdentity, callback);
+  assert.notEqual(options.connect, connect);
+  assert.notEqual(options.tls, tls);
+  assert.equal(options.maxWeightPerServer, 200);
+  assert.equal(new Pool([], { connect: connector })[symbols.kOptions].connect, connector);
+});
+
+test("security patches apply deterministically and fail when upstream no longer matches", () => {
+  const dir = mkdtempSync(join(tmpdir(), "vendor-security-patch-"));
+  try {
+    mkdirSync(join(dir, "vendor/patches"), { recursive: true });
+    const dest = join(dir, "action");
+    mkdirSync(dest);
+    writeFileSync(join(dest, "index.js"), "vulnerable\n");
+    writeFileSync(join(dir, "vendor/patches/fix.patch"), "--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-vulnerable\n+fixed\n");
+    const entry = { security_patches: ["vendor/patches/fix.patch"] };
+    assert.deepEqual(applySecurityPatches(dest, entry, dir), entry.security_patches);
+    assert.equal(readFileSync(join(dest, "index.js"), "utf8"), "fixed\n");
+    assert.throws(() => applySecurityPatches(dest, entry, dir), /failed/);
+    assert.deepEqual(applySecurityPatches(dest, {}, dir), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("commit timestamps are stable across Git UTC formats and preserve non-UTC offsets", () => {
   assert.equal(normalizeCommitDate("2024-02-15T00:16:04+00:00\n"), "2024-02-15T00:16:04Z");

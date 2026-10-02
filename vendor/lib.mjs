@@ -56,6 +56,9 @@ export function loadManifest(path = MANIFEST_PATH) {
     if (a.strip_dev_dependencies !== undefined && typeof a.strip_dev_dependencies !== "boolean") {
       throw new VendorError(`${a.name}: strip_dev_dependencies must be a boolean`);
     }
+    if (a.security_patches !== undefined && (!Array.isArray(a.security_patches) || a.security_patches.some((path) => typeof path !== "string" || !/^vendor\/patches\/[\w.-]+\.patch$/.test(path)))) {
+      throw new VendorError(`${a.name}: security_patches must list files under vendor/patches/`);
+    }
     a.exclude ??= []; a.keep ??= []; a.pin_nested ??= {};
   }
   return m;
@@ -200,6 +203,13 @@ export function applyPackageTransforms(dest, entry) {
   delete packageJson.devDependencies;
   writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
   return ["package.json:devDependencies"];
+}
+
+export function applySecurityPatches(dest, entry, base = ROOT) {
+  return (entry.security_patches ?? []).map((path) => {
+    sh("patch", ["--batch", "--forward", "--fuzz=0", "-p1", "-i", resolve(base, path)], { cwd: dest });
+    return path;
+  });
 }
 
 // ---------- nested `uses:` rewriting ----------
