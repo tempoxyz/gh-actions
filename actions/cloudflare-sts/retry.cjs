@@ -33,6 +33,7 @@ async function retry(
     maxRetries = MAX_RETRIES,
     initialDelayMs = INITIAL_DELAY_MS,
     maxElapsedMs = MAX_RETRY_MS,
+    requestTimeoutMs = 10_000,
     now = Date.now,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   } = {},
@@ -44,7 +45,7 @@ async function retry(
       throw new Error(`${label || "Request"} retry deadline exceeded`);
     let result;
     try {
-      result = await operation(Math.min(10_000, remaining));
+      result = await operation(Math.min(requestTimeoutMs, remaining));
     } catch (error) {
       if (retryCount >= maxRetries) throw error;
     }
