@@ -65,6 +65,27 @@ a 10-second wall-clock timeout, shortened to fit the remaining budget. A `429`
 response's `Retry-After` (seconds or HTTP date) is honored; if it cannot fit in the
 budget, the action fails without retrying early. Retries reuse the OIDC assertion.
 
+For tokens whose exchange response includes `d1_read` or `d1_write` permissions,
+the action checks D1 readiness before emitting token outputs. Using the same
+minted token from the runner, it lists databases in the selected account and
+executes `SELECT 1 /* Cloudflare STS health check */` against the first returned
+database. The query reads no application tables and changes no data. No database
+ID needs to be configured, and token account and IP restrictions remain unchanged.
+
+Discovery and query requests share one 30-second deadline, shortened to the token
+expiration time. Network errors, authentication errors (including Cloudflare code
+`10000`), HTTP `408`, `425`, `429`, and `5xx` retry with exponential backoff from
+250 ms, capped at four seconds. HTTP timeouts and waits fit the remaining budget,
+and `Retry-After` is honored. Missing databases, invalid responses, other errors,
+or an elapsed deadline fail the action without exposing the token as an output;
+post-job cleanup still revokes the saved token. A successful probe confirms the
+SELECT request works, not that every write operation is authorized.
+
+Deploy the STS service's `permissions` response field before adopting this action.
+Older services without that field remain compatible but emit a warning that D1
+readiness could not be checked. Tokens explicitly reporting no D1 permission
+make no D1 requests.
+
 Before requesting OIDC, the action asks the STS whether it is serving exchanges
 with one empty `POST /status`. A paused STS answers
 `{"status":"disabled","reason":"Paused"}`; the action then emits a warning

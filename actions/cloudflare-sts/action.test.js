@@ -115,7 +115,7 @@ test("post entrypoint requires id-token permission for cleanup", () => {
 // Runs an entrypoint script inside a VM with a scripted HTTPS layer: the
 // status probe (main only), then the OIDC issuer, then the STS. `probe` is the
 // status body the STS answers with.
-async function runScript(script, { inputHost, rateLimited = false, probe = { status: "enabled" } }) {
+async function runScript(script, { inputHost, rateLimited = false, probe = { status: "enabled" }, permissions = ["analytics_read"], legacy = false, d1Error } = {}) {
   const fs = require("node:fs");
   const vm = require("node:vm");
   const { EventEmitter } = require("node:events");
@@ -125,6 +125,7 @@ async function runScript(script, { inputHost, rateLimited = false, probe = { sta
   const writes = [];
   const delays = [];
   const logs = [];
+  const d1Checks = [];
   const fakeProcess = {
     env: {
       INPUT_ACCOUNT: "dev",
@@ -155,6 +156,12 @@ async function runScript(script, { inputHost, rateLimited = false, probe = { sta
     return module.exports;
   };
   const fakeRequire = (name) => {
+    if (name === "./d1.cjs") return {
+      async requireD1Ready(credentials) {
+        d1Checks.push({ credentials, writes: [...writes], logs: [...logs] });
+        if (d1Error) throw new Error(d1Error);
+      },
+    };
     if (name === "node:fs")
       return {
         appendFileSync(file, value) {
@@ -204,6 +211,7 @@ async function runScript(script, { inputHost, rateLimited = false, probe = { sta
                         token: "cloudflare-token",
                         token_id: "a".repeat(32),
                         account_id: "b".repeat(32),
+                        ...(legacy ? {} : { permissions }),
                         expires_at: "2026-09-21T12:00:00Z",
                       },
               ),
@@ -227,8 +235,43 @@ async function runScript(script, { inputHost, rateLimited = false, probe = { sta
     },
   );
   await new Promise((resolve) => setImmediate(resolve));
-  return { host, probes, calls, writes, delays, logs, fakeProcess };
+  return { host, probes, calls, writes, delays, logs, fakeProcess, d1Checks };
 }
+
+for (const permission of ["d1_read", "d1_write"]) {
+  test(`checks ${permission} readiness after saving cleanup state but before outputs`, async () => {
+    const result = await runScript("main.cjs", { permissions: [permission] });
+    assert.equal(result.fakeProcess.exitCode, undefined);
+    assert.equal(result.d1Checks.length, 1);
+    const check = result.d1Checks[0];
+    assert.equal(check.credentials.token, "cloudflare-token");
+    assert.equal(check.credentials.accountId, "b".repeat(32));
+    assert.ok(check.logs.includes("::add-mask::cloudflare-token"));
+    assert.ok(check.writes.includes(`token_id=${"a".repeat(32)}\n`));
+    assert.ok(!check.writes.includes("token=cloudflare-token\n"));
+    assert.ok(result.writes.includes("token=cloudflare-token\n"));
+  });
+}
+
+test("readiness failure retains cleanup state and emits no token outputs", async () => {
+  const result = await runScript("main.cjs", { permissions: ["d1_write"], d1Error: "not ready" });
+  assert.equal(result.fakeProcess.exitCode, 1);
+  assert.ok(result.writes.includes(`token_id=${"a".repeat(32)}\n`));
+  assert.ok(!result.writes.includes("token=cloudflare-token\n"));
+  assert.ok(!result.writes.some((line) => line.startsWith("account-id=")));
+});
+
+test("non-D1 tokens skip readiness, while legacy services warn", async () => {
+  const other = await runScript("main.cjs", { permissions: ["analytics_read"] });
+  assert.equal(other.d1Checks.length, 0);
+  const legacy = await runScript("main.cjs", { permissions: null });
+  assert.equal(legacy.fakeProcess.exitCode, 1);
+  assert.ok(legacy.writes.includes(`token_id=${"a".repeat(32)}\n`));
+  const missing = await runScript("main.cjs", { legacy: true });
+  assert.equal(missing.fakeProcess.exitCode, undefined);
+  assert.equal(missing.d1Checks.length, 0);
+  assert.ok(missing.logs.some((line) => line.startsWith("::warning::Cloudflare STS did not report token permissions")));
+});
 
 for (const rateLimited of [false, true]) {
   for (const script of ["main.cjs", "post.cjs"]) {

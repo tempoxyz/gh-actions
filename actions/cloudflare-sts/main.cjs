@@ -3,6 +3,7 @@ const { request } = require("./http.cjs");
 const { validateHost } = require("./host.cjs");
 const { isTransientStatus, retry } = require("./retry.cjs");
 const { parseTtl } = require("./ttl.cjs");
+const { requireD1Ready } = require("./d1.cjs");
 const { disabledWarning, isServiceDisabled, requireServiceEnabled } = require("./status.cjs");
 
 function input(name) {
@@ -128,6 +129,7 @@ async function main() {
   const tokenId = exchangeBody.token_id;
   const expiresAt = exchangeBody.expires_at;
   const accountId = exchangeBody.account_id;
+  const permissions = exchangeBody.permissions;
   if (
     typeof token !== "string" ||
     token.length === 0 ||
@@ -149,6 +151,24 @@ async function main() {
   state("account", account);
   state("identity", policy);
   state("host", host);
+  if (
+    permissions !== undefined &&
+    (!Array.isArray(permissions) ||
+      !permissions.every((permission) => typeof permission === "string"))
+  ) {
+    throw new Error("Cloudflare STS exchange permissions were invalid");
+  }
+  if (permissions === undefined) {
+    console.log(
+      "::warning::Cloudflare STS did not report token permissions; D1 readiness check was skipped. Update the STS service to enable it.",
+    );
+  } else if (
+    permissions.some(
+      (permission) => permission === "d1_read" || permission === "d1_write",
+    )
+  ) {
+    await requireD1Ready({ token, accountId, expiresAt });
+  }
   output("token", token);
   output("expires-at", expiresAt);
   output("account-id", accountId);
