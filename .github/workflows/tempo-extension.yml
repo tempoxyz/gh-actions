@@ -65,7 +65,7 @@ on:
         type: boolean
         default: false
       artifact-run-id:
-        description: Previous main-branch run whose attested build artifacts should be reused. Zero builds fresh artifacts.
+        description: Previous main-branch run whose complete attested publication should be reused. Zero builds fresh artifacts.
         required: false
         type: number
         default: 0
@@ -301,7 +301,7 @@ jobs:
           path: artifacts/${{ inputs.package }}-${{ matrix.suffix }}*
 
   # Reusable-workflow permissions are checked for every job, skipped or not, so publishing
-  # stays read-only and build-only callers need no write access to contents.
+  # keeps contents read-only and build-only callers need no write access to contents.
   publish:
     name: publish
     needs: [resolve, build]
@@ -311,7 +311,7 @@ jobs:
     environment: ${{ inputs.environment }}
     permissions:
       actions: read
-      attestations: read
+      attestations: write
       contents: read
       id-token: write
     env:
@@ -319,6 +319,7 @@ jobs:
       AWS_REQUEST_CHECKSUM_CALCULATION: when_required
       AWS_RETRY_MODE: standard
       PACKAGE: ${{ inputs.package }}
+      DESCRIPTION: ${{ inputs.description }}
       SKILL_FILE: ${{ inputs.skill-file }}
       URL_PREFIX: ${{ inputs.base-url }}/${{ inputs.package }}
       VERSION: ${{ inputs.version }}
@@ -338,7 +339,7 @@ jobs:
         with:
           merge-multiple: true
           path: artifacts
-          pattern: ${{ inputs.package }}-*
+          pattern: ${{ inputs.artifact-run-id > 0 && format('{0}-publication', inputs.package) || format('{0}-*', inputs.package) }}
           github-token: ${{ github.token }}
           run-id: ${{ inputs.artifact-run-id > 0 && inputs.artifact-run-id || github.run_id }}
 
@@ -356,6 +357,7 @@ jobs:
             receipt="artifacts/${PACKAGE}-${target}.receipt.json"
             gh attestation verify "$receipt" --repo "$GITHUB_REPOSITORY" --signer-workflow tempoxyz/gh-actions/.github/workflows/tempo-extension.yml --source-ref "refs/heads/$default_branch"
           done
+          gh attestation verify "artifacts/${PACKAGE}-publication.receipt.json" --repo "$GITHUB_REPOSITORY" --signer-workflow tempoxyz/gh-actions/.github/workflows/tempo-extension.yml --source-ref "refs/heads/$default_branch"
           node <<'NODE'
           const fs = require('node:fs');
           const crypto = require('node:crypto');
@@ -377,6 +379,21 @@ jobs:
             }
             allowed.add(receiptName);
           }
+          // Preserve the original randomized minisign signatures as well as the binaries.
+          const publicationName = `${process.env.PACKAGE}-publication.receipt.json`;
+          const publication = JSON.parse(fs.readFileSync(path.join('artifacts', publicationName), 'utf8'));
+          if (publication.source !== source || publication.version !== process.env.VERSION || publication.package !== process.env.PACKAGE || publication.run !== process.env.ARTIFACT_RUN_ID || publication.urlPrefix !== process.env.URL_PREFIX || publication.description !== process.env.DESCRIPTION || publication.skill !== Boolean(process.env.SKILL_FILE)) throw new Error('Publication source or configuration mismatch');
+          const required = new Set([...allowed, `${process.env.PACKAGE}-manifest.json`]);
+          if (process.env.SKILL_FILE) required.add(`${process.env.PACKAGE}-SKILL.md`);
+          for (const name of required) if (!publication.files[name]) throw new Error(`Incomplete publication: ${name}`);
+          for (const [name, digest] of Object.entries(publication.files)) {
+            if (!required.has(name) || path.basename(name) !== name || !/^[0-9a-f]{64}$/.test(digest)) throw new Error(`Invalid publication file: ${name}`);
+            const actual = crypto.createHash('sha256').update(fs.readFileSync(path.join('artifacts', name))).digest('hex');
+            if (actual !== digest) throw new Error(`Publication checksum mismatch: ${name}`);
+          }
+          allowed.add(`${process.env.PACKAGE}-manifest.json`);
+          if (process.env.SKILL_FILE) allowed.add(`${process.env.PACKAGE}-SKILL.md`);
+          allowed.add(publicationName);
           for (const name of fs.readdirSync('artifacts')) if (!allowed.has(name)) throw new Error(`Unexpected artifact: ${name}`);
           NODE
 
@@ -400,6 +417,7 @@ jobs:
           fi
 
       - name: Checkout release signing tool
+        if: inputs.artifact-run-id == 0
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
           path: wallet-release-tools
@@ -409,6 +427,7 @@ jobs:
           repository: tempoxyz/wallet-rs
 
       - name: Build release signer
+        if: inputs.artifact-run-id == 0
         timeout-minutes: 20
         working-directory: wallet-release-tools
         run: |
@@ -417,6 +436,7 @@ jobs:
           cargo build --locked --release -p tempo-sign
 
       - name: Sign manifest
+        if: inputs.artifact-run-id == 0
         env:
           DESCRIPTION: ${{ inputs.description }}
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
@@ -442,6 +462,39 @@ jobs:
             )
           fi
           ./wallet-release-tools/target/release/tempo-sign sign "${args[@]}"
+
+      - name: Record complete signed publication
+        if: inputs.artifact-run-id == 0
+        run: |
+          set -euo pipefail
+          if [ -n "$SKILL_FILE" ]; then
+            cp "$SKILL_FILE" "artifacts/${PACKAGE}-SKILL.md"
+          fi
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const childProcess = require('node:child_process');
+          const path = require('node:path');
+          const files = Object.fromEntries(fs.readdirSync('artifacts').sort().map(name => [name, crypto.createHash('sha256').update(fs.readFileSync(path.join('artifacts', name))).digest('hex')]));
+          const source = childProcess.execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
+          fs.writeFileSync(`artifacts/${process.env.PACKAGE}-publication.receipt.json`, JSON.stringify({description: process.env.DESCRIPTION, files, package: process.env.PACKAGE, run: process.env.GITHUB_RUN_ID, skill: Boolean(process.env.SKILL_FILE), source, urlPrefix: process.env.URL_PREFIX, version: process.env.VERSION}));
+          NODE
+
+      - name: Attest complete publication receipt
+        if: inputs.artifact-run-id == 0
+        uses: actions/attest@a0eb68d51f3a5d373e107cfa9c8455ba800479cd # main
+        with:
+          subject-path: artifacts/${{ inputs.package }}-publication.receipt.json
+
+      # Save before the first R2 write so a partial upload is always recoverable.
+      - name: Save complete signed publication
+        if: inputs.artifact-run-id == 0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.package }}-publication
+          path: artifacts/*
+          compression-level: 0
+          if-no-files-found: error
 
       # Mint the token only after the slow signer build so its lifetime covers just the upload.
       - name: Fetch R2 token
@@ -530,7 +583,7 @@ jobs:
           done
           put_immutable "artifacts/${PACKAGE}-manifest.json" "${versioned}/manifest.json"
           if [ -n "$SKILL_FILE" ]; then
-            put_immutable "$SKILL_FILE" "${versioned}/SKILL.md" text/markdown
+            put_immutable "artifacts/${PACKAGE}-SKILL.md" "${versioned}/SKILL.md" text/markdown
           fi
 
           # The latest pointers move last, after every versioned object exists.

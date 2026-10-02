@@ -893,7 +893,7 @@ Required inputs:
 Optional inputs:
 
 - `publish` (default: `false`) — sign, attest, and upload; otherwise only build workflow artifacts
-- `artifact-run-id` (default: `0`) — reuse an earlier main-branch run's attested artifacts instead of rebuilding; the selected source, version, run ID, targets, and every file checksum must match
+- `artifact-run-id` (default: `0`) — reuse an earlier main-branch run's complete attested publication instead of rebuilding or re-signing; the selected source, version, run ID, targets, publishing configuration, and every file checksum must match
 - `promote-latest` (default: `true`) — set `false` for recovery uploads that must leave `manifest.json` and `VERSION` latest pointers unchanged
 - `targets` (default: `linux-amd64 linux-arm64 darwin-amd64 darwin-arm64`)
 - `ref` (default: the triggering commit)
@@ -908,7 +908,7 @@ Optional inputs:
 
 Publishing needs a `cloudflare-sts-policy` and one secret, `RELEASE_SIGNING_KEY`, in the caller's `environment` (default `release`). The publish job mints a bucket-scoped R2 token from Cloudflare STS just before uploading, derives its S3 credentials and account endpoint, and the action revokes the token when the job ends; no R2 credentials are stored. The caller's STS policy must match the `environment:<environment>` subject, grant `r2_read` and `r2_write` on `bucket`, and should pin `job_workflow_ref` to this workflow. The publish job reads `RELEASE_SIGNING_KEY` from the environment directly; GitHub does not pass environment secrets through a caller's `secrets:` block, which only forwards repository or organization secrets. Callers grant `actions: read`, `attestations: write`, `contents: read`, and `id-token: write`, whether or not they publish, because GitHub checks every nested job's permissions up front. Each target's binary, checksum, SBOM, cosign bundle, and attested receipt are uploaded as the `<package>-<os>-<arch>` workflow artifact; to attach them to a GitHub release, download them in a caller job that needs this one.
 
-For recovery, `artifact-run-id` restores those exact bytes from an earlier default-branch run, verifies the receipt's signing workflow and source branch, then checks its source commit, version, producer run, required files, and checksums. Runs without receipts cannot be reused. Existing versioned uploads keep their conditional-write protection; conflicting bytes fail instead of overwriting. Set `promote-latest: false` when recovering an older release so the mutable latest pointers stay unchanged.
+Before the first R2 write, publishing saves a complete `<package>-publication` artifact containing the binaries, companion files, original signed manifest, optional skill file, and an attested publication receipt. For recovery, `artifact-run-id` restores those exact bytes from an earlier default-branch run, verifies both the build and publication receipts' signing workflow and source branch, then checks the source commit, version, producer run, publishing configuration, required files, and checksums. Build-only, incomplete, and legacy runs without a complete signed publication cannot be reused. Keep selecting the original producer run when retrying recovery. Existing versioned uploads keep their conditional-write protection; conflicting bytes fail instead of overwriting. Set `promote-latest: false` when recovering an older release so the mutable latest pointers stay unchanged.
 
 ### `cargo-update-pr`
 
