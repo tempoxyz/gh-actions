@@ -37,9 +37,6 @@ rules:
       - expr: ActionName == "actions/setup-node" && ActionVersion == "7f84f1d52d0c56afb45c62fee31a93b843cea4d6"
   - ignore: true
     conditions:
-      - expr: ActionName == "actions/attest" && ActionVersion == "a0eb68d51f3a5d373e107cfa9c8455ba800479cd"
-  - ignore: true
-    conditions:
       - expr: ActionName == "actions/cache" && ActionVersion == "3edfce9056124e459a23f683a21433670d47daca"
   - ignore: true
     conditions:
