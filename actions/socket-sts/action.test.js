@@ -237,6 +237,48 @@ const providerRateLimit = {
   headers: { "retry-after": "1" },
   body: '{"message":"Socket API rate limit exceeded"}',
 };
+for (const { name, response, message } of [
+  {
+    name: "pending exchange",
+    response: pendingExchange,
+    message: "STS exchange still in progress; waiting 1s for token creation",
+  },
+  {
+    name: "provider rate limit",
+    response: providerRateLimit,
+    message: "STS exchange rate limited; retrying in 1s",
+  },
+  {
+    name: "non-JSON rate limit",
+    response: { ...providerRateLimit, body: "Too many requests" },
+    message: "STS exchange rate limited; retrying in 1s",
+  },
+]) {
+  test(`retry log identifies ${name}`, async (t) => {
+    const logs = t.mock.method(console, "log", () => {});
+    const delays = [];
+    let attempts = 0;
+    const result = await retryRateLimited(
+      async () => ++attempts === 1 ? response : { status: 200, body: "token" },
+      { now: () => 0, sleep: async (delay) => delays.push(delay) },
+    );
+    assert.equal(result.status, 200);
+    assert.deepEqual(delays, [1_000]);
+    assert.deepEqual(logs.mock.calls.map((call) => call.arguments), [[message]]);
+  });
+}
+
+test("pending exchange budget errors do not report rate limiting", async () => {
+  await assert.rejects(
+    retryRateLimited(async () => pendingExchange, { now: () => 0, maxDelay: 0 }),
+    { message: "Pending exchange retries exhausted the retry budget" },
+  );
+  await assert.rejects(
+    retryRateLimited(async () => pendingExchange, { now: () => 0, maxDelay: 500 }),
+    { message: "Pending exchange retry delay (1s) exceeds the remaining retry budget (1s)" },
+  );
+});
+
 const mintTimeout = {
   status: 502,
   body: '{"message":"Socket API token creation timed out"}',

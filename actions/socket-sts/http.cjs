@@ -133,7 +133,7 @@ function rateLimitDelay(response, now = Date.now()) {
   return null;
 }
 
-// Waits out 429 responses for at most `maxDelay` in total. A server-specified
+// Polls pending exchanges and waits out rate limits for at most `maxDelay` in total. A server-specified
 // delay is honored as given; the fallback backoff is jittered.
 async function retryRateLimited(operation, options = {}) {
   const sleep = options.sleep || defaultSleep;
@@ -147,14 +147,19 @@ async function retryRateLimited(operation, options = {}) {
     const response = await operation();
     if (response.status !== 429) return response;
 
+    let pendingExchange = false;
+    try {
+      pendingExchange = JSON.parse(response.body).message === "exchange is already in progress";
+    } catch {}
+    const retryReason = pendingExchange ? "Pending exchange" : "Rate limit";
     const requestedDelay = rateLimitDelay(response, now());
     const remaining = deadline - now();
     if (remaining < 100) {
-      throw new Error("Rate limit retries exhausted the retry budget");
+      throw new Error(`${retryReason} retries exhausted the retry budget`);
     }
     if (requestedDelay !== null && requestedDelay > remaining) {
       throw new Error(
-        `Rate limit retry delay (${Math.ceil(requestedDelay / 1000)}s) exceeds the remaining retry budget (${Math.ceil(remaining / 1000)}s)`,
+        `${retryReason} retry delay (${Math.ceil(requestedDelay / 1000)}s) exceeds the remaining retry budget (${Math.ceil(remaining / 1000)}s)`,
       );
     }
     const delay = Math.max(
@@ -163,7 +168,11 @@ async function retryRateLimited(operation, options = {}) {
         Math.min(jittered(1000 * 2 ** Math.min(attempt, 5), random), 30_000, remaining),
     );
 
-    console.log(`STS exchange rate limited; retrying in ${Math.ceil(delay / 1000)}s`);
+    console.log(
+      pendingExchange
+        ? `STS exchange still in progress; waiting ${Math.ceil(delay / 1000)}s for token creation`
+        : `STS exchange rate limited; retrying in ${Math.ceil(delay / 1000)}s`,
+    );
     await sleep(delay);
     attempt += 1;
   }
