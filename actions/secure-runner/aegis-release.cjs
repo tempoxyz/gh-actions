@@ -24,7 +24,13 @@ async function request(url, getOidc, { fetcher = fetch, timeout = 10_000 } = {})
     redirect: "error",
     signal: AbortSignal.timeout(timeout),
   });
-  if (!response.ok) throw new Error(`Aegis release server returned HTTP ${response.status} for ${new URL(url).pathname}`);
+  if (!response.ok) {
+    const error = new Error(`Aegis release server returned HTTP ${response.status} for ${new URL(url).pathname}`);
+    // The server refused this job's identity, as it does for forks outside the
+    // trusted organizations; a fresh token from the same job will not change that.
+    if (response.status === 401 || response.status === 403) error.retryable = false;
+    throw error;
+  }
   return response;
 }
 
@@ -33,7 +39,7 @@ async function retry(operation, description, sleep = (ms) => new Promise((resolv
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try { return await operation(); } catch (caught) {
       error = caught;
-      if (attempt === 3) break;
+      if (attempt === 3 || caught?.retryable === false) break;
       console.warn(`${description} failed (attempt ${attempt}/3); retrying.`);
       await sleep(Math.round(1000 * 2 ** (attempt - 1) * (1 + jitter * Math.random())));
     }

@@ -83,6 +83,38 @@ test("async command failures retry with bounded jitter and reject after three at
   assert.ok(waits[1] >= 2000 && waits[1] <= 2500);
 });
 
+for (const status of [401, 403]) {
+  test(`HTTP ${status} from the release server fails at once instead of retrying`, async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-refused-test-"));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const requests = [];
+    const waits = [];
+    await assert.rejects(downloadAndVerify({
+      getOidc: async () => "assertion", runnerOS: "Linux", runnerArch: "X64",
+      env: { RUNNER_TEMP: directory },
+      fetcher: async (url) => { requests.push(url); return new Response("{}", { status }); },
+      execute: async (command, args, options) => { if (args[1] === "trusted-root") fs.writeSync(options.stdio[1], "roots\n"); },
+      sleep: async (ms) => { waits.push(ms); },
+    }), new RegExp(`HTTP ${status} for /v1/actions/releases/next`));
+    assert.equal(requests.filter((url) => url.includes("/next?")).length, 1);
+    assert.equal(waits.length, 0);
+  });
+}
+
+test("server errors from the release server are still retried three times", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-unavailable-test-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const requests = [];
+  await assert.rejects(downloadAndVerify({
+    getOidc: async () => "assertion", runnerOS: "Linux", runnerArch: "X64",
+    env: { RUNNER_TEMP: directory },
+    fetcher: async (url) => { requests.push(url); return new Response("{}", { status: 503 }); },
+    execute: async (command, args, options) => { if (args[1] === "trusted-root") fs.writeSync(options.stdio[1], "roots\n"); },
+    sleep: async () => {},
+  }), /HTTP 503 for \/v1\/actions\/releases\/next/);
+  assert.equal(requests.filter((url) => url.includes("/next?")).length, 3);
+});
+
 function fixture(t, { fetcher, execute } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-parallel-test-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
