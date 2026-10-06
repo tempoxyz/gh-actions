@@ -1,0 +1,238 @@
+name: Web app image
+
+# Builds and pushes the image of a web app on the dev-eu web-apps platform (tempoxyz/dev-infra).
+# Argo CD deploys each app twice: stable from `:latest`, which Image Updater follows by digest,
+# and one preview per open pull request labelled `preview`, from `:<first 7 characters of the
+# PR's head commit>`. So this workflow pushes `:<sha7>` and `:latest` from the default branch,
+# `:<head sha7>` and `:pr-<number>` from same-repository pull requests, and labels the pull
+# request `preview` only after the push succeeded, so Argo CD never deploys a missing image.
+# Fork and Dependabot pull requests are only built.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: GHCR repository to push to, without a tag or digest. It is lower-cased.
+        type: string
+        default: ghcr.io/${{ github.repository }}
+      context:
+        description: Docker build context, relative to the repository root.
+        type: string
+        default: "."
+      dockerfile:
+        description: Dockerfile path, relative to the repository root. Defaults to `<context>/Dockerfile`.
+        type: string
+        default: ""
+      build-args:
+        description: Newline-separated `KEY=VALUE` build arguments. `GIT_SHA` is always the built commit and cannot be set here.
+        type: string
+        default: ""
+      tags:
+        description: >-
+          Additional docker/metadata-action tag rules, newline-separated, for example
+          `type=ref,event=branch`. They apply only to pushes and other non-pull-request events, so
+          a pull request can never move them.
+        type: string
+        default: ""
+    outputs:
+      pushed:
+        description: "`true` when the image was pushed."
+        value: ${{ jobs.build.outputs.pushed }}
+      tags:
+        description: Newline-separated image references that were built.
+        value: ${{ jobs.build.outputs.tags }}
+      digest:
+        description: Image digest.
+        value: ${{ jobs.build.outputs.digest }}
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # secure-runner's short-lived credentials
+      packages: write # push to GHCR
+    outputs:
+      mode: ${{ steps.resolve.outputs.mode }}
+      pushed: ${{ steps.resolve.outputs.push }}
+      tags: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+
+      # publish: pushes and other events; push :<sha7>, plus :latest on the default branch.
+      # preview: same-repository pull requests; push :<head sha7> and :pr-<n>, then label.
+      # build:   fork and Dependabot pull requests, and merge queues; push nothing.
+      - name: Decide what to build and push
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          IMAGE: ${{ inputs.image }}
+          BUILD_ARGS: ${{ inputs.build-args }}
+        run: |
+          set -euo pipefail
+
+          image="${IMAGE,,}"
+          [[ "$image" =~ ^ghcr\.io/[a-z0-9._-]+/[a-z0-9._/-]+$ ]] || {
+            echo "::error::image must be a GHCR repository without a tag or digest, got '$IMAGE'"
+            exit 1
+          }
+          if grep -Eq '^[[:space:]]*GIT_SHA=' <<< "$BUILD_ARGS"; then
+            echo "::error::build-args must not set GIT_SHA: it is always the built commit"
+            exit 1
+          fi
+
+          pr_number=""
+          case "$EVENT_NAME" in
+            pull_request)
+              # Build the head commit, not the merge commit: previews run :<head sha7>.
+              sha="$PR_HEAD_SHA"
+              pr_number="$PR_NUMBER"
+              if [[ "$PR_HEAD_REPO" == "$REPOSITORY" && "$ACTOR" != "dependabot[bot]" && "$PR_AUTHOR" != "dependabot[bot]" ]]; then
+                mode=preview
+              else
+                mode=build
+              fi
+              ;;
+            pull_request_target | workflow_run)
+              echo "::error::web-app-image does not run on $EVENT_NAME, which would build code from outside the repository with its credentials"
+              exit 1
+              ;;
+            merge_group)
+              sha="$SHA"
+              mode=build
+              ;;
+            *)
+              sha="$SHA"
+              if [[ "$ACTOR" == "dependabot[bot]" ]]; then mode=build; else mode=publish; fi
+              ;;
+          esac
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::Could not resolve the commit to build, got '$sha'"
+            exit 1
+          }
+
+          latest=false
+          if [[ "$mode" == publish && -n "$DEFAULT_BRANCH" && "$REF" == "refs/heads/$DEFAULT_BRANCH" ]]; then
+            latest=true
+          fi
+          push=true
+          if [[ "$mode" == build ]]; then push=false; fi
+
+          {
+            echo "mode=$mode"
+            echo "push=$push"
+            echo "latest=$latest"
+            echo "image=$image"
+            echo "sha=$sha"
+            echo "short_sha=${sha:0:7}"
+            echo "pr_number=$pr_number"
+          } >> "$GITHUB_OUTPUT"
+          echo "$EVENT_NAME: $mode $image at ${sha:0:7} (push: $push, latest: $latest)"
+
+      - name: Check out the commit to build
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          ref: ${{ steps.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: Docker metadata
+        id: meta
+        uses: tempoxyz/gh-actions/vendor/docker/metadata-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+        env:
+          # org.opencontainers.image.revision names the PR's head commit, not the merge commit.
+          DOCKER_METADATA_PR_HEAD_SHA: "true"
+        with:
+          images: ${{ steps.resolve.outputs.image }}
+          # :latest follows the default branch only, never a release tag.
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ steps.resolve.outputs.short_sha }}
+            type=raw,value=pr-${{ steps.resolve.outputs.pr_number }},enable=${{ steps.resolve.outputs.pr_number != '' }}
+            type=raw,value=latest,enable=${{ steps.resolve.outputs.latest }}
+            ${{ steps.resolve.outputs.mode == 'publish' && inputs.tags || '' }}
+
+      - name: Set up Docker Buildx
+        uses: tempoxyz/gh-actions/vendor/docker/setup-buildx-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+
+      - name: Log in to GHCR
+        if: steps.resolve.outputs.push == 'true'
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: tempoxyz/gh-actions/vendor/docker/build-push-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          push: ${{ steps.resolve.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ${{ inputs.build-args }}
+            GIT_SHA=${{ steps.resolve.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # A separate job, so only it holds pull-requests: write and only after the push succeeded.
+  label:
+    name: Label the pull request preview
+    needs: build
+    if: needs.build.outputs.mode == 'preview'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # secure-runner's short-lived credentials
+      pull-requests: write # read the PR's labels, create the preview label, label the PR
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+
+      # Reads the labels now rather than from the event, so a `no-preview` added while the image
+      # was building still wins. The `preview` label is created on first use; that needs no
+      # permission beyond the pull-requests: write that labelling does.
+      - name: Label the pull request preview
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          labels="$(gh api "repos/${REPO}/pulls/${NUMBER}" --jq '.labels[].name')"
+          if grep -Fxq no-preview <<< "$labels"; then
+            echo "::notice::#${NUMBER} has the no-preview label, so it gets no preview"
+            exit 0
+          fi
+          if grep -Fxq preview <<< "$labels"; then
+            echo "#${NUMBER} is already labelled preview"
+            exit 0
+          fi
+
+          if ! gh api "repos/${REPO}/labels/preview" --silent 2>/dev/null; then
+            # A concurrent run may create it first; that answers 422 already_exists.
+            if ! out="$(gh api -X POST "repos/${REPO}/labels" -f name=preview -f color=0e8a16 \
+              -f description="Argo CD deploys a preview of this pull request on dev-eu" 2>&1)"; then
+              grep -q already_exists <<< "$out" || { echo "$out" >&2; exit 1; }
+            fi
+          fi
+          gh api -X POST "repos/${REPO}/issues/${NUMBER}/labels" -f 'labels[]=preview' --silent
+          echo "Labelled #${NUMBER} preview"
