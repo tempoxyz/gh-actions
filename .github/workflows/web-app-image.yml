@@ -51,10 +51,11 @@ jobs:
   build:
     name: Build image
     runs-on: ubuntu-latest
+    # id-token for secure-runner's short-lived credentials, packages to push to GHCR.
     permissions:
       contents: read
-      id-token: write # secure-runner's short-lived credentials
-      packages: write # push to GHCR
+      id-token: write
+      packages: write
     outputs:
       mode: ${{ steps.resolve.outputs.mode }}
       pushed: ${{ steps.resolve.outputs.push }}
@@ -198,9 +199,11 @@ jobs:
     needs: build
     if: needs.build.outputs.mode == 'preview'
     runs-on: ubuntu-latest
+    # id-token for secure-runner; pull-requests to read the PR's labels, create the preview label
+    # and label the PR.
     permissions:
-      id-token: write # secure-runner's short-lived credentials
-      pull-requests: write # read the PR's labels, create the preview label, label the PR
+      id-token: write
+      pull-requests: write
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
