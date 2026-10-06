@@ -47,6 +47,10 @@ rules:
   - ignore: true
     conditions:
       - expr: ActionName == "docker/metadata-action" && ActionVersion == "8e671d84a3bd81afdfc4fdbb96a42b07c2a80934"
+  # cosign-sign consumes the first published commit carrying the 828df1e cosign-installer vendor.
+  - min_age: 0
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/vendor/sigstore/cosign-installer" && ActionVersion == "62de042f2251366d3fedbba7b7920b4f90fab588"
   # The latest published repository commit is intentionally inside the cooldown.
   - min_age: 0
     conditions:
