@@ -109,15 +109,26 @@ function stepScript(name) {
   return script.join("\n");
 }
 
-function resolveTarget(overrides) {
+// `mergeable` lists what successive `gh api` PR reads return; `sleep` is stubbed out.
+function resolveTarget(overrides, mergeable = []) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-resolve-"));
   const output = path.join(tmp, "output");
   fs.writeFileSync(output, "");
+  const bin = path.join(tmp, "bin");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(tmp, "mergeable"), mergeable.map(value => `${value}\n`).join(""));
+  fs.writeFileSync(path.join(bin, "gh"), `#!/usr/bin/env bash
+echo "$*" >> "${tmp}/gh-calls"
+value=$(head -n 1 "${tmp}/mergeable")
+tail -n +2 "${tmp}/mergeable" > "${tmp}/rest" && mv "${tmp}/rest" "${tmp}/mergeable"
+echo "\${value:-null}"
+`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, "sleep"), "#!/usr/bin/env bash\n", { mode: 0o755 });
   try {
     const result = spawnSync("bash", ["-c", stepScript("Resolve target")], {
       encoding: "utf8",
       env: {
-        PATH: process.env.PATH,
+        PATH: `${bin}:${process.env.PATH}`,
         GITHUB_OUTPUT: output,
         AUDIT_ENV: "prod",
         AUDIT_ON_PUSH: "false",
@@ -136,7 +147,9 @@ function resolveTarget(overrides) {
     });
     const outputs = Object.fromEntries(fs.readFileSync(output, "utf8").trim().split("\n")
       .filter(Boolean).map(line => [line.split("=")[0], line.slice(line.indexOf("=") + 1)]));
-    return { status: result.status, log: result.stdout + result.stderr, outputs };
+    const ghCalls = fs.existsSync(path.join(tmp, "gh-calls"))
+      ? fs.readFileSync(path.join(tmp, "gh-calls"), "utf8").trim().split("\n") : [];
+    return { status: result.status, log: result.stdout + result.stderr, outputs, ghCalls };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -190,3 +203,37 @@ test("labels still gate labeled events with audit-on-push", () => {
   assert.equal(resolveTarget({ AUDIT_ON_PUSH: "true", LABEL_NAME: "other" }).outputs.publish, "false");
   assert.equal(resolveTarget({ AUDIT_ON_PUSH: "true", PR_DRAFT: "true" }).outputs.publish, "true");
 });
+
+const conflictPush = { EVENT_NAME: "pull_request_target", EVENT_ACTION: "synchronize", AUDIT_ON_PUSH: "true" };
+
+test("publishes a push to a conflicting PR from pull_request_target", () => {
+  const { status, outputs, ghCalls } = resolveTarget(conflictPush, ["null", "false"]);
+  assert.equal(status, 0);
+  assert.deepEqual(outputs, {
+    runner_channel: "", pr_number: "123", sha: "0123456789abcdef", publish: "true",
+  });
+  assert.deepEqual(ghCalls, Array(2).fill("api repos/tempoxyz/example/pulls/123 --jq .mergeable"));
+});
+
+test("leaves mergeable PR pushes to the pull_request run", () => {
+  assert.equal(resolveTarget(conflictPush, ["true"]).outputs.publish, "false");
+});
+
+test("skips when mergeability stays unknown", () => {
+  const { outputs, ghCalls } = resolveTarget(conflictPush);
+  assert.equal(outputs.publish, "false");
+  assert.equal(ghCalls.length, 12);
+});
+
+for (const [name, overrides] of [
+  ["without audit-on-push", { AUDIT_ON_PUSH: "false" }],
+  ["labeled events", { EVENT_ACTION: "labeled" }],
+  ["draft PRs", { PR_DRAFT: "true" }],
+  ["fork PRs", { PR_HEAD_REPO: "external/example" }],
+]) {
+  test(`pull_request_target skips ${name}`, () => {
+    const { outputs, ghCalls } = resolveTarget({ ...conflictPush, ...overrides }, ["false"]);
+    assert.equal(outputs.publish, "false");
+    assert.deepEqual(ghCalls, []);
+  });
+}
