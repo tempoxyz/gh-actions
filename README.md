@@ -237,7 +237,7 @@ Optional inputs:
 - `branch` / `pr-number` — target for ad-hoc `workflow_dispatch` callers
 - `require-completed-audit` — publish a `Cyclops audit run` merge-gate status (default: `false`)
 - `env` — audit environment: `prod`/`production` (default), `staging`, or `ab` (both); non-prod values set `runner_channel` in the event
-- `audit-on-push` — also publish on `opened`, `synchronize`, `reopened`, and `ready_for_review` for non-draft, same-repo pull requests (default: `false`); the caller must add those `pull_request` types
+- `audit-on-push` — also publish on `opened`, `synchronize`, `reopened`, and `ready_for_review` for non-draft, same-repo pull requests (default: `false`); the caller must add those `pull_request` types. GitHub skips `pull_request` runs while a PR conflicts with its base, so callers with `pull_request_target` on the same types also publish those pushes from there
 
 When `require-completed-audit: true`, internal and non-Dependabot pull requests remain pending until `tempoxyz-bot` posts a completed Cyclops review; fork and Dependabot pull requests are exempt. Completed reviews remain valid after later commits. The caller must add `pull_request_target`, `pull_request_review`, and `merge_group` triggers, grant `pull-requests: read` and `statuses: write`, and require the resulting `Cyclops audit run` status on the protected branch. Reusable workflows cannot declare caller event triggers.
 

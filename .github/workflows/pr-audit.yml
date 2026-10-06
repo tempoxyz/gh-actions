@@ -52,12 +52,20 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request_target' &&
+        inputs.audit-on-push &&
+        contains(fromJSON('["opened", "synchronize", "reopened", "ready_for_review"]'), github.event.action)
+      )
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
       id-token: write
       contents: read
+      pull-requests: read
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
@@ -120,6 +128,29 @@ jobs:
                 exit 0
               fi
             else
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+          elif [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+            # GitHub starts no pull_request runs while a PR conflicts with its base, so publish those pushes here.
+            if [[ "$AUDIT_ON_PUSH" != "true" ||
+                  ! "$EVENT_ACTION" =~ ^(opened|synchronize|reopened|ready_for_review)$ ||
+                  "$PR_DRAFT" == "true" || "$PR_HEAD_REPO" != "$REPO" ]]; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # mergeable is null until GitHub finishes the test merge.
+            mergeable=null
+            for _ in $(seq 12); do
+              mergeable=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.mergeable')
+              [[ "$mergeable" != "null" ]] && break
+              sleep 5
+            done
+            if [[ "$mergeable" != "false" ]]; then
               echo "publish=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
