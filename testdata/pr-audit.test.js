@@ -121,6 +121,7 @@ function resolveTarget(overrides) {
         GITHUB_OUTPUT: output,
         AUDIT_ENV: "prod",
         AUDIT_ON_PUSH: "false",
+        AUDIT_REVIEWED_PUSHES: "false",
         EVENT_NAME: "pull_request",
         EVENT_ACTION: "labeled",
         LABEL_NAME: "cyclops",
@@ -185,6 +186,38 @@ for (const [name, overrides] of [
     assert.equal(outputs.publish, "false");
   });
 }
+
+for (const action of ["synchronize", "reopened", "ready_for_review"]) {
+  test(`audit-reviewed-pushes publishes ${action} as push-only`, () => {
+    const { status, outputs } = resolveTarget({ AUDIT_REVIEWED_PUSHES: "true", EVENT_ACTION: action });
+    assert.equal(status, 0);
+    assert.deepEqual(outputs, {
+      runner_channel: "", push_only: "true", pr_number: "123", sha: "0123456789abcdef", publish: "true",
+    });
+    // audit-on-push already reviews every PR, so its events stay ordinary.
+    assert.equal(resolveTarget({
+      AUDIT_ON_PUSH: "true", AUDIT_REVIEWED_PUSHES: "true", EVENT_ACTION: action,
+    }).outputs.push_only, undefined);
+  });
+}
+
+for (const [name, overrides] of [
+  ["opened PRs", { EVENT_ACTION: "opened" }],
+  ["draft PRs", { PR_DRAFT: "true" }],
+  ["fork PRs", { PR_HEAD_REPO: "external/example" }],
+]) {
+  test(`audit-reviewed-pushes skips ${name}`, () => {
+    const { status, outputs } = resolveTarget({
+      AUDIT_REVIEWED_PUSHES: "true", EVENT_ACTION: "synchronize", ...overrides,
+    });
+    assert.equal(status, 0);
+    assert.equal(outputs.publish, "false");
+  });
+}
+
+test("labeled events are never push-only", () => {
+  assert.equal(resolveTarget({ AUDIT_REVIEWED_PUSHES: "true" }).outputs.push_only, undefined);
+});
 
 test("labels still gate labeled events with audit-on-push", () => {
   assert.equal(resolveTarget({ AUDIT_ON_PUSH: "true", LABEL_NAME: "other" }).outputs.publish, "false");

@@ -39,6 +39,11 @@ on:
         required: false
         type: boolean
         default: false
+      audit-reviewed-pushes:
+        description: Publish pushes to non-draft, same-repo PRs as push-only events; Cyclops runs them only on PRs it already reviewed.
+        required: false
+        type: boolean
+        default: false
     secrets:
       EVENTS_KEY:
         required: true
@@ -68,6 +73,7 @@ jobs:
           ACTOR: ${{ github.actor }}
           AUDIT_ENV: ${{ inputs.env }}
           AUDIT_ON_PUSH: ${{ inputs.audit-on-push }}
+          AUDIT_REVIEWED_PUSHES: ${{ inputs.audit-reviewed-pushes }}
           REQUIRED_LABEL: ${{ inputs.required-label }}
           REQUIRED_LABELS: ${{ inputs.required-labels }}
           BRANCH: ${{ inputs.branch }}
@@ -114,10 +120,16 @@ jobs:
                 exit 0
               fi
             elif [[ "$AUDIT_ON_PUSH" == "true" &&
-                    "$EVENT_ACTION" =~ ^(opened|synchronize|reopened|ready_for_review)$ ]]; then
+                    "$EVENT_ACTION" =~ ^(opened|synchronize|reopened|ready_for_review)$ ]] ||
+                 [[ "$AUDIT_REVIEWED_PUSHES" == "true" &&
+                    "$EVENT_ACTION" =~ ^(synchronize|reopened|ready_for_review)$ ]]; then
               if [[ "$PR_DRAFT" == "true" || "$PR_HEAD_REPO" != "$REPO" ]]; then
                 echo "publish=false" >> "$GITHUB_OUTPUT"
                 exit 0
+              fi
+              # Without audit-on-push, Cyclops drops pushes to PRs it has not reviewed.
+              if [[ "$AUDIT_ON_PUSH" != "true" ]]; then
+                echo "push_only=true" >> "$GITHUB_OUTPUT"
               fi
             else
               echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -158,6 +170,7 @@ jobs:
           EVENTS_CERT: ${{ secrets.EVENTS_CERT }}
           EVENTS_ARGS: ${{ secrets.EVENTS_ARGS }}
           REPO: ${{ github.repository }}
+          PUSH_ONLY: ${{ steps.target.outputs.push_only }}
           RUNNER_CHANNEL: ${{ steps.target.outputs.runner_channel }}
           TARGET_PR_NUMBER: ${{ steps.target.outputs.pr_number }}
           TARGET_SHA: ${{ steps.target.outputs.sha }}
@@ -204,6 +217,7 @@ jobs:
             --arg sha "$TARGET_SHA" \
             --arg pr "$TARGET_PR_NUMBER" \
             --arg runner_channel "${RUNNER_CHANNEL:-}" \
+            --arg push_only "${PUSH_ONLY:-}" \
             '{
               repository: $repo,
               event: "pr_audit",
@@ -211,6 +225,7 @@ jobs:
                 {sha: $sha}
                 + (if $pr != "" then {pr_number: ($pr | tonumber)} else {} end)
                 + (if $runner_channel != "" then {runner_channel: $runner_channel} else {} end)
+                + (if $push_only == "true" then {push_only: true} else {} end)
               )
             }' \
           | env -i "${child_env[@]}" curl -sf -o /dev/null -X POST "${events_args[@]}" \
