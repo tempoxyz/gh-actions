@@ -195,6 +195,7 @@ The SHA is the immutable reference; the timestamp comment records the reviewed, 
 | [`rust-clippy`](#rust-fmt-and-rust-clippy) | Clippy-only wrapper around rust-lint | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
 | [`tempo-extension`](#tempo-extension) | Build, sign, and publish a `tempo` CLI extension to cli.tempo.xyz | api, wallet-cli |
+| [`web-app-image`](#web-app-image) | Build a web app image; push `:latest` from the default branch and PR previews for dev-eu | dev-platform, atlas |
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 
@@ -904,6 +905,62 @@ Optional inputs:
 - `cloudflare-sts-account` (default: `prd`) — Cloudflare account alias that owns `bucket`
 
 Publishing needs a `cloudflare-sts-policy` and one secret, `RELEASE_SIGNING_KEY`, in the caller's `environment` (default `release`). The publish job mints a bucket-scoped R2 token from Cloudflare STS just before uploading, derives its S3 credentials and account endpoint, and the action revokes the token when the job ends; no R2 credentials are stored. The caller's STS policy must match the `environment:<environment>` subject, grant `r2_read` and `r2_write` on `bucket`, and should pin `job_workflow_ref` to this workflow. The publish job reads `RELEASE_SIGNING_KEY` from the environment directly; GitHub does not pass environment secrets through a caller's `secrets:` block, which only forwards repository or organization secrets. Callers grant `attestations: write`, `contents: read`, and `id-token: write`, whether or not they publish, because GitHub checks every nested job's permissions up front. Each target's binary, checksum, SBOM, and cosign bundle are uploaded as the `<package>-<os>-<arch>` workflow artifact; to attach them to a GitHub release, download them in a caller job that needs this one.
+
+### `web-app-image`
+
+Builds a web app's image for the dev-eu web-apps platform (`tempoxyz/dev-infra`). Argo CD runs
+each app from `:latest`, which Image Updater follows by digest, and runs a preview of every open
+pull request labelled `preview` from `:<first 7 characters of the head commit>`.
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  image:
+    uses: tempoxyz/gh-actions/.github/workflows/web-app-image.yml@<commit-sha>
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      pull-requests: write
+```
+
+| Event | Builds | Pushes | Then |
+|-------|--------|--------|------|
+| Push to the default branch | the commit | `:<sha7>`, `:latest`, extra `tags` | |
+| Other pushes, `workflow_dispatch` | the commit | `:<sha7>`, extra `tags` | |
+| Pull request from this repository | the head commit, not the merge commit | `:<head sha7>`, `:pr-<number>` | labels the PR `preview`, unless it has `no-preview` |
+| Fork or Dependabot pull request | the head commit | nothing | |
+| Merge queue | the merge group commit | nothing | |
+
+`pull_request_target` and `workflow_run` are refused. The label is added only after the push
+succeeds, so Argo CD never deploys a missing image, and it is read from the pull request at that
+point, so a `no-preview` added during the build still wins. Removing `preview` stops the preview
+until the next push; add `no-preview` to keep it off.
+
+Callers grant all four permissions even when a job is skipped, because GitHub checks every
+nested job's permissions up front. The build job gets `contents: read` and `packages: write`, and
+the label job only `pull-requests: write`; both get `id-token: write` for secure-runner. That
+same `pull-requests: write` lets the label job create the `preview` label the first time a
+repository needs it, so no `issues: write` is needed. When the image's GHCR package does not
+share the repository's name, give the repository write access to the package.
+
+Optional inputs:
+
+- `image` (default: `ghcr.io/<owner>/<repo>`) — GHCR repository, without a tag; lower-cased
+- `context` (default: `.`) and `dockerfile` (default: `<context>/Dockerfile`), relative to the repository root
+- `build-args` — newline-separated `KEY=VALUE`; `GIT_SHA` is always the built commit
+- `tags` — extra [docker/metadata-action](https://github.com/docker/metadata-action#tags-input) rules, for example `type=ref,event=branch`; they never apply to pull requests
+
+Outputs are `pushed`, `tags`, and `digest`. Images carry the OCI labels from metadata-action,
+with `org.opencontainers.image.revision` set to the built commit, and use the GitHub Actions cache.
 
 ### `cargo-update-pr`
 
