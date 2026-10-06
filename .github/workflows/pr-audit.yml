@@ -51,21 +51,67 @@ permissions:
   id-token: write
 
 jobs:
-  publish:
+  # GitHub starts no pull_request runs while a PR conflicts with its base. This ungated probe finds those
+  # pushes so publish enters the protected environment only when it will publish.
+  conflicting-push:
     if: >-
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'pull_request_target' &&
-        inputs.audit-on-push &&
-        contains(fromJSON('["opened", "synchronize", "reopened", "ready_for_review"]'), github.event.action)
+      github.event_name == 'pull_request_target' &&
+      inputs.audit-on-push &&
+      contains(fromJSON('["opened", "synchronize", "reopened", "ready_for_review"]'), github.event.action)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      pull-requests: read
+    outputs:
+      conflicting: ${{ steps.probe.outputs.conflicting }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+
+      - name: Check for a conflicting push
+        id: probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$PR_DRAFT" == "true" || "$PR_HEAD_REPO" != "$REPO" ]]; then
+            echo "conflicting=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # mergeable is null until GitHub finishes the test merge. Read it with the head it describes,
+          # so a newer push's conflict is not attributed to this event's head.
+          state="$PR_HEAD_SHA null"
+          for _ in $(seq 12); do
+            state=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '"\(.head.sha) \(.mergeable)"')
+            [[ "$state" != "$PR_HEAD_SHA null" ]] && break
+            sleep 5
+          done
+          if [[ "$state" == "$PR_HEAD_SHA false" ]]; then
+            echo "conflicting=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "conflicting=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: conflicting-push
+    if: >-
+      !cancelled() && (
+        github.event_name == 'pull_request' ||
+        github.event_name == 'workflow_dispatch' ||
+        needs.conflicting-push.outputs.conflicting == 'true'
       )
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
       id-token: write
       contents: read
-      pull-requests: read
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
@@ -135,25 +181,7 @@ jobs:
             echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
 
           elif [[ "$EVENT_NAME" == "pull_request_target" ]]; then
-            # GitHub starts no pull_request runs while a PR conflicts with its base, so publish those pushes here.
-            if [[ "$AUDIT_ON_PUSH" != "true" ||
-                  ! "$EVENT_ACTION" =~ ^(opened|synchronize|reopened|ready_for_review)$ ||
-                  "$PR_DRAFT" == "true" || "$PR_HEAD_REPO" != "$REPO" ]]; then
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            # mergeable is null until GitHub finishes the test merge.
-            mergeable=null
-            for _ in $(seq 12); do
-              mergeable=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.mergeable')
-              [[ "$mergeable" != "null" ]] && break
-              sleep 5
-            done
-            if [[ "$mergeable" != "false" ]]; then
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+            # Only reached for a push the conflicting-push job found unmergeable.
             echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
             echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
 

@@ -109,23 +109,23 @@ function stepScript(name) {
   return script.join("\n");
 }
 
-// `mergeable` lists what successive `gh api` PR reads return; `sleep` is stubbed out.
-function resolveTarget(overrides, mergeable = []) {
+// `pulls` lists what successive `gh api` PR reads return; `sleep` is stubbed out.
+function resolveTarget(overrides, pulls = [], step = "Resolve target") {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-audit-resolve-"));
   const output = path.join(tmp, "output");
   fs.writeFileSync(output, "");
   const bin = path.join(tmp, "bin");
   fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(tmp, "mergeable"), mergeable.map(value => `${value}\n`).join(""));
+  fs.writeFileSync(path.join(tmp, "pulls"), pulls.map(value => `${value}\n`).join(""));
   fs.writeFileSync(path.join(bin, "gh"), `#!/usr/bin/env bash
 echo "$*" >> "${tmp}/gh-calls"
-value=$(head -n 1 "${tmp}/mergeable")
-tail -n +2 "${tmp}/mergeable" > "${tmp}/rest" && mv "${tmp}/rest" "${tmp}/mergeable"
-echo "\${value:-null}"
+value=$(head -n 1 "${tmp}/pulls")
+tail -n +2 "${tmp}/pulls" > "${tmp}/rest" && mv "${tmp}/rest" "${tmp}/pulls"
+echo "\${value:-0123456789abcdef null}"
 `, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, "sleep"), "#!/usr/bin/env bash\n", { mode: 0o755 });
   try {
-    const result = spawnSync("bash", ["-c", stepScript("Resolve target")], {
+    const result = spawnSync("bash", ["-c", stepScript(step)], {
       encoding: "utf8",
       env: {
         PATH: `${bin}:${process.env.PATH}`,
@@ -204,36 +204,45 @@ test("labels still gate labeled events with audit-on-push", () => {
   assert.equal(resolveTarget({ AUDIT_ON_PUSH: "true", PR_DRAFT: "true" }).outputs.publish, "true");
 });
 
-const conflictPush = { EVENT_NAME: "pull_request_target", EVENT_ACTION: "synchronize", AUDIT_ON_PUSH: "true" };
+const probe = (pulls, overrides = {}) => resolveTarget(overrides, pulls, "Check for a conflicting push");
+const head = "0123456789abcdef";
 
-test("publishes a push to a conflicting PR from pull_request_target", () => {
-  const { status, outputs, ghCalls } = resolveTarget(conflictPush, ["null", "false"]);
+test("flags a push to a conflicting PR once mergeability resolves", () => {
+  const { status, outputs, ghCalls } = probe([`${head} null`, `${head} false`]);
   assert.equal(status, 0);
-  assert.deepEqual(outputs, {
-    runner_channel: "", pr_number: "123", sha: "0123456789abcdef", publish: "true",
+  assert.deepEqual(outputs, { conflicting: "true" });
+  assert.equal(ghCalls.length, 2);
+  assert.match(ghCalls[0], /^api repos\/tempoxyz\/example\/pulls\/123 --jq /);
+});
+
+for (const [name, pulls] of [
+  ["mergeable PRs", [`${head} true`]],
+  ["a conflict on a newer head", ["fedcba9876543210 false"]],
+  ["unresolved mergeability", []],
+]) {
+  test(`does not flag ${name}`, () => {
+    assert.deepEqual(probe(pulls).outputs, { conflicting: "false" });
   });
-  assert.deepEqual(ghCalls, Array(2).fill("api repos/tempoxyz/example/pulls/123 --jq .mergeable"));
-});
+}
 
-test("leaves mergeable PR pushes to the pull_request run", () => {
-  assert.equal(resolveTarget(conflictPush, ["true"]).outputs.publish, "false");
-});
-
-test("skips when mergeability stays unknown", () => {
-  const { outputs, ghCalls } = resolveTarget(conflictPush);
-  assert.equal(outputs.publish, "false");
-  assert.equal(ghCalls.length, 12);
+test("stops polling after a minute", () => {
+  assert.equal(probe([]).ghCalls.length, 12);
 });
 
 for (const [name, overrides] of [
-  ["without audit-on-push", { AUDIT_ON_PUSH: "false" }],
-  ["labeled events", { EVENT_ACTION: "labeled" }],
   ["draft PRs", { PR_DRAFT: "true" }],
   ["fork PRs", { PR_HEAD_REPO: "external/example" }],
 ]) {
-  test(`pull_request_target skips ${name}`, () => {
-    const { outputs, ghCalls } = resolveTarget({ ...conflictPush, ...overrides }, ["false"]);
-    assert.equal(outputs.publish, "false");
+  test(`does not probe ${name}`, () => {
+    const { outputs, ghCalls } = probe([`${head} false`], overrides);
+    assert.deepEqual(outputs, { conflicting: "false" });
     assert.deepEqual(ghCalls, []);
   });
 }
+
+test("publishes a pull_request_target push the probe flagged", () => {
+  const { status, outputs, ghCalls } = resolveTarget({ EVENT_NAME: "pull_request_target", EVENT_ACTION: "synchronize" });
+  assert.equal(status, 0);
+  assert.deepEqual(outputs, { runner_channel: "", pr_number: "123", sha: head, publish: "true" });
+  assert.deepEqual(ghCalls, []);
+});
