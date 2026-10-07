@@ -141,6 +141,7 @@ echo "\${value:-0123456789abcdef null}"
         PR_HEAD_REPO: "tempoxyz/example",
         PR_HEAD_SHA: "0123456789abcdef",
         PR_NUMBER: "123",
+        PR_USER: "octocat",
         REPO: "tempoxyz/example",
         ...overrides,
       },
@@ -188,6 +189,7 @@ for (const [name, overrides] of [
   ["draft PRs", { PR_DRAFT: "true" }],
   ["fork PRs", { PR_HEAD_REPO: "external/example" }],
   ["PRs without a head repo", { PR_HEAD_REPO: "" }],
+  ["Dependabot PRs", { PR_USER: "dependabot[bot]" }],
   ["other actions", { EVENT_ACTION: "edited" }],
 ]) {
   test(`audit-on-push skips ${name}`, () => {
@@ -232,6 +234,7 @@ test("stops polling after a minute", () => {
 for (const [name, overrides] of [
   ["draft PRs", { PR_DRAFT: "true" }],
   ["fork PRs", { PR_HEAD_REPO: "external/example" }],
+  ["Dependabot PRs", { PR_USER: "dependabot[bot]" }],
 ]) {
   test(`does not probe ${name}`, () => {
     const { outputs, ghCalls } = probe([`${head} false`], overrides);
