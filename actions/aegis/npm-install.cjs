@@ -5,7 +5,7 @@ const { spawnSync } = require("node:child_process");
 
 const PACKAGES = {
   allow: "isnumber@1.0.0",
-  block: "lodahs@0.0.1-security",
+  block: "@tempoxyz/example-test-malware@1.0.0",
 };
 
 function npmCLI(node = process.execPath) {

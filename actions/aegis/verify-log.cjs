@@ -8,7 +8,7 @@ const events = fs.readFileSync(process.argv[2], "utf8")
 
 for (const expected of [
   { purl: "pkg:npm/isnumber@1.0.0", action: "allow" },
-  { purl: "pkg:npm/lodahs@0.0.1-security", action: "block" },
+  { purl: "pkg:npm/@tempoxyz/example-test-malware@1.0.0", action: "block" },
 ]) {
   assert.ok(
     events.some((event) => event.purl === expected.purl && event.action === expected.action),

@@ -238,7 +238,7 @@ esac
 test("the integration helper bypasses PATH shims and uses the requested packages", () => {
   assert.deepEqual(PACKAGES, {
     allow: "isnumber@1.0.0",
-    block: "lodahs@0.0.1-security",
+    block: "@tempoxyz/example-test-malware@1.0.0",
   });
   assert.match(npmCLI(), /npm-cli\.js$/);
 });
