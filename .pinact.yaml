@@ -31,9 +31,6 @@ rules:
       - expr: ActionName == "actions/checkout" && ActionVersion == "f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a"
   - ignore: true
     conditions:
-      - expr: ActionName == "actions/download-artifact" && ActionVersion == "484a0b528fb4d7bd804637ccb632e47a0e638317"
-  - ignore: true
-    conditions:
       - expr: ActionName == "actions/setup-node" && ActionVersion == "7f84f1d52d0c56afb45c62fee31a93b843cea4d6"
   - ignore: true
     conditions:

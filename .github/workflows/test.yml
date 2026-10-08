@@ -71,7 +71,7 @@ jobs:
       - name: Allow isnumber@1.0.0
         run: node actions/aegis/npm-install.cjs allow
 
-      - name: Block lodahs@0.0.1-security
+      - name: Block @tempoxyz/example-test-malware@1.0.0
         id: blocked-package
         continue-on-error: true
         run: node actions/aegis/npm-install.cjs block
