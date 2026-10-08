@@ -958,3 +958,31 @@ jobs:
 ```
 
 Caller workflows must grant `issues: write` and `pull-requests: write`.
+
+### `stale`
+
+Marks pull requests (including drafts) with the `stale` label after 7 days of inactivity and closes them after another 3 days without activity, matching `tempoxyz/tempo`. Posts comments when marking and closing PRs, and processes up to 120 API operations per run. Issues are excluded.
+
+The caller owns the schedule and repository guard:
+
+```yaml
+name: Close Stale PRs
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # daily at midnight UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  stale:
+    if: ${{ github.event_name != 'schedule' || github.repository == 'tempoxyz/tempo' }}
+    uses: tempoxyz/gh-actions/.github/workflows/stale.yml@main
+    permissions:
+      id-token: write
+      issues: write
+      pull-requests: write
+```
+
+Replace `tempoxyz/tempo` with your repository. Caller jobs must grant `id-token: write` for the secure runner, plus `issues: write` and `pull-requests: write` for labeling, commenting, and closing PRs. Pin the reusable workflow to a full commit SHA in production (see [Versioning](#versioning)).
