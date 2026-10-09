@@ -316,18 +316,28 @@ jobs:
       - name: Checkout release signing tool
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
-          path: wallet-release-tools
+          path: release-signer
           persist-credentials: false
-          # wallet-rs is archived, so this last commit is final; `tempo-sign` still builds from it.
-          ref: e8e37d999324ac3619f26d9b8485803310af52a1 # main
-          repository: tempoxyz/wallet-rs
+          # `tempo-sign` lives in tempo's `tempo-ext`, beside the installer that verifies it.
+          # test.yml builds the signer from this same ref.
+          ref: a54f3730ddc6109bde3bb0aa149924cab938f649 # dad/tempo-sign (tempoxyz/tempo#8236)
+          repository: tempoxyz/tempo
+
+      # Resolving the tempo workspace clones reth even though the signer never builds it, which
+      # takes minutes cold. Only git sources are cached: Cargo.lock pins them by commit hash, so
+      # a stale or tampered entry cannot change what builds. Registry crates download fresh.
+      - name: Cache signer git dependencies
+        uses: actions/cache@3edfce9056124e459a23f683a21433670d47daca # main
+        with:
+          path: ~/.cargo/git/db
+          key: tempo-sign-git-${{ runner.os }}-${{ hashFiles('release-signer/Cargo.lock') }}
 
       - name: Build release signer
-        working-directory: wallet-release-tools
+        working-directory: release-signer
         run: |
           set -euo pipefail
           rustup default stable
-          cargo build --locked --release -p tempo-sign
+          cargo build --locked --release -p tempo-ext --features sign --bin tempo-sign
 
       - name: Sign manifest
         env:
@@ -354,7 +364,7 @@ jobs:
               --skill-file "$SKILL_FILE"
             )
           fi
-          ./wallet-release-tools/target/release/tempo-sign sign "${args[@]}"
+          ./release-signer/target/release/tempo-sign sign "${args[@]}"
 
       # Mint the token only after the slow signer build so its lifetime covers just the upload.
       - name: Fetch R2 token

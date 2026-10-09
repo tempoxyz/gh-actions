@@ -871,7 +871,7 @@ Optional inputs:
 
 ### `tempo-extension`
 
-Builds a `tempo` CLI extension binary per target (`tempo <name>` runs the `tempo-<name>` binary the launcher installs from cli.tempo.xyz). With `publish: true` it also attests and cosign-signs each binary, signs the extension manifest with `tempo-sign` from [`wallet-rs`](https://github.com/tempoxyz/wallet-rs), and uploads the binaries, manifest, and optional `SKILL.md` to the R2 bucket behind cli.tempo.xyz. Versioned objects are immutable: they are written with a conditional `PutObject` (`If-None-Match: *`), and a rerun only succeeds if the existing object matches byte for byte. The `manifest.json` and `VERSION` latest pointers move last.
+Builds a `tempo` CLI extension binary per target (`tempo <name>` runs the `tempo-<name>` binary the launcher installs from cli.tempo.xyz). With `publish: true` it also attests and cosign-signs each binary, signs the extension manifest with `tempo-sign`, built from a pinned commit of [`tempo`](https://github.com/tempoxyz/tempo/tree/main/crates/ext) next to the installer that verifies it, and uploads the binaries, manifest, and optional `SKILL.md` to the R2 bucket behind cli.tempo.xyz. Versioned objects are immutable: they are written with a conditional `PutObject` (`If-None-Match: *`), and a rerun only succeeds if the existing object matches byte for byte. The `manifest.json` and `VERSION` latest pointers move last.
 
 The caller's `build-command` writes one binary to `$EXTENSION_OUTPUT` and receives `EXTENSION_PACKAGE`, `EXTENSION_VERSION`, `EXTENSION_OS` (`linux`/`darwin`), `EXTENSION_ARCH` (`amd64`/`arm64`), and `EXTENSION_SUFFIX` (`<os>-<arch>`). Node.js and corepack are set up first, so pnpm comes from the caller's `packageManager` field.
 
