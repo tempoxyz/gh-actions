@@ -1,0 +1,64 @@
+name: rust typos
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Runner used for typos.
+        required: false
+        type: string
+        default: ubuntu-latest
+      timeout-minutes:
+        description: Timeout for the job.
+        required: false
+        type: number
+        default: 30
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
+jobs:
+  typos:
+    name: typos
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+      # typos publishes no build provenance, but its releases are immutable and GitHub attests
+      # every asset, so `gh release verify-asset` proves the tarball is the one attached to the
+      # release. Same target, annotations and exit status as the crate-ci/typos action.
+      - name: Install typos
+        env:
+          TYPOS_VERSION: v1.50.3
+          GH_TOKEN: ${{ github.token }}
+        run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64|aarch64) ARCH="$(uname -m)" ;;
+            *) echo "::error::typos: unsupported architecture $(uname -m)"; exit 1 ;;
+          esac
+          ASSET="typos-${TYPOS_VERSION}-${ARCH}-unknown-linux-musl.tar.gz"
+          INSTALL_DIR="${RUNNER_TEMP:?}/typos-bin"
+          mkdir -p "$INSTALL_DIR"
+          curl -fsSL --retry 3 -o "$INSTALL_DIR/$ASSET" "https://github.com/crate-ci/typos/releases/download/${TYPOS_VERSION}/${ASSET}"
+          gh release verify-asset "$TYPOS_VERSION" "$INSTALL_DIR/$ASSET" --repo crate-ci/typos
+          tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" ./typos
+          echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+      - name: Check for typos
+        run: |
+          set -euo pipefail
+          typos . --format json \
+            | jq --raw-output 'select(.type == "typo") | "::warning file=\(.path | ltrimstr("./")),line=\(.line_num),col=\(.byte_offset + 1)::\"\(.typo)\" should be \"" + ((.corrections // []) | join("\" or \"")) + "\"."' \
+            || true
+          typos .

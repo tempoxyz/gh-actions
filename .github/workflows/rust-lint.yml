@@ -81,173 +81,53 @@ on:
 permissions:
   id-token: write
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: full
-
 jobs:
   clippy:
-    name: clippy
     if: ${{ inputs.run-clippy }}
-    runs-on: ${{ inputs.clippy-runner }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
-    env:
-      RUSTC_WRAPPER: sccache
+    uses: ./.github/workflows/rust-clippy.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
     permissions:
       id-token: write
       contents: read
-    steps:
-      - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
-
-      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
-        with:
-          persist-credentials: false
-          submodules: ${{ inputs.checkout-submodules }}
-      - name: Install Rust toolchain
-        env:
-          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy
-          rustup default "$RUST_TOOLCHAIN"
-      - name: Install mold linker
-        env:
-          MOLD_VERSION: "2.42.1"
-          MOLD_SHA256_X86_64: 6ff270c9bf07d2bec5c98aa324eb7c4daf6a1a4d815c05ff1708049616047855
-          MOLD_SHA256_AARCH64: 16b025652d3d7456689e6025a77e1903bb2a15e7630877c26cc133f5df95b9c6
-        run: |
-          set -euo pipefail
-          # mold publishes no checksums, signatures or attestations, so the release tarball digests
-          # are pinned here and change together with MOLD_VERSION (test.yml keeps this block in
-          # step with the copy in .github/workflows/rust-build-binaries.yml).
-          ARCH="$(uname -m)"
-          case "$ARCH" in
-            x86_64)  EXPECTED="$MOLD_SHA256_X86_64" ;;
-            aarch64) EXPECTED="$MOLD_SHA256_AARCH64" ;;
-            *) echo "::error::mold: unsupported architecture $ARCH"; exit 1 ;;
-          esac
-          ASSET="mold-${MOLD_VERSION}-${ARCH}-linux.tar.gz"
-          TMP="${RUNNER_TEMP:?}/mold"
-          mkdir -p "$TMP"
-          curl -fsSL --retry 3 -o "$TMP/$ASSET" "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/${ASSET}"
-          echo "$EXPECTED  $TMP/$ASSET" | sha256sum -c
-          SUDO=""
-          [ "$(id -u)" = 0 ] || SUDO=sudo
-          $SUDO tar -C /usr/local --strip-components=1 --no-overwrite-dir -xzf "$TMP/$ASSET"
-          # Make mold the default linker, as rui314/setup-mold did.
-          if [ "$(realpath /usr/bin/ld)" != /usr/local/bin/mold ]; then
-            $SUDO ln -sf /usr/local/bin/mold "$(realpath /usr/bin/ld)"
-          fi
-          mold --version
-      - name: Enable sccache
-        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
-      - name: Run clippy
-        run: |
-          # CLIPPY_FLAGS is a space-separated flag list that must word-split.
-          # shellcheck disable=SC2086
-          cargo clippy $CLIPPY_FLAGS
-        env:
-          CLIPPY_FLAGS: ${{ inputs.clippy-flags }}
-          RUSTFLAGS: -D warnings
+    with:
+      runner: ${{ inputs.clippy-runner }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      rust-toolchain: ${{ inputs.rust-toolchain }}
+      flags: ${{ inputs.clippy-flags }}
+      checkout-submodules: ${{ inputs.checkout-submodules }}
 
   fmt:
-    name: fmt
     if: ${{ inputs.run-fmt }}
-    runs-on: ${{ inputs.fmt-runner }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    uses: ./.github/workflows/rust-fmt.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
     permissions:
       id-token: write
       contents: read
-    steps:
-      - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
-
-      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
-        with:
-          persist-credentials: false
-      - name: Install Rust toolchain
-        env:
-          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt
-          rustup default "$RUST_TOOLCHAIN"
-      - name: Run fmt
-        run: |
-          # FMT_FLAGS is a space-separated flag list that must word-split.
-          # shellcheck disable=SC2086
-          cargo fmt $FMT_FLAGS
-        env:
-          FMT_FLAGS: ${{ inputs.fmt-flags }}
+    with:
+      runner: ${{ inputs.fmt-runner }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      rust-toolchain: ${{ inputs.rust-toolchain }}
+      flags: ${{ inputs.fmt-flags }}
 
   typos:
-    name: typos
     if: ${{ inputs.run-typos }}
-    runs-on: ${{ inputs.typos-runner }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    uses: ./.github/workflows/rust-typos.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
     permissions:
       id-token: write
       contents: read
-    steps:
-      - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
-
-      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
-        with:
-          persist-credentials: false
-      # typos publishes no build provenance, but its releases are immutable and GitHub attests
-      # every asset, so `gh release verify-asset` proves the tarball is the one attached to the
-      # release. Same target, annotations and exit status as the crate-ci/typos action.
-      - name: Install typos
-        env:
-          TYPOS_VERSION: v1.50.3
-          GH_TOKEN: ${{ github.token }}
-        run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
-          set -euo pipefail
-          case "$(uname -m)" in
-            x86_64|aarch64) ARCH="$(uname -m)" ;;
-            *) echo "::error::typos: unsupported architecture $(uname -m)"; exit 1 ;;
-          esac
-          ASSET="typos-${TYPOS_VERSION}-${ARCH}-unknown-linux-musl.tar.gz"
-          INSTALL_DIR="${RUNNER_TEMP:?}/typos-bin"
-          mkdir -p "$INSTALL_DIR"
-          curl -fsSL --retry 3 -o "$INSTALL_DIR/$ASSET" "https://github.com/crate-ci/typos/releases/download/${TYPOS_VERSION}/${ASSET}"
-          gh release verify-asset "$TYPOS_VERSION" "$INSTALL_DIR/$ASSET" --repo crate-ci/typos
-          tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" ./typos
-          echo "$INSTALL_DIR" >> "$GITHUB_PATH"
-      - name: Check for typos
-        run: |
-          set -euo pipefail
-          typos . --format json \
-            | jq --raw-output 'select(.type == "typo") | "::warning file=\(.path | ltrimstr("./")),line=\(.line_num),col=\(.byte_offset + 1)::\"\(.typo)\" should be \"" + ((.corrections // []) | join("\" or \"")) + "\"."' \
-            || true
-          typos .
+    with:
+      runner: ${{ inputs.typos-runner }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
 
   deny:
-    name: cargo deny check
     if: ${{ inputs.run-deny }}
-    runs-on: ${{ inputs.deny-runner }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    uses: ./.github/workflows/rust-deny.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
     permissions:
       id-token: write
       contents: read
-    steps:
-      - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
-
-      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
-        with:
-          persist-credentials: false
-      - name: Install Rust toolchain
-        env:
-          RUST_TOOLCHAIN: ${{ inputs.deny-rust-toolchain }}
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
-          rustup default "$RUST_TOOLCHAIN"
-      - uses: tempoxyz/gh-actions/vendor/EmbarkStudios/cargo-deny-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
-        with:
-          rust-version: ${{ inputs.deny-rust-toolchain }}
-          command: check all
-          arguments: ${{ inputs.deny-flags }}
+    with:
+      runner: ${{ inputs.deny-runner }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      rust-toolchain: ${{ inputs.deny-rust-toolchain }}
+      flags: ${{ inputs.deny-flags }}
 
   lint-success:
     name: lint success

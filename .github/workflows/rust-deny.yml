@@ -26,19 +26,33 @@ on:
 
 permissions: {}
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
 jobs:
   deny:
-    # Call the reusable workflow at the published, pinned commit.
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+    name: cargo deny check
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
       id-token: write
-    with:
-      run-clippy: false
-      run-fmt: false
-      run-typos: false
-      run-deny: true
-      deny-rust-toolchain: ${{ inputs.rust-toolchain }}
-      deny-flags: ${{ inputs.flags }}
-      deny-runner: ${{ inputs.runner }}
-      timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        env:
+          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: tempoxyz/gh-actions/vendor/EmbarkStudios/cargo-deny-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+        with:
+          rust-version: ${{ inputs.rust-toolchain }}
+          command: check all
+          arguments: ${{ inputs.flags }}

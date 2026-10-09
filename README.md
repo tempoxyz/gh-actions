@@ -701,7 +701,8 @@ and `pcr2`. Consume measurement outputs only after successful verification.
 ### `rust-lint`
 
 Runs a common Rust lint set: `cargo clippy`, `cargo fmt`, `typos`, and `cargo deny`.
-All checks run by default and can be enabled or disabled independently.
+It composes the standalone component workflows from the same commit. All checks
+run by default and can be enabled or disabled independently.
 
 ```yaml
 name: Lint
@@ -734,7 +735,7 @@ Optional inputs:
 - `clippy-runner`, `fmt-runner`, `typos-runner`, `deny-runner`, `timeout-minutes`
 
 For individual checks, use [`rust-deny`](#rust-deny),
-[`rust-fmt`, or `rust-clippy`](#rust-fmt-and-rust-clippy).
+[`rust-fmt`, `rust-clippy`](#rust-fmt-and-rust-clippy), or [`rust-typos`](#rust-typos).
 
 The deny action runs in Docker and manages its own Rust toolchain;
 `deny-rust-toolchain` is forwarded to its `rust-version` input. Callers grant `contents: read`
@@ -745,11 +746,16 @@ The `lint success` gate accepts explicitly disabled checks and fails on failures
 cancellations, or unexpected skips. If all four checks are disabled, only the
 gate runs and succeeds.
 
+Component jobs now appear as `<caller job> / clippy / clippy`,
+`<caller job> / fmt / fmt`, `<caller job> / typos / typos`, and
+`<caller job> / deny / cargo deny check`. Update required status checks that used
+the previous component names when upgrading; the `lint success` gate name is unchanged.
+
 ### `rust-deny`
 
-Runs `cargo deny check all` through `rust-lint.yml` at the same commit, with clippy,
-fmt, and typos disabled internally. It shares the existing Harden Runner setup,
-checkout, Rust installation, cargo-deny container, and `lint success` gate.
+Runs `cargo deny check all` directly in a single job, with Secure runner,
+checkout, Rust installation, and the cargo-deny container. It does not create
+disabled lint jobs or a separate `lint success` gate.
 
 ```yaml
 jobs:
@@ -767,19 +773,19 @@ Optional inputs:
 - `rust-toolchain` (default: `stable`) — installed on the runner and used inside the cargo-deny container
 - `flags` (default: `--all-features`) — additional flags passed to `cargo deny check all`
 - `runner` (default: `ubuntu-latest`)
-- `timeout-minutes` (default: `30`) — timeout for each job, including the success gate
+- `timeout-minutes` (default: `30`) — timeout for the cargo-deny job
 
 The example explicitly selects nightly; omitting `with` uses stable. Callers must
 grant both permissions shown above; no persistent StepSecurity API key is required.
-Pin production callers to a commit SHA (see [Versioning](#versioning)). The additional
-workflow nesting can change displayed check names, so verify required status checks
-when switching an existing caller from `rust-lint`.
+Pin production callers to a commit SHA (see [Versioning](#versioning)). The job is
+displayed as `<caller job> / cargo deny check`; callers upgrading from the delegated
+workflow should update any required status checks that used its nested job names
+or `lint success` gate.
 
 ### `rust-fmt` and `rust-clippy`
 
-Run only formatting or Clippy through `rust-lint.yml` at the same commit, sharing
-its STS-backed Harden Runner and success gate. Other checks are disabled internally.
-Clippy also retains the shared mold/sccache setup and warnings-as-errors policy.
+Run formatting or Clippy directly in a single job with Secure runner and no
+aggregate gate. Clippy includes mold/sccache setup and warnings-as-errors policy.
 
 ```yaml
 jobs:
@@ -805,6 +811,24 @@ Pin production callers to a commit SHA. Preserve existing cooldown prerequisites
 with `needs`, explicitly carry over custom flags, and update required check names
 if nesting changes them. Both permissions shown above are required for checkout
 and STS authentication; no persistent StepSecurity API key is needed.
+
+### `rust-typos`
+
+Runs typos directly in a single job with Secure runner, checkout, an attested
+release download, and inline typo annotations. It has no aggregate gate.
+
+```yaml
+jobs:
+  typos:
+    uses: tempoxyz/gh-actions/.github/workflows/rust-typos.yml@main
+    permissions:
+      contents: read
+      id-token: write
+```
+
+Accepts `runner` (default `ubuntu-latest`) and `timeout-minutes` (default `30`).
+The release installer supports Linux x86_64 and aarch64 runners. Pin production
+callers to a commit SHA.
 
 ### `rust-build-binaries`
 
