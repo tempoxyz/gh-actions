@@ -11,6 +11,8 @@ const { main: postMain } = require("./post.cjs");
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 const workflowsDirectory = path.join(__dirname, "../../.github/workflows");
+const reusableWorkflowPattern =
+  /uses:\s+(?:tempoxyz\/gh-actions\/\.github\/workflows\/([^\s@#]+)@[0-9a-f]{40}|\.\/\.github\/workflows\/([^\s#]+))/g;
 const wrapperPattern =
   /uses:\s+tempoxyz\/gh-actions\/actions\/secure-runner@[0-9a-f]{40}/;
 
@@ -22,8 +24,8 @@ function usesSecureRunner(filename, visited = new Set()) {
     "utf8",
   );
   if (wrapperPattern.test(workflow)) return true;
-  return [...workflow.matchAll(/uses:\s+tempoxyz\/gh-actions\/\.github\/workflows\/([^\s@#]+)@[0-9a-f]{40}/g)].some(
-    (match) => usesSecureRunner(match[1], visited),
+  return [...workflow.matchAll(reusableWorkflowPattern)].some(
+    (match) => usesSecureRunner(match[1] || match[2], visited),
   );
 }
 
@@ -38,43 +40,42 @@ function isEnsureSecureRunnerJob(jobBlock) {
   );
 }
 
-for (const check of ["fmt", "clippy"]) {
-  test(`${check} wrapper enables only its check and forwards its inputs`, () => {
+for (const check of ["fmt", "clippy", "deny", "typos"]) {
+  test(`${check} component runs directly with its inputs and Secure Runner`, () => {
     const workflow = fs.readFileSync(
       path.join(workflowsDirectory, `rust-${check}.yml`),
       "utf8",
     );
     assert.match(workflow, /^permissions: \{\}$/m);
-    assert.match(workflow, /uses: tempoxyz\/gh-actions\/\.github\/workflows\/rust-lint\.yml@[0-9a-f]{40}/);
-    assert.doesNotMatch(workflow, /\n    (?:steps|runs-on):/);
-    for (const candidate of ["clippy", "fmt", "typos", "deny"]) {
-      assert.match(
-        workflow,
-        new RegExp(`^      run-${candidate}: ${candidate === check}$`, "m"),
-      );
-    }
+    assert.match(workflow, /^    steps:/m);
+    assert.doesNotMatch(workflow, /uses: .*\.github\/workflows\//);
+    assert.doesNotMatch(workflow, /run-(?:clippy|fmt|typos|deny):|lint-success:/);
     const mappings = {
-      "rust-toolchain": "rust-toolchain",
-      [`${check}-flags`]: "flags",
-      [`${check}-runner`]: "runner",
+      "runs-on": "runner",
       "timeout-minutes": "timeout-minutes",
+      ...(check !== "typos" ? { RUST_TOOLCHAIN: "rust-toolchain" } : {}),
+      ...(check === "fmt" ? { FMT_FLAGS: "flags" } : {}),
       ...(check === "clippy"
-        ? { "checkout-submodules": "checkout-submodules" }
+        ? { CLIPPY_FLAGS: "flags", submodules: "checkout-submodules" }
         : {}),
+      ...(check === "deny" ? { "rust-version": "rust-toolchain", arguments: "flags" } : {}),
     };
     for (const [target, input] of Object.entries(mappings)) {
       assert.ok(workflow.includes(target + ": ${{ inputs." + input + " }}"));
       assert.match(workflow, new RegExp(`^      ${input}:\\n`, "m"));
     }
-    assert.match(
-      workflow,
-      /rust-toolchain:\n(?:        [^\n]+\n)*        default: nightly/,
-    );
+    if (check !== "typos") {
+      assert.match(
+        workflow,
+        new RegExp(`rust-toolchain:\\n(?:        [^\\n]+\\n)*        default: ${check === "deny" ? "stable" : "nightly"}`),
+      );
+    }
     assert.match(
       workflow,
       /runner:\n(?:        [^\n]+\n)*        default: ubuntu-latest/,
     );
-    assert.match(workflow, /      contents: read\n      id-token: write/);
+    assert.match(workflow, /^      contents: read$/m);
+    assert.match(workflow, /^      id-token: write$/m);
     assert.ok(usesSecureRunner(`rust-${check}.yml`));
   });
 }
@@ -367,12 +368,10 @@ test("every repository workflow job uses the production Secure Runner wrapper", 
     const jobBlocks = workflow.split(/\n(?=  [A-Za-z0-9_-]+:\s*\n)/);
     for (const jobBlock of jobBlocks) {
       const runsOnRunner = /^    runs-on:/m.test(jobBlock);
-      const reusableWorkflow = jobBlock.match(
-        /uses:\s+tempoxyz\/gh-actions\/\.github\/workflows\/([^\s@#]+)@[0-9a-f]{40}/,
-      );
+      const reusableWorkflow = [...jobBlock.matchAll(reusableWorkflowPattern)][0];
       const usesProtectedWorkflow =
         reusableWorkflow &&
-        usesSecureRunner(reusableWorkflow[1]);
+        usesSecureRunner(reusableWorkflow[1] || reusableWorkflow[2]);
       if (!runsOnRunner && !reusableWorkflow) continue;
 
       runnableJobs += 1;

@@ -300,7 +300,7 @@ jobs:
 
   rust-lint-disabled:
     name: Rust lint with all checks disabled
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+    uses: ./.github/workflows/rust-lint.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
     permissions:
       id-token: write
       contents: read
@@ -310,23 +310,37 @@ jobs:
       run-typos: false
       run-deny: false
 
-  rust-fmt-wrapper:
-    name: Rust fmt wrapper
-    uses: tempoxyz/gh-actions/.github/workflows/rust-fmt.yml@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+  rust-fmt-component:
+    name: Rust fmt component
+    uses: ./.github/workflows/rust-fmt.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
     permissions:
       id-token: write
       contents: read
     with:
       flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all --check
 
-  rust-clippy-wrapper:
-    name: Rust clippy wrapper
-    uses: tempoxyz/gh-actions/.github/workflows/rust-clippy.yml@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+  rust-clippy-component:
+    name: Rust clippy component
+    uses: ./.github/workflows/rust-clippy.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
     permissions:
       id-token: write
       contents: read
     with:
       flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all-targets --all-features --locked
+
+  rust-lint-components:
+    name: Rust lint composition
+    uses: ./.github/workflows/rust-lint.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      run-typos: false
+      run-deny: false
+      clippy-runner: ubuntu-latest
+      fmt-runner: ubuntu-latest
+      clippy-flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all-targets --all-features --locked
+      fmt-flags: --manifest-path testdata/fixtures/rust-lint/Cargo.toml --all --check
 
   tempo-extension-build:
     name: tempo-extension build
@@ -440,7 +454,7 @@ jobs:
           echo "ok: attestation signer -> ${rs#--signer-workflow }"
           # mold: the inline installs in the reusable workflows must pin the same version and
           # digests as actions/setup-rust-build.
-          for wf in .github/workflows/rust-build-binaries.yml .github/workflows/rust-lint.yml actions/setup-mold/action.yml; do
+          for wf in .github/workflows/rust-build-binaries.yml .github/workflows/rust-clippy.yml actions/setup-mold/action.yml; do
             for var in MOLD_VERSION MOLD_SHA256_X86_64 MOLD_SHA256_AARCH64; do
               r=$(grep -oE "$var: \"?[0-9a-f.]+\"?" "$wf" | head -1 | tr -d '"')
               c=$(grep -oE "$var: \"?[0-9a-f.]+\"?" actions/setup-rust-build/action.yml | head -1 | tr -d '"')
@@ -451,11 +465,11 @@ jobs:
             done
           done
           echo "ok: mold -> $(grep -oE 'MOLD_VERSION: "?[0-9.]+"?' actions/setup-rust-build/action.yml | tr -d '"' | awk '{print $2}')"
-          # typos: the inline install in rust-lint must pin the same release as actions/typos.
-          tr_=$(grep -oE 'TYPOS_VERSION: v[0-9.]+' .github/workflows/rust-lint.yml | head -1 | awk '{print $2}')
+          # typos: the inline install in rust-typos must pin the same release as actions/typos.
+          tr_=$(grep -oE 'TYPOS_VERSION: v[0-9.]+' .github/workflows/rust-typos.yml | head -1 | awk '{print $2}')
           tc=$(yq -r '.inputs.version.default' actions/typos/action.yml)
           if [ -z "$tr_" ] || [ "$tr_" != "$tc" ]; then
-            echo "::error::typos version differs (rust-lint='$tr_' composite='$tc')"
+            echo "::error::typos version differs (rust-typos='$tr_' composite='$tc')"
             exit 1
           fi
           echo "ok: typos -> $tr_"

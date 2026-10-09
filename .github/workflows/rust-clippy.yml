@@ -31,20 +31,70 @@ on:
 
 permissions: {}
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
 jobs:
   clippy:
-    # Call the reusable workflow at the published, pinned commit.
-    uses: tempoxyz/gh-actions/.github/workflows/rust-lint.yml@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+    name: clippy
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      RUSTC_WRAPPER: sccache
     permissions:
-      contents: read
       id-token: write
-    with:
-      run-clippy: true
-      run-fmt: false
-      run-typos: false
-      run-deny: false
-      rust-toolchain: ${{ inputs.rust-toolchain }}
-      clippy-flags: ${{ inputs.flags }}
-      clippy-runner: ${{ inputs.runner }}
-      timeout-minutes: ${{ inputs.timeout-minutes }}
-      checkout-submodules: ${{ inputs.checkout-submodules }}
+      contents: read
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+          submodules: ${{ inputs.checkout-submodules }}
+      - name: Install Rust toolchain
+        env:
+          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy
+          rustup default "$RUST_TOOLCHAIN"
+      - name: Install mold linker
+        env:
+          MOLD_VERSION: "2.42.1"
+          MOLD_SHA256_X86_64: 6ff270c9bf07d2bec5c98aa324eb7c4daf6a1a4d815c05ff1708049616047855
+          MOLD_SHA256_AARCH64: 16b025652d3d7456689e6025a77e1903bb2a15e7630877c26cc133f5df95b9c6
+        run: |
+          set -euo pipefail
+          # mold publishes no checksums, signatures or attestations, so the release tarball digests
+          # are pinned here and change together with MOLD_VERSION (test.yml keeps this block in
+          # step with the copy in .github/workflows/rust-build-binaries.yml).
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            x86_64)  EXPECTED="$MOLD_SHA256_X86_64" ;;
+            aarch64) EXPECTED="$MOLD_SHA256_AARCH64" ;;
+            *) echo "::error::mold: unsupported architecture $ARCH"; exit 1 ;;
+          esac
+          ASSET="mold-${MOLD_VERSION}-${ARCH}-linux.tar.gz"
+          TMP="${RUNNER_TEMP:?}/mold"
+          mkdir -p "$TMP"
+          curl -fsSL --retry 3 -o "$TMP/$ASSET" "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/${ASSET}"
+          echo "$EXPECTED  $TMP/$ASSET" | sha256sum -c
+          SUDO=""
+          [ "$(id -u)" = 0 ] || SUDO=sudo
+          $SUDO tar -C /usr/local --strip-components=1 --no-overwrite-dir -xzf "$TMP/$ASSET"
+          # Make mold the default linker, as rui314/setup-mold did.
+          if [ "$(realpath /usr/bin/ld)" != /usr/local/bin/mold ]; then
+            $SUDO ln -sf /usr/local/bin/mold "$(realpath /usr/bin/ld)"
+          fi
+          mold --version
+      - name: Enable sccache
+        uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+      - name: Run clippy
+        run: |
+          # CLIPPY_FLAGS is a space-separated flag list that must word-split.
+          # shellcheck disable=SC2086
+          cargo clippy $CLIPPY_FLAGS
+        env:
+          CLIPPY_FLAGS: ${{ inputs.flags }}
+          RUSTFLAGS: -D warnings
