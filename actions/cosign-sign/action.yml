@@ -14,7 +14,7 @@ runs:
   using: "composite"
   steps:
     - name: Install cosign
-      uses: sigstore/cosign-installer@828df1e55de306ba29db814d6057ddae71883cda # main  # zizmor: ignore[ref-version-mismatch]
+      uses: sigstore/cosign-installer@af595e623eec1ede52d6322f53b635d5def0a95a # main  # zizmor: ignore[ref-version-mismatch]
       with:
         cosign-release: ${{ inputs.cosign-version }}
 
