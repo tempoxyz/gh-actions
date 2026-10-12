@@ -11,3 +11,6 @@ paths:
   .github/workflows/cargo-update-pr.yml:
     ignore:
       - 'property "workflow_(sha|repository)" is not defined'
+  .github/workflows/dependency-update.yml:
+    ignore:
+      - 'property "workflow_(sha|repository)" is not defined'

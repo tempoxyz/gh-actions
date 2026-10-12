@@ -1,0 +1,68 @@
+name: Amp Repair
+description: Validate and repair Rust dependency migrations in disposable Docker workers.
+
+inputs:
+  source:
+    description: Absolute path to the prepared source export, without .git or runner files.
+    required: true
+  baseline:
+    description: Absolute path to the original trusted source export.
+    required: true
+  pins:
+    description: JSON object mapping selected GitHub HTTPS sources to full commit SHAs.
+    required: true
+  worker-image:
+    description: Digest-pinned Linux image containing Amp, Rust toolchains and cargo-nextest.
+    required: true
+  local-checks:
+    description: Newline-separated commands; parsed as argument lists, not shell scripts.
+    required: true
+  allowed-paths:
+    description: Newline-separated path globs; only Rust, Cargo.toml and Cargo.lock may change.
+    required: true
+  repair-instructions:
+    description: Repository-specific migration instructions; not a substitute for validation.
+    default: Fix API compatibility without weakening invariants or tests.
+  max-repairs:
+    description: Maximum Amp invocations after failed local checks.
+    default: "3"
+  budget-minutes:
+    description: Total repair budget, including verification commands.
+    default: "60"
+  amp-api-key:
+    description: Amp credential; passed only to agent workers, never check workers.
+    required: true
+
+outputs:
+  status:
+    description: passed or failed; exhausted repairs fail the action.
+    value: ${{ steps.repair.outputs.status }}
+  repair-attempts:
+    description: Number of Amp repair invocations.
+    value: ${{ steps.repair.outputs.repair-attempts }}
+
+runs:
+  using: composite
+  steps:
+    - name: Repair and independently verify candidate
+      id: repair
+      shell: bash
+      env:
+        ACTION_DIR: ${{ github.action_path }}
+        SOURCE: ${{ inputs.source }}
+        BASELINE: ${{ inputs.baseline }}
+        PINS: ${{ inputs.pins }}
+        WORKER_IMAGE: ${{ inputs.worker-image }}
+        LOCAL_CHECKS: ${{ inputs.local-checks }}
+        ALLOWED_PATHS: ${{ inputs.allowed-paths }}
+        INSTRUCTIONS: ${{ inputs.repair-instructions }}
+        MAX_REPAIRS: ${{ inputs.max-repairs }}
+        BUDGET_MINUTES: ${{ inputs.budget-minutes }}
+        AMP_API_KEY: ${{ inputs.amp-api-key }}
+      run: |
+        set -euo pipefail
+        python3 -I "$ACTION_DIR/repair.py" \
+          --source "$SOURCE" --baseline "$BASELINE" --pins "$PINS" \
+          --worker-image "$WORKER_IMAGE" --checks "$LOCAL_CHECKS" \
+          --allowed-paths "$ALLOWED_PATHS" --instructions "$INSTRUCTIONS" \
+          --max-repairs "$MAX_REPAIRS" --budget-minutes "$BUDGET_MINUTES"
