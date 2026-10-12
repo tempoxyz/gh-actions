@@ -132,6 +132,7 @@ echo "\${value:-0123456789abcdef null}"
         GITHUB_OUTPUT: output,
         AUDIT_ENV: "prod",
         AUDIT_ON_PUSH: "false",
+        COMMAND_OPT_IN: "false",
         EVENT_NAME: "pull_request",
         EVENT_ACTION: "labeled",
         LABEL_NAME: "cyclops",
@@ -248,4 +249,44 @@ test("publishes a pull_request_target push the probe flagged", () => {
   assert.equal(status, 0);
   assert.deepEqual(outputs, { runner_channel: "", pr_number: "123", sha: head, publish: "true" });
   assert.deepEqual(ghCalls, []);
+});
+
+test("command opt-in continues draft pushes without auditing unrelated drafts", () => {
+  for (const draft of ["true", "false"]) {
+    const { status, outputs } = resolveTarget({ EVENT_ACTION: "synchronize",
+      PR_DRAFT: draft, COMMAND_OPT_IN: "true" });
+    assert.equal(status, 0);
+    assert.equal(outputs.publish, "true");
+  }
+  for (const overrides of [{ PR_HEAD_REPO: "external/example" }, { PR_USER: "dependabot[bot]" }]) {
+    assert.equal(resolveTarget({ EVENT_ACTION: "synchronize", COMMAND_OPT_IN: "true",
+      ...overrides }).outputs.publish, "false");
+  }
+  assert.equal(probe([`${head} false`], { PR_DRAFT: "true", COMMAND_OPT_IN: "true" })
+    .outputs.conflicting, "true");
+});
+
+const commandJob = workflow.split("\n  command-opt-in:\n")[1].split("\n  conflicting-push:\n")[0];
+const commandScript = commandJob.match(/          script: \|\n((?: {12}.*\n|\n)*)/)[1]
+  .split("\n").map(line => line.replace(/^ {12}/, "")).join("\n");
+const checkCommand = new (Object.getPrototypeOf(async function () {}).constructor)(
+  "github", "context", "core", "process", commandScript);
+
+test("only a successfully published GitHub Actions acknowledgement in the caller environment opts in", async () => {
+  const marker = "<!-- cyclops:warden env=prod -->\n";
+  for (const [comments, expected] of [
+    [[], "false"],
+    [[{ user: { id: 123 }, body: marker }], "false"],
+    [[{ user: { id: 41898282 }, body: "Cyclops audit event queued" }], "false"],
+    [[{ user: { id: 41898282 }, body: "Cyclops audit event failed to publish" }], "false"],
+    [[{ user: { id: 41898282 }, body: marker.replace("prod", "staging") }], "false"],
+    [[{ user: { id: 41898282 }, body: marker }], "true"],
+  ]) {
+    let active;
+    await checkCommand({ paginate: async () => comments, rest: { issues: { listComments() {} } } },
+      { repo: { owner: "tempoxyz", repo: "example" }, payload: { pull_request: { number: 123 } } },
+      { setOutput: (name, value) => { assert.equal(name, "active"); active = value; } },
+      { env: { AUDIT_ENV: "production" } });
+    assert.equal(active, expected);
+  }
 });

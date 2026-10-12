@@ -229,6 +229,13 @@ function buildSummary(defaults) {
   return `**Config:** ${summaryParts.join(", ")}`;
 }
 
+function wardenOptIn(defaults) {
+  const options = ["config", "iterations", "hours", "models", "run-label", "note"];
+  return options.every(key => !defaults[key])
+    && ["private", "dry-run", "perf"].every(key => defaults[key] === "false")
+    ? `<!-- cyclops:warden env=${defaults.env} -->\n` : "";
+}
+
 function parseEventsArgs(value) {
   const parser = [
     "import json",
@@ -376,7 +383,7 @@ module.exports = async ({ github, context, core, getOctokit }) => {
       comment_id: commentId,
       body: publishError
         ? `cc @${actor}\n\nCyclops audit event failed to publish${envLabel}. [View workflow run](${runUrl})\n\n${summary}`
-        : `cc @${actor}\n\nCyclops audit event published${envLabel}. [View workflow run](${runUrl})\n\n${summary}`,
+        : `${wardenOptIn(defaults)}cc @${actor}\n\nCyclops audit event published${envLabel}. [View workflow run](${runUrl})\n\n${summary}`,
     });
   } catch (error) {
     core.warning(`Could not update audit status comment: ${error.message}`);

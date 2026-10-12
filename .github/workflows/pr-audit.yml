@@ -39,6 +39,11 @@ on:
         required: false
         type: boolean
         default: false
+      audit-on-command:
+        description: Continue reviewing same-repo PR updates, including drafts, after a successful plain audit command.
+        required: false
+        type: boolean
+        default: false
     secrets:
       EVENTS_KEY:
         required: true
@@ -51,12 +56,48 @@ permissions:
   id-token: write
 
 jobs:
+  command-opt-in:
+    if: >-
+      inputs.audit-on-command &&
+      contains(fromJSON('["pull_request", "pull_request_target"]'), github.event_name) &&
+      contains(fromJSON('["synchronize", "reopened", "ready_for_review"]'), github.event.action) &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      pull-requests: read
+    outputs:
+      active: ${{ steps.command.outputs.active }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+      - name: Check command opt-in
+        id: command
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          AUDIT_ENV: ${{ inputs.env }}
+        with:
+          script: |
+            const env = process.env.AUDIT_ENV.toLowerCase();
+            const normalized = env === 'production' ? 'prod' : env;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: context.payload.pull_request.number, per_page: 100,
+            });
+            // Only the acknowledgement written after authorization and successful event delivery opts in.
+            // Human comments, queued/failed requests, private scans and explicit review options cannot do so.
+            const active = comments.some(comment => comment.user?.id === 41898282 &&
+              comment.body?.startsWith(`<!-- cyclops:warden env=${normalized} -->\n`));
+            core.setOutput('active', String(active));
+
   # GitHub starts no pull_request runs while a PR conflicts with its base. This ungated probe finds those
   # pushes so publish enters the protected environment only when it will publish.
   conflicting-push:
+    needs: command-opt-in
     if: >-
+      !cancelled() &&
       github.event_name == 'pull_request_target' &&
-      inputs.audit-on-push &&
+      ((inputs.audit-on-push && !github.event.pull_request.draft) || needs.command-opt-in.outputs.active == 'true') &&
       contains(fromJSON('["opened", "synchronize", "reopened", "ready_for_review"]'), github.event.action)
     runs-on: ubuntu-latest
     permissions:
@@ -71,6 +112,7 @@ jobs:
       - name: Check for a conflicting push
         id: probe
         env:
+          COMMAND_OPT_IN: ${{ needs.command-opt-in.outputs.active }}
           GH_TOKEN: ${{ github.token }}
           PR_DRAFT: ${{ github.event.pull_request.draft }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -81,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "$PR_DRAFT" == "true" || "$PR_HEAD_REPO" != "$REPO" || "$PR_USER" == "dependabot[bot]" ]]; then
+          if [[ ( "$PR_DRAFT" == "true" && "$COMMAND_OPT_IN" != "true" ) || "$PR_HEAD_REPO" != "$REPO" || "$PR_USER" == "dependabot[bot]" ]]; then
             echo "conflicting=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -101,7 +143,7 @@ jobs:
           fi
 
   publish:
-    needs: conflicting-push
+    needs: [command-opt-in, conflicting-push]
     if: >-
       !cancelled() && (
         github.event_name == 'pull_request' ||
@@ -113,6 +155,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      pull-requests: read
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
@@ -123,6 +166,7 @@ jobs:
           ACTOR: ${{ github.actor }}
           AUDIT_ENV: ${{ inputs.env }}
           AUDIT_ON_PUSH: ${{ inputs.audit-on-push }}
+          COMMAND_OPT_IN: ${{ needs.command-opt-in.outputs.active }}
           REQUIRED_LABEL: ${{ inputs.required-label }}
           REQUIRED_LABELS: ${{ inputs.required-labels }}
           BRANCH: ${{ inputs.branch }}
@@ -169,10 +213,10 @@ jobs:
                 echo "publish=false" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
-            elif [[ "$AUDIT_ON_PUSH" == "true" &&
+            elif [[ ( "$AUDIT_ON_PUSH" == "true" || "$COMMAND_OPT_IN" == "true" ) &&
                     "$EVENT_ACTION" =~ ^(opened|synchronize|reopened|ready_for_review)$ ]]; then
               # Dependabot runs lack Actions secrets and are exempt from the audit gate.
-              if [[ "$PR_DRAFT" == "true" || "$PR_HEAD_REPO" != "$REPO" || "$PR_USER" == "dependabot[bot]" ]]; then
+              if [[ ( "$PR_DRAFT" == "true" && "$COMMAND_OPT_IN" != "true" ) || "$PR_HEAD_REPO" != "$REPO" || "$PR_USER" == "dependabot[bot]" ]]; then
                 echo "publish=false" >> "$GITHUB_OUTPUT"
                 exit 0
               fi

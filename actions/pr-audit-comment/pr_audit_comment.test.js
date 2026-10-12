@@ -708,6 +708,21 @@ test("comment publisher rejects an invalid env argument with usage", async () =>
   assert.match(result.core.failures[0], /Invalid cyclops audit command/);
 });
 
+test("only successful plain commands acknowledge Warden opt-in", async () => {
+  for (const body of ["cyclops audit", "cyclops audit env=staging"]) {
+    const result = await publishScenario({ body, defaultEnv: "prod" });
+    assert.deepEqual(result.core.failures, []);
+    assert.equal(result.primary.calls.comments[0].body.startsWith("<!-- cyclops:warden"), false);
+    assert.equal(result.primary.calls.commentUpdates[0].body.startsWith("<!-- cyclops:warden"), true);
+  }
+  for (const option of ["fast", "super-fast", "iterations=2", "hours=1", "models=openai/gpt-5.5",
+    "config=pr-review.yaml", "note=focus", "run-label=custom", "perf", "dry-run"]) {
+    const result = await publishScenario({ body: `cyclops audit ${option}`, defaultEnv: "prod" });
+    assert.deepEqual(result.core.failures, []);
+    assert.equal(result.primary.calls.commentUpdates[0].body.startsWith("<!-- cyclops:warden"), false, option);
+  }
+});
+
 test("comment publisher fails loudly on an invalid default-env", async () => {
   const result = await publishScenario({ body: "cyclops audit", defaultEnv: "dev" });
 
@@ -852,6 +867,7 @@ test("comment publisher rejects empty and malformed event arguments", async () =
       assert.match(result.core.failures[0], message);
       assert.equal(result.primary.calls.commentUpdates.length, 1);
       assert.match(result.primary.calls.commentUpdates[0].body, /failed to publish/);
+      assert.equal(result.primary.calls.commentUpdates[0].body.startsWith("<!-- cyclops:warden"), false);
       assert.equal(fs.existsSync(harness.files.curlArgs), false);
     } finally {
       restoreEnvironment();

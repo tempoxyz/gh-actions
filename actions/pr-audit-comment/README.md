@@ -2,6 +2,13 @@
 
 Handles PR audit commands posted as issue comments and publishes `pr_audit` events.
 
+A successful plain `cyclops audit` command starts a Warden review and records an
+opt-in acknowledgement. Call the shared `pr-audit` workflow with
+`audit-on-command: true` on PR updates to continue reviewing subsequent commits,
+including in draft. Explicit review options such as `fast`, `private`, `dry-run`
+or `config=...` keep their one-off behavior. Both jobs must use the same audit
+environment. Existing acknowledgements need a new plain command to opt in.
+
 Because it needs `issues: write` and `pull-requests: write`, use it in a caller-owned job. `pull-requests: write` is required even though the action only reads the pull request: commenting on a pull request and reacting to a comment on one both go through the issues endpoints but are governed by the `pull-requests` permission, so with `pull-requests: read` the acknowledgement comment and reaction fail with `Resource not accessible by integration`. Those calls are best-effort, so the job still succeeds and the audit still runs — the symptom is a silent audit with no acknowledgement and no feedback on a mistyped command. This is the privileged counterpart to the read-only [`pr-audit`](../../README.md#pr-audit) reusable workflow.
 
 ```yaml
