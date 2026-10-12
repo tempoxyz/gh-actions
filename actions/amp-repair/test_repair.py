@@ -120,6 +120,13 @@ sdk-build = {{ git = "{URL}", rev = "{SHA}" }}
             with self.assertRaisesRegex(ValueError, "credential"):
                 self.policy.validate(self.work)
 
+    def test_frozen_gitlink_content_cannot_be_added_or_changed(self):
+        self.policy.gitlinks = {"src/native"}
+        (self.work / "src/native").mkdir()
+        (self.work / "src/native/lib.rs").write_text("changed")
+        with self.assertRaisesRegex(ValueError, "frozen gitlinks"):
+            self.policy.validate(self.work)
+
     def test_path_globs_are_anchored_and_do_not_cross_directories(self):
         self.assertTrue(repair.allowed("src/lib.rs", ["src/**/*.rs"]))
         self.assertTrue(repair.allowed("src/deep/mod.rs", ["src/**/*.rs"]))
@@ -128,6 +135,33 @@ sdk-build = {{ git = "{URL}", rev = "{SHA}" }}
         self.assertFalse(repair.allowed(".github/Cargo.toml", ["**/Cargo.toml"]))
         with self.assertRaises(ValueError):
             repair.allowed("src/../scripts/build.rs", ["**/*.rs"])
+
+
+class ExportTests(unittest.TestCase):
+    def test_existing_gitlinks_are_frozen_and_not_executed_or_initialized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = root / "repo"
+            repository.mkdir()
+            repair.git(repository, "init")
+            (repository / "README.md").write_text("trusted")
+            repair.git(repository, "add", ".")
+            def commit():
+                repair.git(repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                           "commit", "-m", "fixture")
+                return repair.git(repository, "rev-parse", "HEAD").stdout.strip()
+            target = commit()
+            repair.git(repository, "update-index", "--add", "--cacheinfo", f"160000,{target},vendor/native")
+            baseline = commit()
+            with self.assertRaisesRegex(ValueError, "trusted baseline"):
+                repair.export_tree(repository, baseline, root / "unsafe")
+            repair.export_tree(repository, baseline, root / "source", gitlink_base=baseline)
+            self.assertEqual((root / "source/README.md").read_text(), "trusted")
+            self.assertEqual(repair.gitlinks(repository, baseline), {"vendor/native": target})
+            repair.git(repository, "update-index", "--cacheinfo", f"160000,{baseline},vendor/native")
+            changed = commit()
+            with self.assertRaisesRegex(ValueError, "revisions changed"):
+                repair.export_tree(repository, changed, root / "changed", gitlink_base=baseline)
 
 
 class WorkerTests(unittest.TestCase):

@@ -44,8 +44,10 @@ supported. Use an image-provided command for more complex checks.
 
 `allowed-paths` uses `*` within one directory and `**` across directories. Only
 Rust files, `Cargo.toml`, and `Cargo.lock` may change. `.git`, `.github`, `.cargo`,
-and `scripts` are always denied. Symlinks, gitlinks, special files, and file-mode
-changes are unsupported. Validation includes ignored/untracked files, dependency
+and `scripts` are always denied. Symlinks, special files, and file-mode changes
+are unsupported. The coordinator freezes existing gitlink revisions and omits
+their uninitialized contents, matching a checkout without submodules; changes
+inside those paths are denied. Validation includes ignored/untracked files, dependency
 identity changes (including URL aliases/removal), Cargo patch/replace changes,
 and resolved lockfile commits. It rejects raw runner credentials in candidate
 changes; callers must still review source before merging.

@@ -102,6 +102,8 @@ update branch after a previous PR closes/merges. Existing open PRs and orphan
 branches are resumed; rebases fail on conflicts. Main/PR changes require a retry.
 The publisher rebuilds its index, validates the actual commit tree, and pushes
 with an explicit expected-head lease. It does not copy worker Git metadata.
+Existing submodule pointers stay frozen to main and are not initialized in the
+worker; workspaces requiring their contents need a separate reviewed extension.
 
 ## STS
 

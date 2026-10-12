@@ -14,7 +14,7 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "amp-repair"))
-from repair import (Policy, SHA, Worker, checks, export_tree, git, lines,
+from repair import (Policy, SHA, Worker, checks, export_tree, git, gitlinks, lines,
                     repair, repair_local, run, safe_path, set_output, snapshot)
 
 
@@ -184,7 +184,7 @@ class Coordinator:
         # Rebuild the index from trusted Git state. Worker .git is never imported.
         git(repository, "reset", "--hard", "HEAD")
         with tempfile.TemporaryDirectory(prefix="dependency-before-") as before:
-            export_tree(repository, "HEAD", before)
+            export_tree(repository, "HEAD", before, gitlink_base=base)
             previous, current = snapshot(Path(before)), snapshot(work)
             for path in previous.keys() | current.keys():
                 if previous.get(path) == current.get(path):
@@ -202,7 +202,7 @@ class Coordinator:
                 "commit", "-m", plan["title"])
         head = git(repository, "rev-parse", "HEAD").stdout.strip()
         with tempfile.TemporaryDirectory(prefix="dependency-candidate-") as candidate:
-            export_tree(repository, head, candidate)
+            export_tree(repository, head, candidate, gitlink_base=base)
             policy.validate(Path(candidate))
         current_base = self.github.api(f"repos/{self.github.repository}/git/ref/heads/main")["object"]["sha"]
         if current_base != base:
@@ -270,8 +270,9 @@ class Coordinator:
             git(repository, "checkout", "--detach", base)
             baseline = directory / "baseline"
             baseline.mkdir()
-            export_tree(repository, base, baseline)
+            export_tree(repository, base, baseline, gitlink_base=base)
             policy.baseline = snapshot(baseline)
+            policy.gitlinks = set(gitlinks(repository, base))
             pulls = self.github.pulls(plan["branch"])
             existing = next((pull for pull in pulls if pull["state"] == "OPEN"), None)
             if pulls and not existing and plan["closed_pr_policy"] == "skip":
@@ -291,13 +292,13 @@ class Coordinator:
                 git(repository, "checkout", "--detach", "FETCH_HEAD")
                 # Scope is checked before any branch content is used as an adapter.
                 with tempfile.TemporaryDirectory(prefix="dependency-existing-") as previous:
-                    export_tree(repository, "HEAD", previous)
+                    export_tree(repository, "HEAD", previous, gitlink_base=base)
                     policy.scope(Path(previous))
                 git(repository, "rebase", base)  # A conflict fails; never select a side automatically.
             work, cache = directory / "source", directory / "cache"
             work.mkdir()
             cache.mkdir()
-            export_tree(repository, "HEAD", work)
+            export_tree(repository, "HEAD", work, gitlink_base=base)
             self.adapter(script, "apply", plan_file, cwd=work)
             policy.freeze(work)
             worker = Worker(work, self.config["worker-image"], self.deadline, cache,

@@ -81,11 +81,22 @@ def snapshot(root):
     return result
 
 
-def export_tree(repository, ref, destination):
+def gitlinks(repository, ref):
+    entries = git(repository, "ls-tree", "-r", "-z", "--full-tree", ref).stdout.split("\0")
+    return {entry.split("\t", 1)[1]: entry.split("\t", 1)[0].split()[2]
+            for entry in entries if entry.startswith("160000 ")}
+
+
+def export_tree(repository, ref, destination, *, gitlink_base=None):
     """Export tracked content without .git, Git credentials, or runner files."""
     entries = git(repository, "ls-tree", "-r", "--full-tree", ref).stdout.splitlines()
-    if any(entry.startswith(("120000 ", "160000 ")) for entry in entries):
-        raise ValueError("symlinks and gitlinks are unsupported")
+    if any(entry.startswith("120000 ") for entry in entries):
+        raise ValueError("symlinks are unsupported")
+    links = gitlinks(repository, ref)
+    if links and gitlink_base is None:
+        raise ValueError("gitlinks require a trusted baseline")
+    if gitlink_base is not None and links != gitlinks(repository, gitlink_base):
+        raise ValueError("gitlink revisions changed")
     with tempfile.TemporaryFile() as archive:
         result = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "archive", ref],
                                 cwd=repository, stdout=archive, stderr=subprocess.PIPE)
@@ -137,12 +148,15 @@ class Policy:
             safe_path(pattern)
         self.frozen = None
         self.overrides = None
+        self.gitlinks = set()
 
     def scope(self, root):
         current = snapshot(root)
         changed = [path for path in self.baseline.keys() | current.keys()
                    if self.baseline.get(path) != current.get(path)]
         for path in changed:
+            if any(path == link or path.startswith(link + "/") for link in self.gitlinks):
+                raise ValueError("changes inside frozen gitlinks are unsupported")
             if not allowed(path, self.patterns):
                 raise ValueError(f"change outside repair scope: {path}")
             if path in current and current[path][0] != self.baseline.get(path, (0o644,))[0]:
