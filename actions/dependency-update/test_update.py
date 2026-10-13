@@ -305,6 +305,22 @@ class PublicationTests(unittest.TestCase):
                                          self.existing, self.base, self.base, self.root)
         self.assertEqual(self.tokens, [])
 
+    def test_git_attributes_cannot_publish_source_different_from_verified_candidate(self):
+        (self.repository / ".gitattributes").write_text("*.rs text eol=lf\n")
+        git(self.repository, "add", ".gitattributes")
+        git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-m", "trusted line-ending attributes")
+        self.base = git(self.repository, "rev-parse", "HEAD").stdout.strip()
+        baseline = self.root / "normalization-baseline"
+        export_tree(self.repository, "HEAD", baseline)
+        self.policy.baseline = snapshot(baseline)
+        (self.work / ".gitattributes").write_text("*.rs text eol=lf\n")
+        (self.work / "src/lib.rs").write_bytes(b"pub fn migrated() {}\r\n")
+        with self.assertRaisesRegex(ValueError, "differs from verified candidate"):
+            self.coordinator.publish(self.repository, self.work, self.policy, self.plan,
+                                     self.existing, self.base, self.base, self.root)
+        self.assertEqual(self.tokens, [])
+
 
 class PlanTests(unittest.TestCase):
     def test_pr_event_is_rejected_before_coordinator_or_credentials(self):

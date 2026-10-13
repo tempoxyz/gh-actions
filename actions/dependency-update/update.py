@@ -214,6 +214,8 @@ class Coordinator:
         with tempfile.TemporaryDirectory(prefix="dependency-candidate-") as candidate:
             export_tree(repository, head, candidate, gitlink_base=base)
             policy.validate(Path(candidate))
+            if snapshot(Path(candidate)) != snapshot(work):
+                raise ValueError("commit tree differs from verified candidate")
         current_base = self.github.api(f"repos/{self.github.repository}/git/ref/heads/main")["object"]["sha"]
         if current_base != base:
             raise RuntimeError("main advanced; retry to rebase and validate")
