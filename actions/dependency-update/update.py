@@ -14,7 +14,7 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "amp-repair"))
-from repair import (Policy, SHA, Worker, checks, export_tree, git, gitlinks, lines,
+from repair import (Policy, SHA, Worker, export_tree, git, gitlinks, lines,
                     repair, repair_local, run, safe_path, set_output, snapshot)
 
 
@@ -153,7 +153,6 @@ class Coordinator:
         self.commands = lines(config["local-checks"])
         if not self.commands:
             raise ValueError("local-checks must not be empty")
-        self.commands.insert(0, "cargo update --workspace")
         self.required = lines(config.get("required-workflows", ""))
         if not self.required:
             raise ValueError("required-workflows must not be empty")
@@ -312,7 +311,8 @@ class Coordinator:
             worker = Worker(work, self.config["worker-image"], self.deadline, cache,
                             memory=self.config.get("worker-memory", "4g"))
             error, attempts = repair_local(worker, policy, self.commands,
-                                           self.config["repair-instructions"], self.config["max-local-repairs"])
+                                           self.config["repair-instructions"], self.config["max-local-repairs"],
+                                           resolve_lockfile=True)
             set_output("local-repair-attempts", attempts)
             policy.validate(work)
             existing, head = self.publish(repository, work, policy, plan, existing, expected, base, directory)
@@ -331,7 +331,8 @@ class Coordinator:
                     raise RuntimeError("CI repair attempts exhausted; PR retained")
                 repair(worker, self.github.failed_logs(failed), self.config["repair-instructions"])
                 policy.validate(work, lockfile=False)
-                error = checks(worker, self.commands)
+                error, _ = repair_local(worker, policy, self.commands,
+                                        self.config["repair-instructions"], 0, resolve_lockfile=True)
                 policy.validate(work)
                 if error:
                     raise RuntimeError("CI repair failed local validation; PR retained for next run")

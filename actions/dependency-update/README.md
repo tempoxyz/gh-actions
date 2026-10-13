@@ -93,7 +93,9 @@ revision once and implements release eligibility/downgrade/no-op rules. Return
 `python3 adapter.py apply --plan <trusted-plan.json>` runs with the exported
 candidate as its working directory. It edits manifest pins deterministically,
 preserving the selected SHAs, and does not run Cargo or other candidate code on
-the host. Cargo.lock resolution and all subsequent checks execute in the worker.
+the host. Cargo.lock resolution executes in a disposable writable worker copy,
+from which only Cargo.lock is imported; subsequent checks mount candidate source
+read-only and verify an unchanged snapshot.
 The engine captures every selected dependency identity after this trusted edit,
 then rejects source/revision changes, removal, aliases, or new Cargo overrides.
 

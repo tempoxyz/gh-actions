@@ -138,6 +138,23 @@ sdk-build = {{ git = "{URL}", rev = "{SHA}" }}
 
 
 class ExportTests(unittest.TestCase):
+    def test_complete_export_ignores_archive_attributes_and_preserves_binary_blobs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repair.git(root, "init")
+            (root / ".github").mkdir()
+            (root / ".github/workflow.yml").write_text("must remain visible\n")
+            (root / ".gitattributes").write_text(".github export-ignore\nversion.txt export-subst\n")
+            (root / "version.txt").write_text("$Format:%H$\n")
+            (root / "binary.dat").write_bytes(bytes(range(256)))
+            repair.git(root, "add", ".")
+            repair.git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                       "commit", "-m", "attributes")
+            repair.export_tree(root, "HEAD", root / "export")
+            self.assertEqual((root / "export/.github/workflow.yml").read_text(), "must remain visible\n")
+            self.assertEqual((root / "export/version.txt").read_text(), "$Format:%H$\n")
+            self.assertEqual((root / "export/binary.dat").read_bytes(), bytes(range(256)))
+
     def test_existing_gitlinks_are_frozen_and_not_executed_or_initialized(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -190,6 +207,33 @@ class WorkerTests(unittest.TestCase):
         for image in ("ghcr.io/example/repair:latest", "--privileged", "image@sha256:bad"):
             with self.assertRaises(ValueError):
                 repair.Worker(self.root, image, time.monotonic() + 60, self.cache)
+
+    def test_verification_is_read_only_and_lockfile_resolution_uses_a_disposable_copy(self):
+        (self.root / "Cargo.lock").write_text("original lockfile")
+        self.assertTrue(any(arg.endswith("dst=/workspace,readonly")
+                            for arg in self.worker.arguments("check", ["cargo", "test"])))
+        self.assertTrue(any(arg.endswith("dst=/workspace")
+                            for arg in self.worker.arguments("agent", ["amp"], agent=True)))
+        def resolve(worker, args, **kwargs):
+            self.assertNotEqual(worker.root, self.root)
+            self.assertTrue(kwargs["lockfile"])
+            (worker.root / "Cargo.lock").write_text("resolved lockfile")
+            return 0, ""
+        with patch.object(repair.Worker, "execute", autospec=True, side_effect=resolve):
+            self.worker.resolve_lockfile()
+        self.assertEqual((self.root / "Cargo.lock").read_text(), "resolved lockfile")
+
+    def test_lockfile_resolution_cannot_copy_other_source_changes(self):
+        (self.root / "Cargo.lock").write_text("original lockfile")
+        (self.root / "lib.rs").write_text("original source")
+        def resolve(worker, args, **kwargs):
+            (worker.root / "lib.rs").write_text("invalid Rust")
+            return 0, ""
+        with patch.object(repair.Worker, "execute", autospec=True, side_effect=resolve):
+            with self.assertRaisesRegex(ValueError, "outside Cargo.lock"):
+                self.worker.resolve_lockfile()
+        self.assertEqual((self.root / "lib.rs").read_text(), "original source")
+        self.assertEqual((self.root / "Cargo.lock").read_text(), "original lockfile")
 
     def test_poisoned_agent_and_check_state_never_enters_later_checks(self):
         mounts = []
@@ -266,13 +310,30 @@ class WorkerTests(unittest.TestCase):
 
 
 class LoopTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+
     def test_empty_checks_cannot_pass_without_verification(self):
         from unittest.mock import Mock
-        worker = Mock()
+        worker = Mock(root=self.root)
         for commands in ([], ["   "]):
             with self.assertRaisesRegex(ValueError, "empty"):
                 repair.checks(worker, commands)
         worker.execute.assert_not_called()
+
+    def test_passing_command_that_mutates_source_cannot_pass_verification(self):
+        from unittest.mock import Mock
+        (self.root / "lib.rs").write_text("pub fn valid() {}\n")
+        worker = Mock(root=self.root)
+        def mutate(args):
+            (self.root / "lib.rs").write_text("invalid Rust")
+            return 0, "test passed"
+        worker.execute.side_effect = mutate
+        with self.assertRaisesRegex(ValueError, "changed candidate source"):
+            repair.repair_local(worker, Mock(), ["cargo test --lib", "cargo check"], "migrate", 0)
+        self.assertEqual(worker.execute.call_count, 1)
 
     def test_standalone_rejects_empty_input_before_loading_source(self):
         for commands in ("", " \n\t"):
@@ -285,7 +346,7 @@ class LoopTests(unittest.TestCase):
 
     def test_failed_agent_is_followed_by_independent_checks(self):
         from unittest.mock import Mock
-        worker, policy = Mock(), Mock()
+        worker, policy = Mock(root=self.root), Mock()
         worker.execute.side_effect = [(1, "compile error"), (1, "agent error"), (0, "success")]
         error, attempts = repair.repair_local(worker, policy, ["cargo check"], "migrate", 3)
         self.assertIsNone(error)
@@ -295,7 +356,7 @@ class LoopTests(unittest.TestCase):
 
     def test_exhaustion_is_bounded(self):
         from unittest.mock import Mock
-        worker, policy = Mock(), Mock()
+        worker, policy = Mock(root=self.root), Mock()
         worker.execute.return_value = (1, "failure")
         error, attempts = repair.repair_local(worker, policy, ["cargo check"], "migrate", 2)
         self.assertIsNotNone(error)

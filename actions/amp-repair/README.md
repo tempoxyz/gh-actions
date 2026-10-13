@@ -21,7 +21,11 @@ and verify that image through the caller's existing image pipeline; this action
 does not execute a mutable installer on the privileged runner.
 
 Each command gets a fresh container with only the exported source and an
-expendable worker cache mounted. Every verification command gets a new empty
+expendable worker cache mounted. Verification mounts source read-only and checks
+its snapshot before and after every command; all checks must verify the same
+unchanged candidate. Only Amp may edit the candidate. The coordinator resolves
+Cargo.lock separately in a disposable writable copy and imports only that lockfile.
+Every verification command gets a new empty
 cache, including HOME, Cargo downloads/configuration and target output; it never
 reuses agent state or an earlier check's build output. This prevents cache-written
 tools/configuration from replacing later checks, at the cost of fresh downloads
@@ -48,7 +52,9 @@ Optional inputs: `repair-instructions`, `max-repairs` (3), `budget-minutes` (60)
 
 Check commands are newline-separated argument lists parsed with `shlex`, not
 shell programs. Pipelines, substitutions, and environment assignments are not
-supported. Use an image-provided command for more complex checks.
+supported. Checks must work with read-only source and a prepared lockfile; use
+`--locked` for Cargo builds/tests. Source-changing fixes belong to the repair phase.
+Use an image-provided command for more complex checks.
 
 `allowed-paths` uses `*` within one directory and `**` across directories. Only
 Rust files, `Cargo.toml`, and `Cargo.lock` may change. `.git`, `.github`, `.cargo`,
@@ -57,7 +63,8 @@ are unsupported. The coordinator freezes existing gitlink revisions and omits
 their uninitialized contents, matching a checkout without submodules; changes
 inside those paths are denied. Validation includes ignored/untracked files, dependency
 identity changes (including URL aliases/removal), Cargo patch/replace changes,
-and resolved lockfile commits. It rejects raw runner credentials in candidate
+and resolved lockfile commits. Git exports read the complete tree and raw blobs;
+archive attributes cannot omit paths or substitute content. It rejects raw runner credentials in candidate
 changes; callers must still review source before merging.
 
 Outputs are `status` and `repair-attempts`. Exhaustion fails the action and leaves

@@ -7,9 +7,9 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shlex
+import shutil
 import signal
 import subprocess
-import tarfile
 import tempfile
 import time
 import tomllib
@@ -90,28 +90,45 @@ def gitlinks(repository, ref):
 
 def export_tree(repository, ref, destination, *, gitlink_base=None):
     """Export tracked content without .git, Git credentials, or runner files."""
-    entries = git(repository, "ls-tree", "-r", "--full-tree", ref).stdout.splitlines()
-    if any(entry.startswith("120000 ") for entry in entries):
-        raise ValueError("symlinks are unsupported")
+    entries = []
+    for entry in git(repository, "ls-tree", "-r", "-z", "--full-tree", ref).stdout.split("\0"):
+        if not entry:
+            continue
+        metadata, name = entry.split("\t", 1)
+        mode, kind, oid = metadata.split()
+        safe_path(name)
+        if mode == "160000":
+            continue
+        if mode not in ("100644", "100755") or kind != "blob":
+            raise ValueError("symlinks and special files are unsupported")
+        entries.append((name, mode, oid))
     links = gitlinks(repository, ref)
     if links and gitlink_base is None:
         raise ValueError("gitlinks require a trusted baseline")
     if gitlink_base is not None and links != gitlinks(repository, gitlink_base):
         raise ValueError("gitlink revisions changed")
-    with tempfile.TemporaryFile() as archive:
-        result = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "archive", ref],
-                                cwd=repository, stdout=archive, stderr=subprocess.PIPE)
+    # Read every committed blob directly: archive attributes and filters must not
+    # hide forbidden changes or transform the content being checked/published.
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryFile() as blobs:
+        result = subprocess.run(["git", "cat-file", "--batch"], cwd=repository,
+                                input="".join(oid + "\n" for _, _, oid in entries).encode(),
+                                stdout=blobs, stderr=subprocess.PIPE)
         if result.returncode:
-            raise RuntimeError("cannot export candidate source tree")
-        archive.seek(0)
-        with tarfile.open(fileobj=archive) as source:
-            members = source.getmembers()
-            for member in members:
-                safe_path(member.name.rstrip("/"))
-                if not (member.isfile() or member.isdir()):
-                    raise ValueError("gitlinks, symlinks and special files are unsupported")
-            # Members are individually checked above, including .git and traversal.
-            source.extractall(destination, members=members, filter="data")
+            raise RuntimeError("cannot export complete candidate Git tree")
+        blobs.seek(0)
+        for name, mode, oid in entries:
+            header = blobs.readline().decode().split()
+            if len(header) != 3 or header[:2] != [oid, "blob"]:
+                raise ValueError("invalid Git blob response")
+            content = blobs.read(int(header[2]))
+            if len(content) != int(header[2]) or blobs.read(1) != b"\n":
+                raise ValueError("incomplete Git blob response")
+            target = destination / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+            target.chmod(0o755 if mode == "100755" else 0o644)
     snapshot(destination)
 
 
@@ -227,7 +244,7 @@ class Worker:
         self.root, self.image, self.deadline, self.cache = root, image, deadline, cache
         self.memory = memory
 
-    def arguments(self, name, args, *, agent=False, cache=None):
+    def arguments(self, name, args, *, agent=False, cache=None, lockfile=False):
         cache = self.cache if cache is None else cache
         for path in (self.root, cache):
             if "," in str(path):
@@ -236,7 +253,7 @@ class Worker:
                    "--cap-drop=ALL", "--security-opt=no-new-privileges:true",
                    "--pids-limit=512", "--memory", self.memory,
                    "--user", f"{os.getuid()}:{os.getgid()}",
-                   "--mount", f"type=bind,src={self.root},dst=/workspace",
+                   "--mount", f"type=bind,src={self.root},dst=/workspace" + ("" if agent or lockfile else ",readonly"),
                    "--mount", f"type=bind,src={cache},dst=/cache",
                    "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--workdir", "/workspace",
                    "--env", "HOME=/cache/home", "--env", "CARGO_HOME=/cache/cargo",
@@ -248,7 +265,9 @@ class Worker:
             command += ["--env", "AMP_API_KEY"]
         return command + ["--entrypoint", args[0], self.image, *args[1:]]
 
-    def execute(self, args, *, agent=False):
+    def execute(self, args, *, agent=False, lockfile=False):
+        if lockfile and (agent or args != ["cargo", "update", "--workspace"]):
+            raise ValueError("only dedicated lockfile resolution may write verification source")
         remaining = int(self.deadline - time.monotonic())
         if remaining <= 0:
             raise TimeoutError("dependency repair budget exhausted")
@@ -268,11 +287,11 @@ class Worker:
             with tempfile.TemporaryDirectory(prefix="amp-check-cache-",
                                              dir=self.cache.parent) as clean_cache:
                 cache = self.cache if agent else Path(clean_cache)
-                return self._execute(name, args, agent, cache, env, log, remaining)
+                return self._execute(name, args, agent, cache, env, log, remaining, lockfile)
 
-    def _execute(self, name, args, agent, cache, env, log, remaining):
+    def _execute(self, name, args, agent, cache, env, log, remaining, lockfile):
         try:
-            result = subprocess.run(self.arguments(name, args, agent=agent, cache=cache), env=env,
+            result = subprocess.run(self.arguments(name, args, agent=agent, cache=cache, lockfile=lockfile), env=env,
                                     stdout=log, stderr=subprocess.STDOUT,
                                     timeout=min(1200, remaining))
             log.seek(0, 2)
@@ -288,15 +307,37 @@ class Worker:
             if cleanup.returncode and "No such container" not in cleanup.stderr:
                 raise RuntimeError("cannot confirm worker cleanup; refusing further repair/publication")
 
+    def resolve_lockfile(self):
+        original = snapshot(self.root)
+        with tempfile.TemporaryDirectory(prefix="amp-lockfile-", dir=self.cache.parent) as directory:
+            source = Path(directory) / "source"
+            shutil.copytree(self.root, source)
+            resolver = Worker(source, self.image, self.deadline, self.cache, memory=self.memory)
+            status, log = resolver.execute(["cargo", "update", "--workspace"], lockfile=True)
+            current = snapshot(source)
+            if any(original.get(path) != current.get(path)
+                   for path in original.keys() | current.keys() if path != "Cargo.lock"):
+                raise ValueError("lockfile resolution changed source outside Cargo.lock")
+            if snapshot(self.root) != original:
+                raise ValueError("candidate changed during lockfile resolution")
+            if not status:
+                shutil.copy2(source / "Cargo.lock", self.root / "Cargo.lock")
+            return status, log
+
 
 def checks(worker, commands):
     if not commands:
         raise ValueError("local-checks must not be empty")
+    expected = snapshot(worker.root)
     for command in commands:
         args = shlex.split(command)
         if not args:
             raise ValueError("empty check command")
+        if snapshot(worker.root) != expected:
+            raise ValueError("candidate changed between verification commands")
         status, log = worker.execute(args)
+        if snapshot(worker.root) != expected:
+            raise ValueError("verification command changed candidate source")
         if status:
             return "Command: " + shlex.join(args) + "\n" + log[-16000:]
     return None
@@ -321,11 +362,19 @@ def repair(worker, error, instructions):
         print(f"::warning::Amp exited with status {status}; validating the resulting source tree.")
 
 
-def repair_local(worker, policy, commands, instructions, max_repairs):
+def repair_local(worker, policy, commands, instructions, max_repairs, *, resolve_lockfile=False):
     for attempt in range(max_repairs + 1):
         # Validate before executing any candidate code and after each agent invocation.
         policy.validate(worker.root, lockfile=False)
-        error = checks(worker, commands)
+        error = None
+        if resolve_lockfile:
+            status, log = worker.resolve_lockfile()
+            if status:
+                error = "Command: cargo update --workspace\n" + log[-16000:]
+            policy.validate(worker.root, lockfile=False)
+        if error is None:
+            policy.validate(worker.root)
+            error = checks(worker, commands)
         if error is None:
             policy.validate(worker.root)
             return None, attempt

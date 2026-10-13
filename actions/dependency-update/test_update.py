@@ -208,6 +208,8 @@ class PublicationTests(unittest.TestCase):
         class FakeWorker:
             def __init__(self, root, *args, **kwargs):
                 self.root, self.agents = root, 0
+            def resolve_lockfile(self):
+                return 0, ""
             def execute(self, args, agent=False):
                 owner.assertFalse(owner.tokens and owner.tokens[-1] == "mint")
                 if agent:
@@ -264,6 +266,44 @@ class PublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outside repair scope"):
             self.coordinator.rebase_existing(self.repository, self.base, self.policy)
         self.assertEqual(git(self.repository, "rev-parse", "HEAD").stdout.strip(), head)
+
+    def add_archive_ignore(self):
+        (self.repository / ".gitattributes").write_text(".github export-ignore\n")
+        git(self.repository, "add", ".gitattributes")
+        git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-m", "trusted archive attributes")
+        self.base = git(self.repository, "rev-parse", "HEAD").stdout.strip()
+        baseline = self.root / "complete-baseline"
+        export_tree(self.repository, "HEAD", baseline)
+        (self.work / ".gitattributes").write_text(".github export-ignore\n")
+        self.policy.baseline = snapshot(baseline)
+        self.github.api.return_value = {"object": {"sha": self.base}}
+
+    def test_archive_ignore_cannot_hide_forbidden_resume_changes(self):
+        self.add_archive_ignore()
+        (self.repository / ".github/workflows/ci.yml").write_text("forbidden\n")
+        git(self.repository, "add", ".")
+        git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-m", "hidden workflow change")
+        with self.assertRaisesRegex(ValueError, "outside repair scope"):
+            self.coordinator.rebase_existing(self.repository, self.base, self.policy)
+
+    def test_archive_ignore_cannot_hide_forbidden_final_commit_tree(self):
+        self.add_archive_ignore()
+        original_git = update.git
+        def inject_commit(root, *args, **kwargs):
+            result = original_git(root, *args, **kwargs)
+            if "commit" in args:
+                (root / ".github/workflows/ci.yml").write_text("forbidden committed workflow\n")
+                git(root, "add", ".github/workflows/ci.yml")
+                git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                    "commit", "-m", "injected forbidden tree")
+            return result
+        with patch.object(update, "git", side_effect=inject_commit):
+            with self.assertRaisesRegex(ValueError, "outside repair scope"):
+                self.coordinator.publish(self.repository, self.work, self.policy, self.plan,
+                                         self.existing, self.base, self.base, self.root)
+        self.assertEqual(self.tokens, [])
 
 
 class PlanTests(unittest.TestCase):
