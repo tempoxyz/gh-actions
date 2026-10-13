@@ -1,0 +1,26 @@
+name: 'Setup Grafana k6'
+description: 'Install a specific version of k6 and setup the environment for running k6 tests'
+
+branding:
+  icon: 'arrow-down-circle'
+  color: 'purple'
+
+inputs:
+  k6-version:
+    description: 'Version of k6 to install'
+    required: false
+  browser:
+    description: 'Installs the browser dependencies for k6'
+    required: false
+  github-token:
+    description: 'GitHub API Access Token'
+    default: ${{ github.token }}
+    required: false
+
+outputs:
+  k6-version:
+    description: 'Version of k6 installed'
+
+runs:
+  using: node24
+  main: dist/index.js

@@ -757,6 +757,23 @@ actions:
       in the code excluded: docs/, .tool-versions, **/*.d.ts, **/*.test.*, actions.code-workspace,
       build, dependency-submission/, licenses/, wrapper-validation/
 
+  - name: grafana/setup-k6-action
+    ref: v1.2.2
+    ref_type: tag
+    sha: 43b9fc21641a76002687994433dd586f56e791b1
+    exclude:
+      - src/
+      - tsconfig*.json
+      - package-lock.json
+      - .yarnrc*
+      - .npmrc
+      - .node-version
+      - catalog-info.yaml
+      - dev/
+    notes: >-
+      Node action; runs dist/index.js. excluded: src/, tsconfig*.json, package-lock.json, .yarnrc*,
+      .npmrc, .node-version, catalog-info.yaml, dev/
+
   - name: helm/chart-releaser-action
     ref: main
     ref_type: branch
