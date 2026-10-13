@@ -13,12 +13,20 @@ prepared source export; it does not fetch GitHub tokens, commit, push, or merge.
 Requires Python 3.11+, a Linux Docker runner, and a caller-approved image pinned
 by `@sha256:<digest>`. The image contains Amp, Rust/rustfmt/Clippy, cargo-nextest,
 and any native build dependencies. Tools must work as the runner UID with a
-read-only root filesystem; mutable Cargo/Amp state goes under `/cache`. Build
+read-only root filesystem; mutable Cargo/Amp state goes under `/cache`. Install
+tools in `/usr/local/cargo/bin`, `/usr/local/bin`, `/usr/bin` or `/bin`; worker
+PATH contains only those image directories, and Rust toolchains must be available
+read-only in `/usr/local/rustup`. Build
 and verify that image through the caller's existing image pipeline; this action
 does not execute a mutable installer on the privileged runner.
 
 Each command gets a fresh container with only the exported source and an
-expendable worker cache mounted. No `.git`, host HOME, runner temp directory,
+expendable worker cache mounted. Every verification command gets a new empty
+cache, including HOME, Cargo downloads/configuration and target output; it never
+reuses agent state or an earlier check's build output. This prevents cache-written
+tools/configuration from replacing later checks, at the cost of fresh downloads
+and compilation for each command. Agent invocations can reuse their own cache.
+No `.git`, host HOME, runner temp directory,
 Docker socket, host PID namespace, or GitHub/OIDC credentials are mounted or
 forwarded. Containers have no capabilities, cannot gain privileges, and have
 memory/PID limits. Amp alone receives `AMP_API_KEY`; check workers do not receive

@@ -232,6 +232,39 @@ class PublicationTests(unittest.TestCase):
         self.assertIn("migration_2", git(self.remote, "show", "bot/sdk:src/lib.rs").stdout)
         self.assertEqual(self.tokens, ["mint", "revoke", "mint", "revoke"])
 
+    def test_resume_inherits_main_readme_change_without_scope_failure(self):
+        git(self.repository, "config", "user.name", "Test")
+        git(self.repository, "config", "user.email", "test@example.invalid")
+        git(self.repository, "checkout", "-b", "update-branch")
+        (self.repository / "src/lib.rs").write_text("pub fn migrated() {}\n")
+        git(self.repository, "add", ".")
+        git(self.repository, "commit", "-m", "migration")
+        git(self.repository, "checkout", "main")
+        (self.repository / "README.md").write_text("ordinary main change\n")
+        git(self.repository, "add", ".")
+        git(self.repository, "commit", "-m", "docs")
+        current = git(self.repository, "rev-parse", "HEAD").stdout.strip()
+        git(self.repository, "checkout", "update-branch")
+        self.coordinator.rebase_existing(self.repository, current, self.policy)
+        baseline, candidate = self.root / "current-main", self.root / "rebased"
+        export_tree(self.repository, current, baseline)
+        export_tree(self.repository, "HEAD", candidate)
+        policy = Policy(snapshot(baseline), self.policy.patterns, {URL: SHA})
+        policy.freeze(candidate)
+        policy.validate(candidate)
+        self.assertEqual((candidate / "README.md").read_text(), "ordinary main change\n")
+        self.assertIn("migrated", (candidate / "src/lib.rs").read_text())
+
+    def test_resume_still_rejects_forbidden_pr_changes_before_rebase(self):
+        (self.repository / ".github/workflows/ci.yml").write_text("forbidden PR change\n")
+        git(self.repository, "add", ".")
+        git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-m", "forbidden")
+        head = git(self.repository, "rev-parse", "HEAD").stdout.strip()
+        with self.assertRaisesRegex(ValueError, "outside repair scope"):
+            self.coordinator.rebase_existing(self.repository, self.base, self.policy)
+        self.assertEqual(git(self.repository, "rev-parse", "HEAD").stdout.strip(), head)
+
 
 class PlanTests(unittest.TestCase):
     def test_pr_event_is_rejected_before_coordinator_or_credentials(self):

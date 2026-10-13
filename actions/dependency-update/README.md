@@ -100,6 +100,8 @@ then rejects source/revision changes, removal, aliases, or new Cargo overrides.
 Use `closed_pr_policy: skip` for one PR per release; use `new-pr` for a rolling
 update branch after a previous PR closes/merges. Existing open PRs and orphan
 branches are resumed; rebases fail on conflicts. Main/PR changes require a retry.
+Existing branch changes are checked against their merge base before rebasing;
+the rebased candidate is then validated against current main.
 The publisher rebuilds its index, validates the actual commit tree, and pushes
 with an explicit expected-head lease. It does not copy worker Git metadata.
 Existing submodule pointers stay frozen to main and are not initialized in the

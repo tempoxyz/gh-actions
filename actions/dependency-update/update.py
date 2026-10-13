@@ -158,6 +158,17 @@ class Coordinator:
         if not self.required:
             raise ValueError("required-workflows must not be empty")
 
+    def rebase_existing(self, repository, base, policy):
+        merge_base = git(repository, "merge-base", "HEAD", base).stdout.strip()
+        with tempfile.TemporaryDirectory(prefix="dependency-existing-") as directory:
+            original, previous = Path(directory) / "original", Path(directory) / "previous"
+            export_tree(repository, merge_base, original, gitlink_base=merge_base)
+            export_tree(repository, "HEAD", previous, gitlink_base=merge_base)
+            branch_policy = Policy(snapshot(original), policy.patterns, policy.pins)
+            branch_policy.gitlinks = set(gitlinks(repository, merge_base))
+            branch_policy.scope(previous)
+        git(repository, "rebase", base)  # Conflicts fail; never select a side automatically.
+
     def adapter(self, script, operation, plan_file=None, cwd=None):
         # Python isolated mode excludes the candidate working directory/PYTHONPATH.
         args = ["python3", "-I", str(script), operation]
@@ -290,11 +301,8 @@ class Coordinator:
                 if git(repository, "rev-parse", "FETCH_HEAD").stdout.strip() != expected:
                     raise RuntimeError("update branch advanced during fetch; retry required")
                 git(repository, "checkout", "--detach", "FETCH_HEAD")
-                # Scope is checked before any branch content is used as an adapter.
-                with tempfile.TemporaryDirectory(prefix="dependency-existing-") as previous:
-                    export_tree(repository, "HEAD", previous, gitlink_base=base)
-                    policy.scope(Path(previous))
-                git(repository, "rebase", base)  # A conflict fails; never select a side automatically.
+                # Check only PR changes before rebasing, then validate against current main.
+                self.rebase_existing(repository, base, policy)
             work, cache = directory / "source", directory / "cache"
             work.mkdir()
             cache.mkdir()

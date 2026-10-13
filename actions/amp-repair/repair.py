@@ -18,6 +18,7 @@ import uuid
 
 SHA = re.compile(r"[0-9a-f]{40}")
 IMAGE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}")
+TOOL_PATH = "/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin"
 DENIED_ROOTS = {".git", ".github", ".cargo", "scripts"}
 SOURCE_KEYS = ("git", "rev", "tag", "branch", "path", "registry", "workspace", "package")
 
@@ -226,8 +227,9 @@ class Worker:
         self.root, self.image, self.deadline, self.cache = root, image, deadline, cache
         self.memory = memory
 
-    def arguments(self, name, args, *, agent=False):
-        for path in (self.root, self.cache):
+    def arguments(self, name, args, *, agent=False, cache=None):
+        cache = self.cache if cache is None else cache
+        for path in (self.root, cache):
             if "," in str(path):
                 raise ValueError("Docker mount paths must not contain commas")
         command = ["docker", "run", "--name", name, "--rm", "--init", "--read-only",
@@ -235,11 +237,12 @@ class Worker:
                    "--pids-limit=512", "--memory", self.memory,
                    "--user", f"{os.getuid()}:{os.getgid()}",
                    "--mount", f"type=bind,src={self.root},dst=/workspace",
-                   "--mount", f"type=bind,src={self.cache},dst=/cache",
+                   "--mount", f"type=bind,src={cache},dst=/cache",
                    "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--workdir", "/workspace",
                    "--env", "HOME=/cache/home", "--env", "CARGO_HOME=/cache/cargo",
                    "--env", "CARGO_TARGET_DIR=/cache/target",
                    "--env", "XDG_CONFIG_HOME=/cache/config", "--env", "CI=true",
+                   "--env", f"PATH={TOOL_PATH}", "--env", "RUSTUP_HOME=/usr/local/rustup",
                    "--env", "CARGO_HTTP_TIMEOUT=180", "--env", "CARGO_NET_RETRY=10"]
         if agent:
             command += ["--env", "AMP_API_KEY"]
@@ -260,25 +263,35 @@ class Worker:
         with tempfile.TemporaryFile() as log, tempfile.TemporaryDirectory(
                 prefix="amp-docker-client-") as client:
             env.update(HOME=client, DOCKER_CONFIG=client)
-            try:
-                result = subprocess.run(self.arguments(name, args, agent=agent), env=env,
-                                        stdout=log, stderr=subprocess.STDOUT,
-                                        timeout=min(1200, remaining))
-                log.seek(0, 2)
-                length = log.tell()
-                log.seek(0)
-                beginning = log.read(min(length, 4096))
-                log.seek(max(len(beginning), length - 60000))
-                return result.returncode, (beginning + log.read()).decode(errors="replace")
-            finally:
-                # Killing the CLI alone does not stop a detached container's processes.
-                cleanup = subprocess.run(["docker", "rm", "--force", name], env=env,
-                                         capture_output=True, text=True, timeout=30, check=False)
-                if cleanup.returncode and "No such container" not in cleanup.stderr:
-                    raise RuntimeError("cannot confirm worker cleanup; refusing further repair/publication")
+            # Agent state and prior build scripts are untrusted. Each verification
+            # command starts with empty HOME/Cargo/target state, outside agent mounts.
+            with tempfile.TemporaryDirectory(prefix="amp-check-cache-",
+                                             dir=self.cache.parent) as clean_cache:
+                cache = self.cache if agent else Path(clean_cache)
+                return self._execute(name, args, agent, cache, env, log, remaining)
+
+    def _execute(self, name, args, agent, cache, env, log, remaining):
+        try:
+            result = subprocess.run(self.arguments(name, args, agent=agent, cache=cache), env=env,
+                                    stdout=log, stderr=subprocess.STDOUT,
+                                    timeout=min(1200, remaining))
+            log.seek(0, 2)
+            length = log.tell()
+            log.seek(0)
+            beginning = log.read(min(length, 4096))
+            log.seek(max(len(beginning), length - 60000))
+            return result.returncode, (beginning + log.read()).decode(errors="replace")
+        finally:
+            # Killing the CLI alone does not stop a detached container's processes.
+            cleanup = subprocess.run(["docker", "rm", "--force", name], env=env,
+                                     capture_output=True, text=True, timeout=30, check=False)
+            if cleanup.returncode and "No such container" not in cleanup.stderr:
+                raise RuntimeError("cannot confirm worker cleanup; refusing further repair/publication")
 
 
 def checks(worker, commands):
+    if not commands:
+        raise ValueError("local-checks must not be empty")
     for command in commands:
         args = shlex.split(command)
         if not args:
@@ -346,6 +359,9 @@ def main():
     parser.add_argument("--max-repairs", type=int, default=3)
     parser.add_argument("--budget-minutes", type=int, default=60)
     args = parser.parse_args()
+    commands = lines(args.checks)
+    if not commands:
+        raise ValueError("local-checks must not be empty")
     if args.max_repairs < 0 or not 1 <= args.budget_minutes <= 180:
         raise ValueError("invalid repair limits")
     source, baseline = Path(args.source).resolve(), Path(args.baseline).resolve()
@@ -354,7 +370,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="amp-worker-cache-") as cache:
         worker = Worker(source, args.worker_image, time.monotonic() + args.budget_minutes * 60,
                         Path(cache))
-        error, attempts = repair_local(worker, policy, lines(args.checks), args.instructions,
+        error, attempts = repair_local(worker, policy, commands, args.instructions,
                                        args.max_repairs)
     set_output("repair-attempts", attempts)
     set_output("status", "failed" if error else "passed")

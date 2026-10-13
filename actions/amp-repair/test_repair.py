@@ -191,6 +191,32 @@ class WorkerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 repair.Worker(self.root, image, time.monotonic() + 60, self.cache)
 
+    def test_poisoned_agent_and_check_state_never_enters_later_checks(self):
+        mounts = []
+        def fake(args, **kwargs):
+            if args[1] == "run":
+                mount = next(value for value in args if value.endswith(",dst=/cache"))
+                cache = Path(mount.split("src=", 1)[1].split(",dst=", 1)[0])
+                mounts.append(cache)
+                if "AMP_API_KEY" in args:
+                    self.assertEqual(cache, self.cache)
+                else:
+                    self.assertNotEqual(cache, self.cache)
+                    self.assertEqual(list(cache.iterdir()), [])
+                (cache / "cargo/bin").mkdir(parents=True, exist_ok=True)
+                for tool in ("cargo-clippy", "cargo-fmt", "cargo-nextest"):
+                    (cache / "cargo/bin" / tool).write_text("#!/bin/sh\nexit 0\n")
+                self.assertIn(f"PATH={repair.TOOL_PATH}", args)
+                self.assertIn("RUSTUP_HOME=/usr/local/rustup", args)
+            return subprocess.CompletedProcess(args, 0, "", "")
+        with patch.dict(os.environ, {"AMP_API_KEY": "test-key"}), \
+             patch.object(repair.subprocess, "run", side_effect=fake):
+            self.worker.execute(["amp"], agent=True)
+            for tool in ("clippy", "fmt", "nextest"):
+                self.worker.execute(["cargo", tool])
+        self.assertEqual(len(set(mounts)), 4)
+        self.assertTrue(all(not path.exists() for path in mounts[1:]))
+
     def test_client_environment_excludes_runner_credentials(self):
         captured = []
         def fake(args, **kwargs):
@@ -240,6 +266,23 @@ class WorkerTests(unittest.TestCase):
 
 
 class LoopTests(unittest.TestCase):
+    def test_empty_checks_cannot_pass_without_verification(self):
+        from unittest.mock import Mock
+        worker = Mock()
+        for commands in ([], ["   "]):
+            with self.assertRaisesRegex(ValueError, "empty"):
+                repair.checks(worker, commands)
+        worker.execute.assert_not_called()
+
+    def test_standalone_rejects_empty_input_before_loading_source(self):
+        for commands in ("", " \n\t"):
+            with patch("sys.argv", ["repair.py", "--source", "/missing", "--baseline", "/missing",
+                                    "--pins", "{}", "--worker-image", IMAGE, "--checks", commands,
+                                    "--allowed-paths", "Cargo.toml"]), patch.object(repair, "Worker") as worker:
+                with self.assertRaisesRegex(ValueError, "local-checks must not be empty"):
+                    repair.main()
+                worker.assert_not_called()
+
     def test_failed_agent_is_followed_by_independent_checks(self):
         from unittest.mock import Mock
         worker, policy = Mock(), Mock()
