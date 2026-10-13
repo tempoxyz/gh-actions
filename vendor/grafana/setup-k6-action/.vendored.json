@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/grafana/setup-k6-action",
+  "ref": "v1.2.2",
+  "ref_type": "tag",
+  "sha": "43b9fc21641a76002687994433dd586f56e791b1",
+  "upstream_commit_date": "2026-09-21T16:56:44+02:00",
+  "readme_url": "https://github.com/grafana/setup-k6-action/blob/43b9fc21641a76002687994433dd586f56e791b1/README.md",
+  "description": "Install a specific version of k6 and setup the environment for running k6 tests",
+  "consume_as": "tempoxyz/gh-actions/vendor/grafana/setup-k6-action@<gh-actions-sha>",
+  "files_removed": 23,
+  "nested_rewrites": []
+}
