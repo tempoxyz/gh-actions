@@ -1,0 +1,66 @@
+---
+name: "Skill Sync"
+description: >-
+  Copy agent skills from their canonical repositories into generated
+  directories, record their provenance in a lock file, and verify that
+  generated copies were not edited by hand
+
+inputs:
+  mode:
+    description: "`sync` fetches sources and rewrites changed copies; `check` verifies copies against the lock offline"
+    required: false
+    default: "sync"
+  config:
+    description: "Registry file listing each skill's name, plugin, repo, path, and ref"
+    required: false
+    default: "skills.json"
+  lock:
+    description: "Generated lock file recording each copy's source commit and digest"
+    required: false
+    default: "skills.lock.json"
+  dest:
+    description: "Destination template for each skill; supports {name} and {plugin}"
+    required: false
+    default: "plugins/{plugin}/skills/{name}"
+  catalog:
+    description: "Mirror another repository's lock file (owner/repo) instead of reading config"
+    required: false
+    default: ""
+  index:
+    description: "Optional path for an Agent Skills discovery index.json"
+    required: false
+    default: ""
+  base-url:
+    description: "Base URL for skill links in the index; each skill is served at <base-url>/<name>/SKILL.md"
+    required: false
+    default: ""
+  only:
+    description: "Comma- or space-separated skill or plugin names to sync; others keep their lock entries"
+    required: false
+    default: ""
+  token:
+    description: "Token for reading public sources"
+    required: false
+    default: ${{ github.token }}
+  sts-policy:
+    description: "Trust policy each private source repository defines for read access"
+    required: false
+    default: "skill-sync-read"
+  sts-host:
+    description: "GitHub STS hostname"
+    required: false
+    default: "gh-sts.tempoxyz.net"
+  working-directory:
+    description: "Repository root that config, lock, dest, and index are relative to"
+    required: false
+    default: "."
+
+outputs:
+  changed:
+    description: "`true` when a copy, the lock, or the index changed"
+  summary:
+    description: "Markdown table of changed skills with source links"
+
+runs:
+  using: "node24"
+  main: "main.js"
