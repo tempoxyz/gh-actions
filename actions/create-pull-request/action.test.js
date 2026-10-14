@@ -96,7 +96,7 @@ test("create-pull-request scenarios", { skip: !bashSupportsMapfile && "needs bas
     const updates = result.calls.filter((call) => call.startsWith("api -X PATCH repos/o/r/git/refs/heads/bot/sync "));
     assert.deepEqual(updates, [`api -X PATCH repos/o/r/git/refs/heads/bot/sync -f sha=${NEW_SHA} -F force=true`]);
     assert.ok(result.calls.includes("api -X DELETE repos/o/r/git/refs/heads/bot/sync-update-11-2"));
-    assert.ok(result.calls.some((call) => call.startsWith("pr edit 5")));
+    assert.ok(result.calls.some((call) => call.startsWith("pr edit --repo o/r 5")));
   });
 
   await t.test("leaves an open PR that already has the changes", (t) => {
