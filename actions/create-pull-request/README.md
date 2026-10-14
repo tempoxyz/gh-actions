@@ -13,14 +13,19 @@ action then:
 
 1. Creates the head `branch` at the checked-out commit — force-resetting a
    stale branch left by an earlier failed run (callers are expected to delete
-   the branch on merge).
+   the branch on merge). When the branch already has an open PR, the commit is
+   built on a scratch branch and the head branch moves to it in one update:
+   resetting it to the base first would leave the PR without changes, and
+   GitHub would close it. If the open PR already contains exactly these
+   changes, nothing is committed.
 2. Stages `add-paths` and commits the staged changes via the GraphQL
    `createCommitOnBranch` mutation. Nothing is pushed from the runner: GitHub
    creates the commit server-side, authored by the token's actor and signed
    by GitHub, so commits never show as "Unverified" and no signing key is
    handled.
 3. Opens a pull request for the branch — or reuses the branch's existing open
-   PR (refreshing its title and body) if one survived an earlier failed run.
+   PR, refreshing its title and body — and enables auto-merge when
+   `auto-merge` is set.
 
 ## Limitations (by design)
 
@@ -45,13 +50,14 @@ action then:
 | `body` | Pull request body (Markdown) | No | `""` |
 | `add-paths` | Newline-separated git pathspecs to stage | No | `.` |
 | `labels` | Newline- or comma-separated labels to add | No | `""` |
+| `auto-merge` | Enable auto-merge with `merge`, `squash`, or `rebase` once required checks pass | No | `""` |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
 | `pull-request-number` | Number of the created (or reused) pull request |
-| `head-sha` | OID of the commit created on the head branch |
+| `head-sha` | OID of the head branch commit (unchanged when the open PR already had these changes) |
 
 ## Usage
 
