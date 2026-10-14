@@ -3,7 +3,7 @@ const path = require("node:path");
 const { aegisReportPath, uploadAegisReport } = require("./dist/artifact-upload.cjs");
 const { stepSummary, warning } = require("../harden-runner/annotations.cjs");
 const { retireAsync, quiesceAsync } = require("./linux-lifecycle.cjs");
-const { scanRuntimeWarnings, runtimeWarningMessage } = require("./runtime-warnings.cjs");
+const { scanRuntimeWarnings, runtimeWarningMessage, recentlyPublishedSummary } = require("./runtime-warnings.cjs");
 
 function workflowEventsUrl(env) {
   const repository = env.GITHUB_REPOSITORY?.split("/");
@@ -40,6 +40,8 @@ async function report({
         if (decisions.blocked) {
           stepSummary(env, `> ⛔ **Aegis blocked package downloads:** Aegis blocked ${decisions.blocked} package download${decisions.blocked === 1 ? "" : "s"}. Review the Aegis audit-log artifact for details.`);
         }
+        const exemptions = recentlyPublishedSummary(decisions.recentlyPublished || []);
+        if (exemptions) stepSummary(env, `\n${exemptions}`);
         if (message || decisions.blocked) {
           const url = workflowEventsUrl(env);
           if (url) stepSummary(env, `\n[View all events for this workflow in Aegis](${url})`);

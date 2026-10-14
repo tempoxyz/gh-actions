@@ -179,3 +179,58 @@ test("post links warning and blocked download summaries to the current workflow 
     });
   }
 });
+
+test("post lists recently published blocks and links one exemption dialog for them", async (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-exemptions-test-"));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const summary = path.join(temp, "summary.md");
+  const decision = (fields) => ({ msg: "package decision", action: "block", category: "policy", ...fields });
+  const records = [
+    decision({ purl: "pkg:npm/%40tempo/example@1.2.3", reason: "didYouMean, recentlyPublished" }),
+    decision({ purl: "pkg:pypi/requests@2.32.0?artifact_id=wheel", reason: "Recently published", policy_alerts: [{ type: "recentlyPublished", action: "block" }] }),
+    decision({ purl: "pkg:npm/%40tempo/example@1.2.3", reason: "recentlyPublished" }),
+    decision({ purl: "pkg:npm/malware@1.0.0", reason: "malware" }),
+    decision({ purl: "pkg:npm/warned@1.0.0", reason: "Recently published", policy_alerts: [{ type: "recentlyPublished", action: "warn" }] }),
+    decision({ purl: "pkg:npm/unavailable@1.0.0", reason: "recentlyPublished", category: "lookup_error" }),
+    decision({ purl: "pkg:npm/no-version", reason: "recentlyPublished" }),
+    { msg: "package decision", action: "warn", category: "policy", purl: "pkg:npm/warning@1.0.0", reason: "recentlyPublished" },
+  ];
+  await require("./post.cjs").report({
+    upload: async () => fs.writeFileSync(path.join(temp, "aegis-service.jsonl"), records.map(JSON.stringify).join("\n")),
+    env: { RUNNER_TEMP: temp, GITHUB_STEP_SUMMARY: summary },
+    platform: "linux",
+  });
+  const markdown = fs.readFileSync(summary, "utf8");
+  assert.match(markdown, /Aegis blocked 7 package downloads\./);
+  assert.ok(markdown.includes([
+    "> 🕒 **Aegis blocked 2 recently published package versions:**",
+    ">",
+    "> - `@tempo/example@1.2.3` (`npm`)",
+    "> - `requests@2.32.0` (`pypi`)",
+    ">",
+  ].join("\n")));
+  const links = [...markdown.matchAll(/\[Add Aegis exemptions for these packages\]\((https:\/\/go\/aegis\/policies\?[^)\s]+)\)/g)];
+  assert.equal(links.length, 1);
+  const url = new URL(links[0][1]);
+  assert.deepEqual(Object.fromEntries([...url.searchParams].filter(([key]) => key !== "purl")), {
+    org: "*", repo: "*", reason: "recentlyPublished", verdict: "warn", confirm: "1",
+  });
+  assert.deepEqual(url.searchParams.getAll("purl"), ["pkg:npm/%40tempo/example@1.2.3", "pkg:pypi/requests@2.32.0?artifact_id=wheel"]);
+  assert.doesNotMatch(markdown, /malware@|warned@|unavailable@|no-version|warning@/);
+});
+
+test("recently published summaries batch links for the policies page and render coordinates inertly", () => {
+  const { recentlyPublishedSummary } = require("./runtime-warnings.cjs");
+  assert.equal(recentlyPublishedSummary([]), "");
+  const one = recentlyPublishedSummary(["pkg:npm/%60%5Bx%5D(https%3A%2F%2Fevil)%0A%23@1.0.0"]);
+  assert.match(one, /blocked 1 recently published package version:/);
+  assert.ok(one.includes("> - `` `[x](https://evil) #@1.0.0 `` (`npm`)"), one);
+  assert.match(one, /\[Add Aegis exemptions for this package\]\(https:\/\/go\/aegis\/policies\?[^)\s]+\)\n/);
+
+  const many = recentlyPublishedSummary(Array.from({ length: 205 }, (_, i) => `pkg:npm/p${i}@1.0.0`));
+  assert.equal((many.match(/^> - `p\d+@1\.0\.0` \(`npm`\)$/gm) || []).length, 200);
+  assert.match(many, /^> - …and 5 more in the Aegis audit-log artifact$/m);
+  const links = [...many.matchAll(/\[Add Aegis exemptions for these packages \((\d+)–(\d+)\)\]\(([^)]+)\)/g)];
+  assert.deepEqual(links.map((link) => [link[1], link[2]]), [["1", "50"], ["51", "100"], ["101", "150"], ["151", "200"], ["201", "205"]]);
+  assert.deepEqual(new URL(links[4][3]).searchParams.getAll("purl"), ["pkg:npm/p200@1.0.0", "pkg:npm/p201@1.0.0", "pkg:npm/p202@1.0.0", "pkg:npm/p203@1.0.0", "pkg:npm/p204@1.0.0"]);
+});
