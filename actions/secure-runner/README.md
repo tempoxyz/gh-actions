@@ -136,17 +136,26 @@ same way and installs nothing.
 
 Credential cleanup at job end is best-effort in the same spirit. The Aegis audit
 log is copied before teardown and uploaded concurrently with cleanup. When
-`RUNNER_ENVIRONMENT` is exactly `github-hosted`, Aegis teardown is skipped: GitHub
-discards the runner after the job. Other Linux runners retain identity-checked
+`RUNNER_ENVIRONMENT` is exactly `github-hosted`, the post hook asks the root Aegis
+inspector to stop new scans and cancel pending scans. The client waits at most
+250 ms for a cancellation acknowledgement from its existing authenticated Worker
+socket; the entire CLI invocation (including sudo/startup) is capped at 500 ms.
+The inspector closes the socket asynchronously. Full Aegis teardown is skipped:
+GitHub discards the runner after the job. Other Linux runners retain identity-checked
 uninstall in a child process, so the upload can progress during teardown.
-Once teardown completes (or is skipped), Socket token revocation and Harden
+Once quiescing or teardown finishes, Socket token revocation and Harden
 Runner's telemetry flush run concurrently, without waiting for the audit upload.
 The Step Security lease is revoked only after its telemetry flush finishes.
 On GitHub-hosted runners, StepSecurity's post event and completion acknowledgement
 are retained, but process teardown and diagnostic log harvesting are skipped;
 GitHub discards the VM. The vendored post hook still renders the security summary.
 Self-hosted and unknown runner environments retain the full vendored cleanup.
-All started operations are awaited even on failure; no cleanup is detached.
+The post hook awaits all operations it starts, including failures; asynchronous
+socket closure belongs to the existing inspector, not an orphan cleanup process.
+Missing support in older clients/Workers, identity mismatches and acknowledgement
+timeouts produce a warning and immediately continue credential cleanup. No token
+grace period is added. Already-started physical Socket/audit calls may still finish
+after cancellation; the acknowledgement confirms cancellation was requested.
 If an STS cannot revoke its lease or token after
 retries, the post-job step reports a warning rather than failing a job that has
 already finished; every lease and token expires on its own. Corrupt saved state

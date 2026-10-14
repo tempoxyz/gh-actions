@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { identity, retire } = require("./linux-lifecycle.cjs");
+const { EventEmitter } = require("node:events");
+const { identity, retire, quiesceAsync } = require("./linux-lifecycle.cjs");
 const { main: post } = require("./post.cjs");
 
 function fixture({ config = true, journal = true, denied = false, uninstallFails = false } = {}) {
@@ -87,4 +88,61 @@ test("upload and retirement overlap after snapshot and are both drained on retir
   assert.equal(finished, false);
   upload.resolve();
   await checked;
+});
+
+test("job-end command passes only installation digest and caps the entire child lifetime", async () => {
+  const owner = identity({ test_token_url: "http://localhost/private-provider-route" });
+  let called = 0;
+  await quiesceAsync({ expectedIdentity: owner, launch(command, args, options) {
+    called++;
+    assert.equal(command, "sudo");
+    assert.deepEqual(args, ["-n", "/usr/bin/aegis", "end-job", "--config", "/etc/aegis/config.json", "--expected-identity", owner]);
+    assert.equal(options.timeout, 500);
+    assert.equal(options.killSignal, "SIGKILL");
+    assert.equal(options.stdio, "ignore");
+    const child = new EventEmitter();
+    queueMicrotask(() => child.emit("exit", 0));
+    return child;
+  } });
+  assert.equal(called, 1);
+  await assert.rejects(quiesceAsync({ expectedIdentity: "invalid", launch() { assert.fail("invalid identity executed command"); } }), /installation identity/);
+  for (const code of [1, "ENOENT", "ETIMEDOUT"]) {
+    await assert.rejects(quiesceAsync({ expectedIdentity: owner, launch() {
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit("error", Object.assign(new Error("sensitive subprocess diagnostic"), { code })));
+      return child;
+    } }), (error) => error.message.includes("continuing credential cleanup") && !error.message.includes("sensitive"));
+  }
+});
+
+test("quiescing completes on CLI exit without waiting for unrelated descendant stdio", async () => {
+  const owner = identity({ test_token_url: "http://localhost/current-job" });
+  await quiesceAsync({ expectedIdentity: owner, launch() {
+    const child = new EventEmitter();
+    // Deliberately never emit close. No output is read and the CLI has exited.
+    queueMicrotask(() => child.emit("exit", 0));
+    return child;
+  } });
+});
+
+test("hosted cleanup quiesces this installation without uninstall; older clients do not block cleanup", async () => {
+  const { cleanup } = require("./post.cjs");
+  const owner = identity({ test_token_url: "http://localhost/current-job" });
+  for (const fail of [false, true]) {
+    let quiesced = false;
+    await cleanup({ platform: "linux", env: { STATE_installation_identity: owner, RUNNER_ENVIRONMENT: "github-hosted" },
+      cleanup() { assert.fail("hosted runner waited for full uninstall"); },
+      quiesce: async ({ expectedIdentity }) => {
+        assert.equal(expectedIdentity, owner); quiesced = true;
+        if (fail) throw new Error("old client has no end-job command");
+      },
+    });
+    assert.equal(quiesced, true);
+  }
+  for (const environment of ["self-hosted", "unknown", undefined]) {
+    await assert.rejects(cleanup({ platform: "linux", env: { STATE_installation_identity: owner, RUNNER_ENVIRONMENT: environment },
+      quiesce() { assert.fail("persistent runner must retain full restoration"); },
+      cleanup: async () => { throw new Error("restoration failed"); },
+    }), /restoration failed/);
+  }
 });
