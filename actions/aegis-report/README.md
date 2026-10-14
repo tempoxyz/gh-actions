@@ -7,7 +7,11 @@ result. At job end, warning verdicts in that log are also summarized in one
 GitHub Actions warning annotation and the step summary. Known availability
 fail-open reasons (such as no internet connection) are named; other policy
 warning reasons are counted without quoting potentially sensitive upstream text.
-Blocked downloads are also counted in the step summary. When either blocked
+Blocked downloads are also counted in the step summary. Package versions blocked
+as `recentlyPublished` are listed by name and version, with a link to the Aegis
+policies page. That page opens one dialog that adds version-specific Warn
+exemptions for all of them after a single Voight-Kampff approval, with one link
+per 50 packages. When either blocked
 downloads or warning verdicts occur, the summary links to the current workflow
 run attempt in Aegis, showing all events across its jobs.
 
