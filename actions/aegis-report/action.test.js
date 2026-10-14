@@ -31,7 +31,7 @@ test("post skips teardown only on explicitly GitHub-hosted runners", async () =>
     const lines = [];
     const original = console.log;
     console.log = (line) => lines.push(String(line));
-    return postMain({ upload: async () => {}, cleanup: failing, env, platform: "linux" })
+    return postMain({ upload: async () => {}, cleanup: failing, quiesce: async () => {}, env, platform: "linux" })
       .finally(() => {
         console.log = original;
       })

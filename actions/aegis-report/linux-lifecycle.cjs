@@ -52,6 +52,26 @@ function retireAsync({ expectedIdentity, launch = spawn } = {}) {
   });
 }
 
+function quiesceAsync({ expectedIdentity, launch = spawn } = {}) {
+  if (!/^[a-f0-9]{64}$/.test(expectedIdentity || "")) {
+    return Promise.reject(new Error("Aegis job-end cleanup requires an installation identity"));
+  }
+  return new Promise((resolve, reject) => {
+    // The client caps local IPC + Worker ACK at 250ms. Bound the whole command
+    // too, including sudo/startup; kill only this CLI, never the inspector.
+    // The inspector owns cancellation and asynchronous normal socket closure.
+    const child = launch("sudo", ["-n", "/usr/bin/aegis", "end-job", "--config", CONFIG,
+      "--expected-identity", expectedIdentity], {
+      // Ignore stdio and wait for exit: inherited output pipes must not keep
+      // credential cleanup waiting for a descendant after the CLI has exited.
+      stdio: "ignore", timeout: 500, killSignal: "SIGKILL",
+    });
+    const failed = () => reject(new Error("Aegis job-end acknowledgement unavailable; continuing credential cleanup"));
+    child.once("error", failed);
+    child.once("exit", (code) => { if (code === 0) resolve(); else failed(); });
+  });
+}
+
 if (require.main === module) {
   try {
     if (!process.argv[2]) throw new Error("Aegis cleanup requires an installation identity");
@@ -62,4 +82,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { identity, retire, retireAsync };
+module.exports = { identity, retire, retireAsync, quiesceAsync };

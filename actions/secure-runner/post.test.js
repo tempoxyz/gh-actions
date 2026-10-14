@@ -61,3 +61,37 @@ test("all concurrent failures are collected after every cleanup is attempted", a
     return true;
   });
 });
+
+test("a stuck job-end CLI is killed promptly, then tokens revoke while audit upload continues", async () => {
+  const { spawn } = require("node:child_process");
+  const { identity, quiesceAsync } = require("../aegis-report/linux-lifecycle.cjs");
+  const { cleanup } = require("../aegis-report/post.cjs");
+  const upload = Promise.withResolvers();
+  const revoked = Promise.withResolvers();
+  const owner = identity({ test_token_url: "http://localhost/current-job" });
+  const calls = [];
+  let finished = false;
+  let started;
+  const post = main({ platform: "linux", env: { RUNNER_ENVIRONMENT: "github-hosted",
+    STATE_aegis_action: "secure-runner", STATE_aegis_installation_identity: owner, STATE_socket_token: "fixture" },
+    hooks: {
+      aegis: async () => { calls.push("snapshot"); await upload.promise; },
+      retire: (options) => cleanup({ ...options, cleanup() { assert.fail("hosted runner must not wait for shutdown"); },
+        quiesce: (args) => quiesceAsync({ ...args, launch(_command, _args, options) {
+          calls.push("quiesce"); started = Date.now();
+          return spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], options);
+        } }),
+      }),
+      socket: async () => { calls.push("revoke"); revoked.resolve(); },
+      hardenRunner: async ({ revoke }) => { calls.push("flush"); await revoke(); },
+      revokeLease: async () => { calls.push("lease"); },
+    },
+  }).finally(() => { finished = true; });
+  try {
+    await revoked.promise;
+    assert.ok(Date.now() - started >= 500);
+    assert.ok(Date.now() - started < 1500, "stuck CLI delayed credential revocation");
+    assert.deepEqual(calls.slice(0, 4), ["snapshot", "quiesce", "revoke", "flush"]);
+    assert.equal(finished, false, "audit upload should still be running independently");
+  } finally { upload.resolve(); await post; }
+});

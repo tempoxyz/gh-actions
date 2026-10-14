@@ -22,7 +22,13 @@ upload and uninstall, before the earlier Socket STS handler revokes credentials.
 setup. Cleanup errors fail the job on self-hosted runners, where a leftover
 installation would affect the next job. Teardown is skipped only when
 `RUNNER_ENVIRONMENT` is exactly `github-hosted`, since GitHub discards those
-runners after the job; unset or unknown values retain cleanup. Other callers retain
+runners after the job. Hosted Linux runners instead request bounded job-end
+quiescing: local scans stop, pending scans cancel, and the existing Worker socket
+acknowledges cancellation within a 250 ms client budget. The command has a 500 ms
+process timeout including sudo/startup; socket closure runs in the inspector.
+Older clients/Workers or a missing acknowledgement warn and continue credential
+cleanup immediately. Unset or unknown runner environments retain full uninstall.
+Other callers retain
 report-only behavior.
 Post cleanup checks the token-provider identity before touching installed state.
 Incomplete recovery state is left intact for investigation. Concurrent jobs must

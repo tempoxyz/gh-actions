@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { aegisReportPath, uploadAegisReport } = require("./dist/artifact-upload.cjs");
 const { stepSummary, warning } = require("../harden-runner/annotations.cjs");
-const { retireAsync } = require("./linux-lifecycle.cjs");
+const { retireAsync, quiesceAsync } = require("./linux-lifecycle.cjs");
 const { scanRuntimeWarnings, runtimeWarningMessage } = require("./runtime-warnings.cjs");
 
 function workflowEventsUrl(env) {
@@ -53,12 +53,21 @@ async function report({
   }
 }
 
-async function cleanup({ env = process.env, platform = process.platform, cleanup: retire = retireAsync } = {}) {
+async function cleanup({ env = process.env, platform = process.platform, cleanup: retire = retireAsync,
+  quiesce = quiesceAsync } = {}) {
   // Unknown environments are potentially persistent: only explicitly hosted
   // runners may leave their installation for GitHub to discard with the VM.
-  if (platform === "linux" && env.STATE_installation_identity && env.RUNNER_ENVIRONMENT !== "github-hosted") {
-    await retire({ expectedIdentity: env.STATE_installation_identity });
+  if (platform !== "linux" || !env.STATE_installation_identity) return;
+  if (env.RUNNER_ENVIRONMENT === "github-hosted") {
+    try { await quiesce({ expectedIdentity: env.STATE_installation_identity }); }
+    catch {
+      // Older clients/Workers and unresponsive sockets must not postpone token
+      // revocation. No grace period and no wait for Aegis process shutdown.
+      warning("Job-end acknowledgement unavailable; continuing credential cleanup.", "Aegis job-end cleanup", env);
+    }
+    return;
   }
+  await retire({ expectedIdentity: env.STATE_installation_identity });
 }
 
 async function main(options = {}) {

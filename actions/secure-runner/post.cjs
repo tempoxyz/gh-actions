@@ -3,8 +3,8 @@ const stepSecurityPost = require("../step-security-sts/post.cjs");
 const socketPost = require("../socket-sts/post.cjs");
 const aegisPost = require("../aegis-report/post.cjs");
 
-// Snapshot/upload the audit log alongside Aegis retirement (skipped on hosted
-// runners). After retirement, Socket revocation and Harden Runner's telemetry
+// Snapshot/upload the audit log alongside bounded Aegis quiescing on hosted
+// runners (full retirement elsewhere). Then Socket revocation and telemetry
 // flush overlap each other and the upload. The StepSecurity lease stays alive
 // until its flush finishes. Drain every branch, including after failures.
 async function main({ env = process.env, platform = process.platform, hooks = {} } = {}) {
