@@ -43,6 +43,14 @@ class CiTests(unittest.TestCase):
         new = self.workflow(id=2)
         self.assertEqual(update.workflow_state([new, old], SHA, [new["path"]]), (True, []))
 
+    def test_pull_request_target_runs_gate_and_skipped_runs_pass(self):
+        required = [".github/workflows/ci.yml", ".github/workflows/e2e.yml"]
+        runs = [self.workflow(conclusion="skipped"),
+                self.workflow(id=2, path=required[1], event="pull_request_target", conclusion="failure")]
+        self.assertEqual(update.workflow_state(runs, SHA, required), (False, [runs[1]]))
+        runs[1]["conclusion"] = "success"
+        self.assertEqual(update.workflow_state(runs, SHA, required), (True, []))
+
     def test_no_configured_gate_is_rejected(self):
         with self.assertRaises(ValueError):
             update.workflow_state([], SHA, [])
@@ -124,7 +132,7 @@ class PublicationTests(unittest.TestCase):
         self.policy = Policy(snapshot(baseline), ["Cargo.toml", "Cargo.lock", "src/**/*.rs"], {URL: SHA})
         self.policy.freeze(self.work)
         (self.work / "src/lib.rs").write_text("pub fn migrated() {}\n")
-        self.github = Mock(repository="example/service")
+        self.github = Mock(repository="example/service", base="main")
         self.github.api.return_value = {"object": {"sha": self.base}}
         self.config = {"sts-policy": "dep-update", "repair-budget-minutes": 10,
                        "local-checks": "cargo check", "required-workflows": ".github/workflows/ci.yml"}
@@ -162,12 +170,21 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(self.tokens, ["mint", "revoke"])
         self.github.command.assert_not_called()
 
-    def test_advanced_main_stops_before_token_mint(self):
+    def test_advanced_main_does_not_block_publication(self):
+        # The commit's parent is the validated base; GitHub tests the PR against current main.
         self.github.api.return_value = {"object": {"sha": "f" * 40}}
-        with self.assertRaisesRegex(RuntimeError, "main advanced"):
-            self.coordinator.publish(self.repository, self.work, self.policy, self.plan, self.existing,
-                                     self.base, self.base, self.root)
-        self.assertEqual(self.tokens, [])
+        _, head = self.coordinator.publish(self.repository, self.work, self.policy, self.plan, self.existing,
+                                           self.base, self.base, self.root)
+        self.assertEqual(git(self.remote, "rev-parse", "bot/sdk").stdout.strip(), head)
+        self.assertEqual(git(self.remote, "rev-parse", "bot/sdk^").stdout.strip(), self.base)
+
+    def test_pr_body_lists_exact_requirement_changes_for_review(self):
+        (self.work / "Cargo.toml").write_text((self.work / "Cargo.toml").read_text() + 'arrayvec = "=0.7.8"\n')
+        self.coordinator.publish(self.repository, self.work, self.policy, self.plan, self.existing,
+                                 self.base, self.base, self.root)
+        body = (self.root / "pr-body.md").read_text()
+        self.assertIn("## Review notes", body)
+        self.assertIn("`Cargo.toml: dependencies.arrayvec` `none` → `=0.7.8`", body)
 
     def test_unsafe_source_stops_before_token_mint(self):
         (self.work / ".github/workflows/ci.yml").write_text("forbidden\n")
@@ -209,6 +226,8 @@ class PublicationTests(unittest.TestCase):
             def __init__(self, root, *args, **kwargs):
                 self.root, self.agents = root, 0
             def resolve_lockfile(self):
+                return 0, ""
+            def fetch_dependencies(self):
                 return 0, ""
             def execute(self, args, agent=False):
                 owner.assertFalse(owner.tokens and owner.tokens[-1] == "mint")
@@ -257,15 +276,18 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual((candidate / "README.md").read_text(), "ordinary main change\n")
         self.assertIn("migrated", (candidate / "src/lib.rs").read_text())
 
-    def test_resume_still_rejects_forbidden_pr_changes_before_rebase(self):
-        (self.repository / ".github/workflows/ci.yml").write_text("forbidden PR change\n")
+    def test_resume_keeps_maintainer_fix_outside_scope_but_repairs_cannot_edit_it(self):
+        (self.repository / "deny.toml").write_text("maintainer license exception\n")
         git(self.repository, "add", ".")
         git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-            "commit", "-m", "forbidden")
-        head = git(self.repository, "rev-parse", "HEAD").stdout.strip()
-        with self.assertRaisesRegex(ValueError, "outside repair scope"):
-            self.coordinator.rebase_existing(self.repository, self.base, self.policy)
-        self.assertEqual(git(self.repository, "rev-parse", "HEAD").stdout.strip(), head)
+            "commit", "-m", "maintainer fix")
+        self.coordinator.rebase_existing(self.repository, self.base, self.policy)
+        work = self.root / "resumed"
+        export_tree(self.repository, "HEAD", work)
+        self.policy.validate(work)
+        (work / "deny.toml").write_text("agent edit\n")
+        with self.assertRaisesRegex(ValueError, "outside repair scope: deny.toml"):
+            self.policy.validate(work)
 
     def add_archive_ignore(self):
         (self.repository / ".gitattributes").write_text(".github export-ignore\n")
@@ -278,15 +300,6 @@ class PublicationTests(unittest.TestCase):
         (self.work / ".gitattributes").write_text(".github export-ignore\n")
         self.policy.baseline = snapshot(baseline)
         self.github.api.return_value = {"object": {"sha": self.base}}
-
-    def test_archive_ignore_cannot_hide_forbidden_resume_changes(self):
-        self.add_archive_ignore()
-        (self.repository / ".github/workflows/ci.yml").write_text("forbidden\n")
-        git(self.repository, "add", ".")
-        git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-            "commit", "-m", "hidden workflow change")
-        with self.assertRaisesRegex(ValueError, "outside repair scope"):
-            self.coordinator.rebase_existing(self.repository, self.base, self.policy)
 
     def test_archive_ignore_cannot_hide_forbidden_final_commit_tree(self):
         self.add_archive_ignore()
@@ -325,9 +338,10 @@ class PublicationTests(unittest.TestCase):
 class PlanTests(unittest.TestCase):
     def test_pr_event_is_rejected_before_coordinator_or_credentials(self):
         with patch.object(update.sys, "argv", ["update.py", "--source", "/source", "--shared", "/shared"]), \
-             patch.dict(os.environ, {"GITHUB_REF": "refs/pull/1/merge", "GITHUB_EVENT_NAME": "pull_request"}), \
+             patch.dict(os.environ, {"GITHUB_REF": "refs/pull/1/merge", "GITHUB_EVENT_NAME": "pull_request",
+                                     "DEPENDENCY_UPDATE_CONFIG": json.dumps({"base-branch": "main"})}), \
              patch.object(update, "Coordinator") as coordinator:
-            with self.assertRaisesRegex(ValueError, "main schedule/manual"):
+            with self.assertRaisesRegex(ValueError, "base-branch schedule/manual"):
                 update.main()
             coordinator.assert_not_called()
 

@@ -4,7 +4,7 @@ import argparse
 import contextlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import signal
@@ -12,17 +12,28 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "amp-repair"))
-from repair import (Policy, SHA, Worker, export_tree, git, gitlinks, lines,
+from repair import (Policy, SHA, Worker, export_tree, frozen_links, git, lines,
                     repair, repair_local, run, safe_path, set_output, snapshot)
+
+JOB_MINUTES = 180  # dependency-update.yml timeout-minutes
+BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,199}")
+PULL_REQUEST_EVENTS = ("pull_request", "pull_request_target")
+PASSING = ("success", "skipped", "neutral")  # Matches GitHub required-check semantics.
+
+
+def valid_branch(branch):
+    return bool(BRANCH.fullmatch(branch) and ".." not in branch and not branch.endswith((".", "/")) and
+                not any(part in ("", ".") or part.endswith(".lock") for part in branch.split("/")))
 
 
 class GitHub:
-    def __init__(self, repository):
+    def __init__(self, repository, base="main"):
         if not re.fullmatch(r"[\w.-]+/[\w.-]+", repository):
             raise ValueError("invalid caller repository")
-        self.repository = repository
+        self.repository, self.base = repository, base
 
     def command(self, *args, token=None, check=True):
         env = dict(os.environ)
@@ -36,11 +47,11 @@ class GitHub:
     def pulls(self, branch):
         # Explicit repo selection; never infer it from a worker checkout.
         return json.loads(self.command("pr", "list", "--repo", self.repository,
-                                       "--head", branch, "--base", "main", "--state", "all",
+                                       "--head", branch, "--base", self.base, "--state", "all",
                                        "--limit", "100", "--json", "number,state,url,headRefOid").stdout)
 
     def runs(self, head):
-        return self.api(f"repos/{self.repository}/actions/runs?event=pull_request&head_sha={head}&per_page=100")["workflow_runs"]
+        return self.api(f"repos/{self.repository}/actions/runs?head_sha={head}&per_page=100")["workflow_runs"]
 
     def failed_logs(self, failures):
         logs = []
@@ -103,7 +114,7 @@ class Sts:
 def selected_runs(runs, head):
     latest = {}
     for workflow in runs:
-        if workflow.get("head_sha") != head or workflow.get("event") != "pull_request":
+        if workflow.get("head_sha") != head or workflow.get("event") not in PULL_REQUEST_EVENTS:
             continue
         path = workflow.get("path", "").split("@", 1)[0]
         key = (workflow["id"], workflow.get("run_attempt", 1))
@@ -119,22 +130,20 @@ def workflow_state(runs, head, required):
     latest = selected_runs(runs, head)
     selected = [latest[path] for path in required if path in latest]
     failed = [workflow for workflow in selected if workflow.get("status") == "completed" and
-              workflow.get("conclusion") not in ("success",)]
+              workflow.get("conclusion") not in PASSING]
     green = len(selected) == len(required) and all(workflow.get("status") == "completed" and
-                                                 workflow.get("conclusion") == "success"
+                                                 workflow.get("conclusion") in PASSING
                                                  for workflow in selected)
     return green, failed
 
 
-def validate_plan(plan):
+def validate_plan(plan, base="main"):
     if plan.get("schema_version") != 1:
         raise ValueError("adapter must return update-plan schema version 1")
     if plan.get("skip") is True:
         return
     branch = plan.get("branch", "")
-    if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,199}", branch) or
-            any(part in ("", ".", "..") or part.endswith(".lock") for part in branch.split("/")) or
-            ".." in branch or branch.endswith((".", "/")) or branch == "main"):
+    if not valid_branch(branch) or branch == base:
         raise ValueError("invalid automation branch")
     for key in ("title", "update_id"):
         if not isinstance(plan.get(key), str) or not plan[key] or any(c in plan[key] for c in "\r\n\x00"):
@@ -145,11 +154,53 @@ def validate_plan(plan):
         raise ValueError("plan must freeze selected dependency revisions")
 
 
+def exact_requirements(root):
+    """Exact (`=x.y.z`) dependency requirements, which usually encode a deliberate pin."""
+    found = {}
+
+    def walk(path, table, prefix):
+        for key, value in table.items():
+            if not isinstance(value, dict):
+                continue
+            if key not in ("dependencies", "dev-dependencies", "build-dependencies"):
+                walk(path, value, prefix + (key,))
+                continue
+            for name, spec in value.items():
+                version = spec.get("version") if isinstance(spec, dict) else spec
+                if isinstance(version, str) and version.strip().startswith("="):
+                    found[path + ": " + ".".join(prefix + (key, name))] = version.strip()
+
+    for path in sorted(snapshot(root)):
+        if PurePosixPath(path).name == "Cargo.toml":
+            walk(path, tomllib.loads((root / path).read_text()), ())
+    return found
+
+
+def review_notes(before, after):
+    """Allowed changes that still deserve explicit reviewer attention."""
+    notes = []
+    old, new = exact_requirements(before), exact_requirements(after)
+    for key in sorted(old.keys() | new.keys()):
+        if old.get(key) != new.get(key):
+            notes.append(f"- Exact requirement changed: `{key}` `{old.get(key, 'none')}` → `{new.get(key, 'removed')}`")
+    previous, current = snapshot(before), snapshot(after)
+    for path in sorted(previous.keys() | current.keys()):
+        if path not in current:
+            notes.append(f"- File deleted: `{path}`")
+        elif PurePosixPath(path).name == "build.rs" and previous.get(path) != current[path]:
+            notes.append(f"- Build script changed: `{path}`")
+    return notes
+
+
 class Coordinator:
     def __init__(self, source, shared, config, github):
         self.source, self.shared, self.config, self.github = source, shared, config, github
         self.sts = Sts(shared / "actions/github-sts", config["sts-policy"], github.repository)
-        self.deadline = time.monotonic() + config["repair-budget-minutes"] * 60
+        self.base = github.base
+        # Worker time is bounded by the repair budget; CI waiting by the job timeout.
+        started = time.monotonic()
+        self.deadline = started + config["repair-budget-minutes"] * 60
+        self.ci_deadline = started + (JOB_MINUTES - 10) * 60
         self.commands = lines(config["local-checks"])
         if not self.commands:
             raise ValueError("local-checks must not be empty")
@@ -158,15 +209,14 @@ class Coordinator:
             raise ValueError("required-workflows must not be empty")
 
     def rebase_existing(self, repository, base, policy):
-        merge_base = git(repository, "merge-base", "HEAD", base).stdout.strip()
-        with tempfile.TemporaryDirectory(prefix="dependency-existing-") as directory:
-            original, previous = Path(directory) / "original", Path(directory) / "previous"
-            export_tree(repository, merge_base, original, gitlink_base=merge_base)
-            export_tree(repository, "HEAD", previous, gitlink_base=merge_base)
-            branch_policy = Policy(snapshot(original), policy.patterns, policy.pins)
-            branch_policy.gitlinks = set(gitlinks(repository, merge_base))
-            branch_policy.scope(previous)
         git(repository, "rebase", base)  # Conflicts fail; never select a side automatically.
+        # Keep what the branch already contains, including maintainer fixes outside the
+        # repair scope (for example deny.toml). Repairs may not modify those paths further.
+        with tempfile.TemporaryDirectory(prefix="dependency-existing-") as directory:
+            export_tree(repository, "HEAD", directory, frozen_base=base)
+            existing = snapshot(Path(directory))
+        policy.inherited = {path: existing.get(path) for path in policy.baseline.keys() | existing.keys()
+                            if policy.baseline.get(path) != existing.get(path)}
 
     def adapter(self, script, operation, plan_file=None, cwd=None):
         # Python isolated mode excludes the candidate working directory/PYTHONPATH.
@@ -186,6 +236,8 @@ class Coordinator:
         return {"GIT_ASKPASS": str(askpass), "DEPENDENCY_GIT_TOKEN": token}
 
     def publish(self, repository, work, policy, plan, existing, expected, base, directory):
+        # A newer base is fine: the commit's parent is the base it was validated against,
+        # and GitHub tests the pull request against the current base.
         if time.monotonic() >= self.deadline:
             raise TimeoutError("repair budget exhausted; refusing publication")
         policy.validate(work)
@@ -194,7 +246,7 @@ class Coordinator:
         # Rebuild the index from trusted Git state. Worker .git is never imported.
         git(repository, "reset", "--hard", "HEAD")
         with tempfile.TemporaryDirectory(prefix="dependency-before-") as before:
-            export_tree(repository, "HEAD", before, gitlink_base=base)
+            export_tree(repository, "HEAD", before, frozen_base=base)
             previous, current = snapshot(Path(before)), snapshot(work)
             for path in previous.keys() | current.keys():
                 if previous.get(path) == current.get(path):
@@ -212,13 +264,11 @@ class Coordinator:
                 "commit", "-m", plan["title"])
         head = git(repository, "rev-parse", "HEAD").stdout.strip()
         with tempfile.TemporaryDirectory(prefix="dependency-candidate-") as candidate:
-            export_tree(repository, head, candidate, gitlink_base=base)
+            export_tree(repository, head, candidate, frozen_base=base)
             policy.validate(Path(candidate))
             if snapshot(Path(candidate)) != snapshot(work):
                 raise ValueError("commit tree differs from verified candidate")
-        current_base = self.github.api(f"repos/{self.github.repository}/git/ref/heads/main")["object"]["sha"]
-        if current_base != base:
-            raise RuntimeError("main advanced; retry to rebase and validate")
+        notes = review_notes(directory / "baseline", work)
         with self.sts.publishing_token() as token:
             env = self.git_env(directory, token)
             git(repository, "push", "--force-with-lease=refs/heads/" + plan["branch"] + ":" + expected,
@@ -226,13 +276,14 @@ class Coordinator:
             body = directory / "pr-body.md"
             body.write_text(plan.get("body", "") + "\n\nUpdate identity: " + plan["update_id"] +
                             "\nFrozen dependency revisions:\n" +
-                            "\n".join(f"- {url}: `{sha}`" for url, sha in plan["pins"].items()) + "\n")
+                            "\n".join(f"- {url}: `{sha}`" for url, sha in plan["pins"].items()) + "\n" +
+                            ("\n## Review notes\n\n" + "\n".join(notes) + "\n" if notes else ""))
             if existing:
                 self.github.command("pr", "edit", str(existing["number"]), "--repo", self.github.repository,
                                     "--title", plan["title"], "--body-file", str(body), token=token)
             else:
                 self.github.command("pr", "create", "--repo", self.github.repository,
-                                    "--head", plan["branch"], "--base", "main", "--title", plan["title"],
+                                    "--head", plan["branch"], "--base", self.base, "--title", plan["title"],
                                     "--body-file", str(body), token=token)
                 existing = json.loads(self.github.command("pr", "view", plan["branch"], "--repo",
                                                           self.github.repository, "--json", "number,url,headRefOid").stdout)
@@ -242,27 +293,27 @@ class Coordinator:
         return existing, head
 
     def poll(self, number, head):
-        while time.monotonic() < self.deadline:
+        while time.monotonic() < self.ci_deadline:
             self.github.require_head(number, head)
             runs = self.github.runs(head)
             green, failed = workflow_state(runs, head, self.required)
             if green or failed:
                 return green, failed
-            time.sleep(min(30, max(0, self.deadline - time.monotonic())))
+            time.sleep(min(30, max(0, self.ci_deadline - time.monotonic())))
         raise TimeoutError("CI deadline exceeded; update PR retained")
 
     def execute(self):
         adapter_path = safe_path(self.config["adapter-script"])
         tracked = git(self.source, "ls-files", "--error-unmatch", "--", adapter_path)
         if not tracked.stdout.strip() or (self.source / adapter_path).is_symlink():
-            raise ValueError("adapter must be a tracked regular file on trusted main")
+            raise ValueError("adapter must be a tracked regular file on the trusted base branch")
         # Keep the standalone adapter outside both the candidate repo and worker mounts.
         with tempfile.TemporaryDirectory(prefix="dependency-update-") as directory:
             directory = Path(directory)
             script = directory / "adapter.py"
             script.write_bytes((self.source / adapter_path).read_bytes())
             plan = json.loads(self.adapter(script, "resolve"))
-            validate_plan(plan)
+            validate_plan(plan, self.base)
             if plan.get("skip"):
                 set_output("status", "skipped")
                 return
@@ -275,16 +326,16 @@ class Coordinator:
             git(repository, "config", "user.name", "tempo-github-sts[bot]")
             git(repository, "config", "user.email", "312736176+tempo-github-sts[bot]@users.noreply.github.com")
             read_env = self.git_env(directory, os.environ["GH_TOKEN"])
-            git(repository, "fetch", "origin", "main", env=read_env)
+            git(repository, "fetch", "origin", self.base, env=read_env)
             base = git(repository, "rev-parse", "FETCH_HEAD").stdout.strip()
             if base != git(self.source, "rev-parse", "HEAD").stdout.strip():
-                raise RuntimeError("main advanced after trusted checkout; retry required")
+                raise RuntimeError("base branch advanced after trusted checkout; retry required")
             git(repository, "checkout", "--detach", base)
             baseline = directory / "baseline"
             baseline.mkdir()
-            export_tree(repository, base, baseline, gitlink_base=base)
+            export_tree(repository, base, baseline, frozen_base=base)
             policy.baseline = snapshot(baseline)
-            policy.gitlinks = set(gitlinks(repository, base))
+            policy.gitlinks = set(frozen_links(repository, base))
             pulls = self.github.pulls(plan["branch"])
             existing = next((pull for pull in pulls if pull["state"] == "OPEN"), None)
             if pulls and not existing and plan["closed_pr_policy"] == "skip":
@@ -302,12 +353,11 @@ class Coordinator:
                 if git(repository, "rev-parse", "FETCH_HEAD").stdout.strip() != expected:
                     raise RuntimeError("update branch advanced during fetch; retry required")
                 git(repository, "checkout", "--detach", "FETCH_HEAD")
-                # Check only PR changes before rebasing, then validate against current main.
                 self.rebase_existing(repository, base, policy)
             work, cache = directory / "source", directory / "cache"
             work.mkdir()
             cache.mkdir()
-            export_tree(repository, "HEAD", work, gitlink_base=base)
+            export_tree(repository, "HEAD", work, frozen_base=base)
             self.adapter(script, "apply", plan_file, cwd=work)
             policy.freeze(work)
             worker = Worker(work, self.config["worker-image"], self.deadline, cache,
@@ -316,7 +366,14 @@ class Coordinator:
                                            self.config["repair-instructions"], self.config["max-local-repairs"],
                                            resolve_lockfile=True)
             set_output("local-repair-attempts", attempts)
-            policy.validate(work)
+            policy.validate(work, lockfile=False)
+            try:
+                policy.validate(work)
+            except ValueError as invalid:
+                if error:
+                    raise RuntimeError("local repairs exhausted before Cargo.lock resolved the selected "
+                                       "revisions; nothing published\n" + error[-4000:]) from invalid
+                raise
             existing, head = self.publish(repository, work, policy, plan, existing, expected, base, directory)
             if error:
                 raise RuntimeError("local repair attempts exhausted; best-effort PR retained")
@@ -324,14 +381,15 @@ class Coordinator:
                 green, failed = self.poll(existing["number"], head)
                 if green:
                     policy.validate(work)
-                    if self.github.api(f"repos/{self.github.repository}/git/ref/heads/main")["object"]["sha"] != base:
-                        raise RuntimeError("main advanced during CI; retry to rebase and validate")
                     set_output("ci-repair-attempts", attempt)
                     set_output("status", "passed")
                     return
                 if attempt == self.config["max-ci-repairs"]:
                     raise RuntimeError("CI repair attempts exhausted; PR retained")
+                before = snapshot(work)
                 repair(worker, self.github.failed_logs(failed), self.config["repair-instructions"])
+                if snapshot(work) == before:
+                    raise RuntimeError("agent made no changes while CI failed; PR retained")
                 policy.validate(work, lockfile=False)
                 error, _ = repair_local(worker, policy, self.commands,
                                         self.config["repair-instructions"], 0, resolve_lockfile=True)
@@ -350,19 +408,22 @@ def main():
     parser.add_argument("--shared", required=True)
     args = parser.parse_args()
     # Reject PR/fork execution before any adapter, worker or publishing credential.
-    if os.environ.get("GITHUB_REF") != "refs/heads/main" or os.environ.get("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch"):
-        raise ValueError("dependency updates must run from the caller main schedule/manual workflow")
     config = json.loads(os.environ["DEPENDENCY_UPDATE_CONFIG"])
+    base = config.get("base-branch", "main")
+    if not valid_branch(base):
+        raise ValueError("invalid base branch")
+    if os.environ.get("GITHUB_REF") != "refs/heads/" + base or os.environ.get("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch"):
+        raise ValueError("dependency updates must run from the caller base-branch schedule/manual workflow")
     if not config.get("environment", "").strip():
         raise ValueError("a nonempty credential environment is required")
     for name in ("max-local-repairs", "max-ci-repairs", "repair-budget-minutes"):
         value = config[name]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError("invalid integer repair limit")
-    if not 1 <= config["repair-budget-minutes"] <= 180:
-        raise ValueError("repair budget must be between 1 and 180 minutes")
+    if not 1 <= config["repair-budget-minutes"] <= JOB_MINUTES - 30:
+        raise ValueError(f"repair budget must be between 1 and {JOB_MINUTES - 30} minutes")
     coordinator = Coordinator(Path(args.source).resolve(), Path(args.shared).resolve(), config,
-                              GitHub(os.environ["GITHUB_REPOSITORY"]))
+                              GitHub(os.environ["GITHUB_REPOSITORY"], base))
     try:
         coordinator.execute()
     except BaseException:

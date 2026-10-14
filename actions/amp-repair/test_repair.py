@@ -127,6 +127,35 @@ sdk-build = {{ git = "{URL}", rev = "{SHA}" }}
         with self.assertRaisesRegex(ValueError, "frozen gitlinks"):
             self.policy.validate(self.work)
 
+    def test_new_build_scripts_and_guarded_manifest_settings_are_rejected(self):
+        (self.work / "src/build.rs").write_text("fn main() {}\n")
+        with self.assertRaisesRegex(ValueError, "new build scripts"):
+            self.policy.validate(self.work)
+        (self.work / "src/build.rs").unlink()
+        for addition in ('\n[lints.rust]\nwarnings = "allow"\n', '\n[profile.dev]\nopt-level = 3\n'):
+            (self.work / "Cargo.toml").write_text(manifest() + addition)
+            with self.assertRaisesRegex(ValueError, "override"):
+                self.policy.validate(self.work)
+        (self.work / "Cargo.toml").write_text(manifest().replace('version = "0.1.0"\n', 'version = "0.1.0"\nbuild = "src/lib.rs"\n'))
+        with self.assertRaisesRegex(ValueError, "override"):
+            self.policy.validate(self.work)
+
+    def test_path_dependencies_cannot_escape_the_export(self):
+        for path in ("../outside", "/etc", "src/../../outside"):
+            (self.work / "Cargo.toml").write_text(manifest() + f'local = {{ path = "{path}" }}\n')
+            with self.assertRaisesRegex(ValueError, "escapes"):
+                self.policy.validate(self.work)
+        (self.work / "Cargo.toml").write_text(manifest() + 'local = { path = "src/../vendor/local" }\n')
+        self.policy.validate(self.work)
+
+    def test_inherited_branch_changes_are_kept_but_not_editable(self):
+        (self.work / "deny.toml").write_text("maintainer license exception\n")
+        self.policy.inherited = {"deny.toml": repair.snapshot(self.work)["deny.toml"]}
+        self.policy.validate(self.work)
+        (self.work / "deny.toml").write_text("agent edit\n")
+        with self.assertRaisesRegex(ValueError, "outside repair scope: deny.toml"):
+            self.policy.validate(self.work)
+
     def test_path_globs_are_anchored_and_do_not_cross_directories(self):
         self.assertTrue(repair.allowed("src/lib.rs", ["src/**/*.rs"]))
         self.assertTrue(repair.allowed("src/deep/mod.rs", ["src/**/*.rs"]))
@@ -169,16 +198,27 @@ class ExportTests(unittest.TestCase):
                 return repair.git(repository, "rev-parse", "HEAD").stdout.strip()
             target = commit()
             repair.git(repository, "update-index", "--add", "--cacheinfo", f"160000,{target},vendor/native")
+            (repository / "CLAUDE.md").symlink_to("README.md")
+            repair.git(repository, "add", "CLAUDE.md")
             baseline = commit()
             with self.assertRaisesRegex(ValueError, "trusted baseline"):
                 repair.export_tree(repository, baseline, root / "unsafe")
-            repair.export_tree(repository, baseline, root / "source", gitlink_base=baseline)
+            repair.export_tree(repository, baseline, root / "source", frozen_base=baseline)
             self.assertEqual((root / "source/README.md").read_text(), "trusted")
-            self.assertEqual(repair.gitlinks(repository, baseline), {"vendor/native": target})
+            self.assertFalse((root / "source/CLAUDE.md").exists())
+            self.assertFalse((root / "source/vendor/native").exists())
+            self.assertEqual(set(repair.frozen_links(repository, baseline)), {"vendor/native", "CLAUDE.md"})
             repair.git(repository, "update-index", "--cacheinfo", f"160000,{baseline},vendor/native")
             changed = commit()
-            with self.assertRaisesRegex(ValueError, "revisions changed"):
-                repair.export_tree(repository, changed, root / "changed", gitlink_base=baseline)
+            with self.assertRaisesRegex(ValueError, "frozen gitlinks or symlinks changed"):
+                repair.export_tree(repository, changed, root / "changed", frozen_base=baseline)
+            repair.git(repository, "reset", "-q", "--hard", baseline)
+            (repository / "CLAUDE.md").unlink()
+            (repository / "CLAUDE.md").symlink_to("/etc/passwd")
+            repair.git(repository, "add", "CLAUDE.md")
+            retargeted = commit()
+            with self.assertRaisesRegex(ValueError, "frozen gitlinks or symlinks changed"):
+                repair.export_tree(repository, retargeted, root / "retargeted", frozen_base=baseline)
 
 
 class WorkerTests(unittest.TestCase):
@@ -190,6 +230,40 @@ class WorkerTests(unittest.TestCase):
         self.root.mkdir()
         self.cache.mkdir()
         self.worker = repair.Worker(self.root, IMAGE, time.monotonic() + 60, self.cache)
+
+    def test_checks_are_offline_and_agent_tmp_allows_native_modules(self):
+        check = self.worker.arguments("check", ["cargo", "check"])
+        self.assertEqual(check[check.index("--network") + 1], "none")
+        self.assertIn("CARGO_NET_OFFLINE=true", check)
+        self.assertIn(f"type=bind,src={self.worker.seed},dst=/cache/cargo,readonly", check)
+        agent = self.worker.arguments("agent", ["amp"], agent=True)
+        self.assertNotIn("--network", agent)
+        self.assertFalse(any(str(self.worker.seed) in arg for arg in agent))
+        # Docker adds noexec to /tmp unless exec is explicit; Amp dlopens modules from /tmp.
+        self.assertIn("/tmp:rw,exec,nosuid,nodev,size=1g", agent)
+
+    def test_runner_fetch_excludes_credentials_and_requires_offline_worker_access(self):
+        calls = []
+        def host(args, **kwargs):
+            calls.append(kwargs["env"])
+            return subprocess.CompletedProcess(args, 0, "", "")
+        secrets = {name: "test-secret" for name in ("GH_TOKEN", "GITHUB_TOKEN", "AMP_API_KEY",
+                                                    "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "CARGO_REGISTRY_TOKEN")}
+        with patch.dict(os.environ, secrets), patch.object(repair.shutil, "which", return_value="/usr/bin/cargo"), \
+             patch.object(repair, "run", side_effect=host), \
+             patch.object(repair.Worker, "execute", autospec=True, return_value=(0, "")) as worker:
+            self.assertEqual(self.worker.fetch_dependencies(), (0, ""))
+            self.assertTrue(set(secrets).isdisjoint(calls[0]))
+            self.assertEqual(calls[0]["CARGO_HOME"], str(self.worker.seed))
+            self.assertEqual(worker.call_args.args[1], ["cargo", "fetch", "--locked"])
+            worker.return_value = (101, "missing offline source")
+            with self.assertRaisesRegex(RuntimeError, "offline"):
+                self.worker.fetch_dependencies()
+        blocked = subprocess.CompletedProcess([], 101, "", "blocked by package firewall")
+        with patch.object(repair.shutil, "which", return_value="/usr/bin/cargo"), \
+             patch.object(repair, "run", return_value=blocked), patch.object(repair.Worker, "execute") as worker:
+            self.assertEqual(self.worker.fetch_dependencies(), (101, "blocked by package firewall"))
+            worker.assert_not_called()
 
     def test_worker_has_no_host_namespaces_socket_or_trusted_mounts(self):
         args = self.worker.arguments("test-worker", ["cargo", "check"])
@@ -246,7 +320,9 @@ class WorkerTests(unittest.TestCase):
                     self.assertEqual(cache, self.cache)
                 else:
                     self.assertNotEqual(cache, self.cache)
-                    self.assertEqual(list(cache.iterdir()), [])
+                    # Only the empty mount point for the read-only runner-fetched Cargo home.
+                    self.assertEqual([path.name for path in cache.iterdir()], ["cargo"])
+                    self.assertEqual(list((cache / "cargo").iterdir()), [])
                 (cache / "cargo/bin").mkdir(parents=True, exist_ok=True)
                 for tool in ("cargo-clippy", "cargo-fmt", "cargo-nextest"):
                     (cache / "cargo/bin" / tool).write_text("#!/bin/sh\nexit 0\n")
@@ -327,6 +403,7 @@ class LoopTests(unittest.TestCase):
         from unittest.mock import Mock
         (self.root / "lib.rs").write_text("pub fn valid() {}\n")
         worker = Mock(root=self.root)
+        worker.fetch_dependencies.return_value = (0, "")
         def mutate(args):
             (self.root / "lib.rs").write_text("invalid Rust")
             return 0, "test passed"
@@ -347,6 +424,7 @@ class LoopTests(unittest.TestCase):
     def test_failed_agent_is_followed_by_independent_checks(self):
         from unittest.mock import Mock
         worker, policy = Mock(root=self.root), Mock()
+        worker.fetch_dependencies.return_value = (0, "")
         worker.execute.side_effect = [(1, "compile error"), (1, "agent error"), (0, "success")]
         error, attempts = repair.repair_local(worker, policy, ["cargo check"], "migrate", 3)
         self.assertIsNone(error)
@@ -357,6 +435,7 @@ class LoopTests(unittest.TestCase):
     def test_exhaustion_is_bounded(self):
         from unittest.mock import Mock
         worker, policy = Mock(root=self.root), Mock()
+        worker.fetch_dependencies.return_value = (0, "")
         worker.execute.return_value = (1, "failure")
         error, attempts = repair.repair_local(worker, policy, ["cargo check"], "migrate", 2)
         self.assertIsNotNone(error)

@@ -82,13 +82,14 @@ def snapshot(root):
     return result
 
 
-def gitlinks(repository, ref):
+def frozen_links(repository, ref):
+    """Tracked gitlinks and symlinks: never exported, initialized or followed."""
     entries = git(repository, "ls-tree", "-r", "-z", "--full-tree", ref).stdout.split("\0")
-    return {entry.split("\t", 1)[1]: entry.split("\t", 1)[0].split()[2]
-            for entry in entries if entry.startswith("160000 ")}
+    return {entry.split("\t", 1)[1]: tuple(entry.split("\t", 1)[0].split()[::2])
+            for entry in entries if entry.startswith(("160000 ", "120000 "))}
 
 
-def export_tree(repository, ref, destination, *, gitlink_base=None):
+def export_tree(repository, ref, destination, *, frozen_base=None):
     """Export tracked content without .git, Git credentials, or runner files."""
     entries = []
     for entry in git(repository, "ls-tree", "-r", "-z", "--full-tree", ref).stdout.split("\0"):
@@ -97,16 +98,16 @@ def export_tree(repository, ref, destination, *, gitlink_base=None):
         metadata, name = entry.split("\t", 1)
         mode, kind, oid = metadata.split()
         safe_path(name)
-        if mode == "160000":
+        if mode in ("160000", "120000"):
             continue
         if mode not in ("100644", "100755") or kind != "blob":
-            raise ValueError("symlinks and special files are unsupported")
+            raise ValueError("special Git tree entries are unsupported")
         entries.append((name, mode, oid))
-    links = gitlinks(repository, ref)
-    if links and gitlink_base is None:
-        raise ValueError("gitlinks require a trusted baseline")
-    if gitlink_base is not None and links != gitlinks(repository, gitlink_base):
-        raise ValueError("gitlink revisions changed")
+    links = frozen_links(repository, ref)
+    if links and frozen_base is None:
+        raise ValueError("gitlinks and symlinks require a trusted baseline")
+    if frozen_base is not None and links != frozen_links(repository, frozen_base):
+        raise ValueError("frozen gitlinks or symlinks changed")
     # Read every committed blob directly: archive attributes and filters must not
     # hide forbidden changes or transform the content being checked/published.
     destination = Path(destination)
@@ -148,6 +149,15 @@ def canonical_url(url):
     return url.removesuffix(".git").rstrip("/")
 
 
+def guarded(document):
+    """Manifest settings a dependency migration must not change."""
+    package, workspace = document.get("package", {}), document.get("workspace", {})
+    return {"patch": document.get("patch", {}), "replace": document.get("replace", {}),
+            "profile": document.get("profile", {}), "lints": document.get("lints", {}),
+            "package.build": package.get("build"), "workspace.lints": workspace.get("lints", {}),
+            "workspace.members": workspace.get("members"), "workspace.exclude": workspace.get("exclude")}
+
+
 class Policy:
     """Freeze dependency identities after the trusted adapter applies its plan."""
 
@@ -167,6 +177,9 @@ class Policy:
         self.frozen = None
         self.overrides = None
         self.gitlinks = set()
+        # Existing update-branch changes outside the repair scope, pushed by
+        # people with write access; kept byte-for-byte but never editable here.
+        self.inherited = {}
 
     def scope(self, root):
         current = snapshot(root)
@@ -174,11 +187,15 @@ class Policy:
                    if self.baseline.get(path) != current.get(path)]
         for path in changed:
             if any(path == link or path.startswith(link + "/") for link in self.gitlinks):
-                raise ValueError("changes inside frozen gitlinks are unsupported")
+                raise ValueError("changes inside frozen gitlinks or symlinks are unsupported")
+            if path in self.inherited and current.get(path) == self.inherited[path]:
+                continue
             if not allowed(path, self.patterns):
                 raise ValueError(f"change outside repair scope: {path}")
             if path in current and current[path][0] != self.baseline.get(path, (0o644,))[0]:
                 raise ValueError(f"file mode changed: {path}")
+            if path in current and path not in self.baseline and PurePosixPath(path).name == "build.rs":
+                raise ValueError(f"new build scripts are not allowed: {path}")
             if path in current:
                 content = (root / path).read_bytes()
                 for key in ("AMP_API_KEY", "GH_TOKEN", "GITHUB_TOKEN"):
@@ -193,8 +210,13 @@ class Policy:
             if PurePosixPath(path).name != "Cargo.toml":
                 continue
             document = tomllib.loads((root / path).read_text())
-            overrides[path] = {key: document.get(key, {}) for key in ("patch", "replace")}
+            overrides[path] = guarded(document)
             for table, spec in dependencies(document):
+                if "path" in spec:
+                    # The runner fetches dependencies; local paths stay inside the export.
+                    target = os.path.normpath(PurePosixPath(path).parent / str(spec["path"]))
+                    if PurePosixPath(spec["path"]).is_absolute() or target == ".." or target.startswith("../"):
+                        raise ValueError(f"path dependency escapes the repository: {path}")
                 url = spec.get("git", "")
                 if url and canonical_url(url) in self.pins:
                     canonical = canonical_url(url)
@@ -236,31 +258,39 @@ class Policy:
 class Worker:
     """Only source and an expendable cache are writable inside the container."""
 
-    def __init__(self, root, image, deadline, cache, *, memory="4g"):
+    def __init__(self, root, image, deadline, cache, *, memory="4g", seed=None):
         if not IMAGE.fullmatch(image):
             raise ValueError("worker-image must be pinned by sha256 digest")
         if not re.fullmatch(r"[1-9][0-9]*[mg]", memory):
             raise ValueError("worker-memory must be an explicit positive limit")
         self.root, self.image, self.deadline, self.cache = root, image, deadline, cache
         self.memory = memory
+        # Runner-fetched Cargo home: written only on the runner, read-only in checks.
+        self.seed = seed or cache.with_name(cache.name + "-seed")
 
     def arguments(self, name, args, *, agent=False, cache=None, lockfile=False):
         cache = self.cache if cache is None else cache
-        for path in (self.root, cache):
+        check = not (agent or lockfile)
+        for path in (self.root, cache, self.seed):
             if "," in str(path):
                 raise ValueError("Docker mount paths must not contain commas")
+        # Docker always adds noexec to an unqualified tmpfs; Amp loads native modules from /tmp.
         command = ["docker", "run", "--name", name, "--rm", "--init", "--read-only",
                    "--cap-drop=ALL", "--security-opt=no-new-privileges:true",
-                   "--pids-limit=512", "--memory", self.memory,
+                   "--pids-limit=4096", "--memory", self.memory,
                    "--user", f"{os.getuid()}:{os.getgid()}",
-                   "--mount", f"type=bind,src={self.root},dst=/workspace" + ("" if agent or lockfile else ",readonly"),
+                   "--mount", f"type=bind,src={self.root},dst=/workspace" + (",readonly" if check else ""),
                    "--mount", f"type=bind,src={cache},dst=/cache",
-                   "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--workdir", "/workspace",
+                   "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g", "--workdir", "/workspace",
                    "--env", "HOME=/cache/home", "--env", "CARGO_HOME=/cache/cargo",
                    "--env", "CARGO_TARGET_DIR=/cache/target",
                    "--env", "XDG_CONFIG_HOME=/cache/config", "--env", "CI=true",
                    "--env", f"PATH={TOOL_PATH}", "--env", "RUSTUP_HOME=/usr/local/rustup",
                    "--env", "CARGO_HTTP_TIMEOUT=180", "--env", "CARGO_NET_RETRY=10"]
+        if check:
+            # Checks use only crates the runner fetched (through its package firewall).
+            command += ["--network", "none", "--env", "CARGO_NET_OFFLINE=true",
+                        "--mount", f"type=bind,src={self.seed},dst=/cache/cargo,readonly"]
         if agent:
             command += ["--env", "AMP_API_KEY"]
         return command + ["--entrypoint", args[0], self.image, *args[1:]]
@@ -287,13 +317,15 @@ class Worker:
             with tempfile.TemporaryDirectory(prefix="amp-check-cache-",
                                              dir=self.cache.parent) as clean_cache:
                 cache = self.cache if agent else Path(clean_cache)
+                (cache / "cargo").mkdir(exist_ok=True)
+                self.seed.mkdir(exist_ok=True)
                 return self._execute(name, args, agent, cache, env, log, remaining, lockfile)
 
     def _execute(self, name, args, agent, cache, env, log, remaining, lockfile):
         try:
             result = subprocess.run(self.arguments(name, args, agent=agent, cache=cache, lockfile=lockfile), env=env,
                                     stdout=log, stderr=subprocess.STDOUT,
-                                    timeout=min(1200, remaining))
+                                    timeout=min(2700, remaining))
             log.seek(0, 2)
             length = log.tell()
             log.seek(0)
@@ -324,6 +356,32 @@ class Worker:
                 shutil.copy2(source / "Cargo.lock", self.root / "Cargo.lock")
             return status, log
 
+    def fetch_dependencies(self):
+        """Download the locked dependencies on the runner, under its package firewall.
+
+        `cargo fetch` runs no build scripts. Workers bypass host-only firewalls such as
+        Aegis, so checks run offline from this read-only cache instead.
+        """
+        cargo = shutil.which("cargo")
+        if not cargo:
+            raise RuntimeError("cargo is required on the runner to fetch dependencies")
+        remaining = int(self.deadline - time.monotonic())
+        if remaining <= 0:
+            raise TimeoutError("dependency repair budget exhausted")
+        self.seed.mkdir(exist_ok=True)
+        env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "RUSTUP_HOME") if key in os.environ}
+        env.update(CARGO_HOME=str(self.seed), CARGO_HTTP_TIMEOUT="180", CARGO_NET_RETRY="10",
+                   GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT="0")
+        result = run([cargo, "fetch", "--locked"], cwd=self.root, env=env, check=False,
+                     timeout=min(1200, remaining))
+        if result.returncode:
+            return result.returncode, (result.stdout + result.stderr)[-16000:]
+        # Confirm the image's Cargo finds every locked source offline in the read-only cache.
+        status, log = self.execute(["cargo", "fetch", "--locked"])
+        if status:
+            raise RuntimeError("worker Cargo cannot use runner-fetched dependencies offline:\n" + log[-4000:])
+        return 0, ""
+
 
 def checks(worker, commands):
     if not commands:
@@ -350,13 +408,15 @@ def repair(worker, error, instructions):
               "commit, push, merge, or repair infrastructure/credential problems.")
     status, log = worker.execute(["amp", "--stream-json", "--dangerously-allow-all", "-x", prompt],
                                  agent=True)
+    threads = []
     for line in log.splitlines():
         try:
             message = json.loads(line)
         except (ValueError, TypeError):
             continue
         thread = message.get("session_id", "") if isinstance(message, dict) else ""
-        if re.fullmatch(r"[A-Za-z0-9_-]+", thread):
+        if re.fullmatch(r"[A-Za-z0-9_-]+", thread) and thread not in threads:
+            threads.append(thread)
             print("Amp thread: https://ampcode.com/threads/" + thread)
     if status:
         print(f"::warning::Amp exited with status {status}; validating the resulting source tree.")
@@ -374,6 +434,10 @@ def repair_local(worker, policy, commands, instructions, max_repairs, *, resolve
             policy.validate(worker.root, lockfile=False)
         if error is None:
             policy.validate(worker.root)
+            status, log = worker.fetch_dependencies()
+            if status:
+                error = "Command: cargo fetch --locked (runner package firewall)\n" + log
+        if error is None:
             error = checks(worker, commands)
         if error is None:
             policy.validate(worker.root)
@@ -416,9 +480,10 @@ def main():
     source, baseline = Path(args.source).resolve(), Path(args.baseline).resolve()
     policy = Policy(snapshot(baseline), lines(args.allowed_paths), json.loads(args.pins))
     policy.freeze(source)
-    with tempfile.TemporaryDirectory(prefix="amp-worker-cache-") as cache:
+    with tempfile.TemporaryDirectory(prefix="amp-worker-cache-") as cache, \
+            tempfile.TemporaryDirectory(prefix="amp-cargo-seed-") as seed:
         worker = Worker(source, args.worker_image, time.monotonic() + args.budget_minutes * 60,
-                        Path(cache))
+                        Path(cache), seed=Path(seed))
         error, attempts = repair_local(worker, policy, commands, args.instructions,
                                        args.max_repairs)
     set_output("repair-attempts", attempts)

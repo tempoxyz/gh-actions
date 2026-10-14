@@ -55,10 +55,15 @@ jobs:
       AMP_API_KEY: ${{ secrets.AMP_API_KEY }}
 ```
 
-The caller owns scheduling and concurrency. Calls are accepted only from `main`
-on schedule/manual dispatch. `runner` defaults to `ubuntu-latest` and
+The caller owns scheduling and concurrency. Calls are accepted only from the
+`base-branch` input (default `main`) on schedule/manual dispatch; that branch is
+also the adapter source and PR base. `runner` defaults to `ubuntu-latest` and
 `worker-memory` to `4g`; choose limits/image tools appropriate to the workspace.
-Python 3.11+, Docker, Node, Git, and gh must be available on the Linux runner.
+Python 3.11+, Docker, Node, Git, gh, and cargo must be available on the Linux
+runner; cargo only fetches locked dependencies there (see
+[worker boundary](../amp-repair/README.md#worker-boundary)).
+`repair-budget-minutes` (at most 150) bounds worker time for checks and repairs;
+waiting for CI uses the rest of the 180-minute job.
 
 Only named Amp credentials are forwarded. A public reusable workflow runs in
 the caller's context; private inputs, source, PRs and logs belong to the caller.
@@ -66,7 +71,7 @@ Keep private adapters, prompts and real diagnostic fixtures in that repository.
 
 ## Adapter contract
 
-The caller keeps a tracked, standalone, standard-library Python script on main.
+The caller keeps a tracked, standalone, standard-library Python script on its base branch.
 The coordinator copies it outside the worker and invokes it with Python isolated
 mode, so candidate source cannot replace it or supply imports. The adapter gets
 only a read-scoped GitHub token, never a publishing token or the Amp key.
@@ -101,18 +106,22 @@ then rejects source/revision changes, removal, aliases, or new Cargo overrides.
 
 Use `closed_pr_policy: skip` for one PR per release; use `new-pr` for a rolling
 update branch after a previous PR closes/merges. Existing open PRs and orphan
-branches are resumed; rebases fail on conflicts. Main/PR changes require a retry.
-Existing branch changes are checked against their merge base before rebasing;
-the rebased candidate is then validated against current main.
+branches are resumed; rebases fail on conflicts. A PR changed by another actor
+while the workflow runs requires a retry; a newer base branch does not, because
+each commit's parent is the base it was validated against and GitHub tests the
+PR against the current base. On resume, everything the rebased branch already
+contains is kept, including maintainer fixes outside `allowed-paths` (for
+example `deny.toml`); repairs cannot modify those files further.
 The publisher rebuilds its index, validates the actual commit tree, and pushes
 with an explicit expected-head lease. It does not copy worker Git metadata.
-Existing submodule pointers stay frozen to main and are not initialized in the
-worker; workspaces requiring their contents need a separate reviewed extension.
+Existing submodule pointers and symlinks stay frozen to the base and are not
+exported to workers; workspaces requiring submodule contents need a separate
+reviewed extension.
 
 ## STS
 
 Use a caller policy with immutable owner/repository IDs, its credential environment
-subject, its main workflow identity, and the shared workflow's reviewed revision:
+subject, its base-branch workflow identity, and the shared workflow's reviewed revision:
 
 ```yaml
 subject: repo:example@<owner-id>/service@<repo-id>:environment:dependency-updates
@@ -137,11 +146,16 @@ best effort on abrupt runner loss; minted tokens have a maximum 15-minute TTL.
 ## Results and migration
 
 Outputs: `pull-request-number`, `pull-request-url`, `head-sha`, and `status`
-(`skipped`, `passed`, `failed`). CI requires completed successful runs for every
-configured workflow on the candidate SHA; stale/empty/running runs are not green.
+(`skipped`, `passed`, `failed`). CI requires a completed `pull_request` or
+`pull_request_target` run for every configured workflow on the candidate SHA,
+concluding `success`, `skipped` or `neutral` (GitHub's required-check rules);
+stale/empty/running runs are not green.
 Failures use the latest run attempt's logs. A timed-out/no-op/exhausted repair
-fails and retains an existing PR; a valid best-effort local patch can be published
-for review even when its local checks still fail. Unsafe patches are never pushed.
+fails and retains an existing PR; a no-op CI repair stops before re-checking or
+minting a token. A valid best-effort local patch can be published for review even
+when its local checks still fail, but not before Cargo.lock resolves the selected
+revisions. Unsafe patches are never pushed. The PR body adds review notes for
+changed exact (`=x.y.z`) requirements, changed build scripts, and deleted files.
 Do not infer invariant correctness from CI success. Local commits use the STS bot
 identity; this initial publisher does not provide GitHub server-side signatures.
 
