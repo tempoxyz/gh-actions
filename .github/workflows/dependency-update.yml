@@ -1,0 +1,120 @@
+name: Dependency Update and Repair
+
+on:
+  workflow_call:
+    inputs:
+      adapter-script:
+        description: Tracked standalone Python adapter on the caller base branch; implements resolve/apply.
+        type: string
+        required: true
+      base-branch:
+        description: Caller default branch; the trusted adapter source, schedule ref and PR base.
+        type: string
+        default: main
+      requested-ref:
+        description: Optional upstream ref/tag passed to the trusted adapter as UPDATE_REQUESTED_REF.
+        type: string
+        default: ""
+      sts-policy:
+        description: Caller-repository policy granting contents/PR write to this workflow.
+        type: string
+        required: true
+      worker-image:
+        description: Digest-pinned Linux image with the caller's Rust toolchains, nextest and Amp.
+        type: string
+        required: true
+      runner:
+        type: string
+        default: ubuntu-latest
+      environment:
+        description: Caller environment for the Amp credential and STS trust subject.
+        type: string
+        default: dependency-updates
+      worker-memory:
+        description: Docker memory limit for each worker; for example 4g.
+        type: string
+        default: 4g
+      local-checks:
+        description: Newline-separated verification commands, parsed without a shell.
+        type: string
+        required: true
+      allowed-paths:
+        description: Newline-separated globs for Rust/Cargo changes; metadata/configuration are denied.
+        type: string
+        required: true
+      repair-instructions:
+        type: string
+        default: Fix dependency API compatibility without weakening invariants or tests.
+      required-workflows:
+        description: Nonempty newline-separated workflow paths; each must pass for the exact candidate SHA.
+        type: string
+        required: true
+      max-local-repairs:
+        type: number
+        default: 3
+      max-ci-repairs:
+        type: number
+        default: 3
+      repair-budget-minutes:
+        description: Worker time for checks and repairs (at most 150); CI waiting uses the rest of the 180-minute job.
+        type: number
+        default: 120
+    secrets:
+      AMP_API_KEY:
+        required: true
+    outputs:
+      pull-request-number:
+        value: ${{ jobs.update.outputs.pull-request-number }}
+      pull-request-url:
+        value: ${{ jobs.update.outputs.pull-request-url }}
+      head-sha:
+        value: ${{ jobs.update.outputs.head-sha }}
+      status:
+        value: ${{ jobs.update.outputs.status }}
+
+permissions: {}
+
+jobs:
+  update:
+    if: >-
+      github.ref == format('refs/heads/{0}', inputs.base-branch) &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ${{ inputs.runner }}
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+    outputs:
+      pull-request-number: ${{ steps.update.outputs.pull-request-number }}
+      pull-request-url: ${{ steps.update.outputs.pull-request-url }}
+      head-sha: ${{ steps.update.outputs.head-sha }}
+      status: ${{ steps.update.outputs.status }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+      - name: Checkout trusted caller base branch
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          ref: ${{ inputs.base-branch }}
+          path: caller
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout matching shared implementation
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .gh-actions
+          persist-credentials: false
+      - name: Prepare, repair, publish and verify CI
+        id: update
+        env:
+          DEPENDENCY_UPDATE_CONFIG: ${{ toJSON(inputs) }}
+          GH_TOKEN: ${{ github.token }}
+          AMP_API_KEY: ${{ secrets.AMP_API_KEY }}
+        run: |
+          python3 -I .gh-actions/actions/dependency-update/update.py \
+            --source "$GITHUB_WORKSPACE/caller" --shared "$GITHUB_WORKSPACE/.gh-actions"
