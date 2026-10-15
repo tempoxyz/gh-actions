@@ -24,8 +24,11 @@ exceeded` response consumes the OIDC assertion, so the next retry obtains a
 fresh assertion after waiting.
 An `exchange is already in progress` 429 retains the assertion to retrieve the
 original token when creation completes. Other 429 responses also retain it.
-Transport timeouts and explicit token-creation timeouts retain the existing
-limit of one fresh-assertion recovery attempt.
+Transport timeouts, explicit token-creation timeouts, and an HTTP 409 with
+`bearer token has already been used` share a limit of one fresh-assertion
+recovery attempt. The latter can follow a failed lease schedule after token
+creation: the server consumes that assertion and cannot return a credential
+for it. Other conflicts and authentication errors do not trigger assertion refresh.
 
 Before exchanging, the action asks the STS whether it is serving exchanges with
 one empty `POST /status`. A paused STS answers

@@ -67,7 +67,9 @@ function requiresFreshAssertion(response) {
     return (
       isExchangeInProgress(response) ||
       (response.status === 502 &&
-        message === "Socket API token creation timed out")
+        message === "Socket API token creation timed out") ||
+      (response.status === 409 &&
+        message === "bearer token has already been used")
     );
   } catch {
     return false;
@@ -178,17 +180,18 @@ async function retryRateLimited(operation, options = {}) {
   }
 }
 
-// A pending reservation can represent a hung upstream create that never
-// reaches the server's cleanup path. Do not keep a job coupled to it: obtain a
-// fresh GitHub assertion immediately so the next attempt has a distinct replay
-// key. Other HTTP failures retain the normal bounded retry policy.
+// A stuck create or a consumed assertion cannot yield a credential by polling
+// the same claim. Ask the caller for a fresh GitHub assertion, within its
+// existing attempt/deadline limits. Other conflicts keep the normal retry policy.
 async function retryExchangeInProgress(operation) {
   const response = await operation();
   if (!requiresFreshAssertion(response)) return response;
   const error = new Error(
     isExchangeInProgress(response)
       ? "Exchange is already in progress"
-      : "Socket API token creation timed out",
+      : response.status === 409
+        ? "Socket STS rejected a consumed assertion"
+        : "Socket API token creation timed out",
   );
   error.code = "ESTS_FRESH_ASSERTION_REQUIRED";
   throw error;
