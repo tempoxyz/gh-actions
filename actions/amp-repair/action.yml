@@ -1,5 +1,5 @@
 name: Amp Repair
-description: Validate and repair Rust dependency migrations in disposable Docker workers.
+description: Validate and repair Rust dependency migrations in runner processes.
 
 inputs:
   source:
@@ -10,9 +10,6 @@ inputs:
     required: true
   pins:
     description: JSON object mapping selected GitHub HTTPS sources to full commit SHAs.
-    required: true
-  worker-image:
-    description: Digest-pinned Linux image containing Amp, Rust toolchains and cargo-nextest.
     required: true
   local-checks:
     description: Newline-separated commands; parsed as argument lists, not shell scripts.
@@ -30,7 +27,7 @@ inputs:
     description: Total repair budget, including verification commands.
     default: "60"
   amp-api-key:
-    description: Amp credential; passed only to agent workers, never check workers.
+    description: Amp credential; included only in agent process environments.
     required: true
 
 outputs:
@@ -52,7 +49,6 @@ runs:
         SOURCE: ${{ inputs.source }}
         BASELINE: ${{ inputs.baseline }}
         PINS: ${{ inputs.pins }}
-        WORKER_IMAGE: ${{ inputs.worker-image }}
         LOCAL_CHECKS: ${{ inputs.local-checks }}
         ALLOWED_PATHS: ${{ inputs.allowed-paths }}
         INSTRUCTIONS: ${{ inputs.repair-instructions }}
@@ -63,6 +59,6 @@ runs:
         set -euo pipefail
         python3 -I "$ACTION_DIR/repair.py" \
           --source "$SOURCE" --baseline "$BASELINE" --pins "$PINS" \
-          --worker-image "$WORKER_IMAGE" --checks "$LOCAL_CHECKS" \
+          --checks "$LOCAL_CHECKS" \
           --allowed-paths "$ALLOWED_PATHS" --instructions "$INSTRUCTIONS" \
           --max-repairs "$MAX_REPAIRS" --budget-minutes "$BUDGET_MINUTES"

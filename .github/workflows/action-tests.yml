@@ -65,7 +65,7 @@ jobs:
   tests-passed:
     name: tests-passed
     if: ${{ always() }}
-    needs: [discover, test, cargo-dependency-changes]
+    needs: [discover, test, cargo-dependency-changes, dependency-update-runner]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -78,10 +78,11 @@ jobs:
           DISCOVER_RESULT: ${{ needs.discover.result }}
           CARGO_RESULT: ${{ needs.cargo-dependency-changes.result }}
           TEST_RESULT: ${{ needs.test.result }}
+          RUNNER_RESULT: ${{ needs.dependency-update-runner.result }}
         run: |
           set -euo pipefail
-          if [[ "$DISCOVER_RESULT" != "success" || "$TEST_RESULT" != "success" || "$CARGO_RESULT" != "success" ]]; then
-            echo "::error::Action tests failed (discover=$DISCOVER_RESULT, tests=$TEST_RESULT)"
+          if [[ "$DISCOVER_RESULT" != "success" || "$TEST_RESULT" != "success" || "$CARGO_RESULT" != "success" || "$RUNNER_RESULT" != "success" ]]; then
+            echo "::error::Action tests failed (discover=$DISCOVER_RESULT, tests=$TEST_RESULT, runner=$RUNNER_RESULT)"
             exit 1
           fi
           echo "All action tests passed"
@@ -98,3 +99,30 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -m unittest discover -s actions/cargo-dependency-changes -v
+
+  dependency-update-runner:
+    name: Dependency update runner smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@a4fa1d51aa4014d86628f43b1dff8ba88219e04d # 2026-10-15T00-03-55Z-a4fa1d51
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+      - name: Install updater tools
+        env:
+          RUST_TOOLCHAINS: "1.99.0 nightly-2026-08-21"
+          NEXTEST_VERSION: "0.9.127"
+          AMP_VERSION: "0.0.1791388870-g4d32fb"
+          NATIVE_PACKAGES: build-essential pkg-config libssl-dev clang libclang-dev mold
+        run: python3 -I actions/dependency-update/setup_tools.py
+      - name: Install cargo-nextest
+        uses: tempoxyz/gh-actions/vendor/taiki-e/install-action@a4fa1d51aa4014d86628f43b1dff8ba88219e04d # 2026-10-15T00-03-55Z-a4fa1d51
+        with:
+          tool: cargo-nextest@0.9.127
+      - name: Exercise direct runner commands
+        run: python3 actions/amp-repair/smoke.py

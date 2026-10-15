@@ -30,7 +30,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-helm`](actions/setup-helm) | Install Helm verified against the maintainers' GPG signatures
 | [`cargo-dependency-changes`](actions/cargo-dependency-changes) | Detect selected Cargo dependency version/source changes without running repository code |
 | [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
-| [`amp-repair`](actions/amp-repair) | Repair Rust dependency migrations in isolated workers with bounded independent checks |
+| [`amp-repair`](actions/amp-repair) | Repair Rust dependency migrations on the runner with bounded independent checks |
 
 ### Installer verification
 
@@ -184,7 +184,7 @@ The SHA is the immutable reference; the timestamp comment records the reviewed, 
 
 | Workflow | Description | Source |
 |----------|-------------|--------|
-| [`dependency-update`](actions/dependency-update/README.md) | Bounded dependency and CI repair with isolated Amp workers and STS publication | Rust repositories |
+| [`dependency-update`](actions/dependency-update/README.md) | Bounded dependency and CI repair on the runner with tool setup and STS publication | Rust repositories |
 | [`pr-audit`](#pr-audit) | Publish a `pr_audit` event when a PR is labeled (read-only) | tempo, zones |
 | [`label-prs`](#label-prs) | Label new PRs from their linked issue | tempo, zones |
 | [`scan-github-actions`](#scan-github-actions) | Security scan, lint, and optional action pin policy checks | any |

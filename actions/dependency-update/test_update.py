@@ -195,7 +195,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_complete_local_and_ci_repair_flow(self):
         # Real adapter subprocess, Git commits, strict pushes and candidate validation;
-        # only Docker/GitHub/STS are replaced with synthetic services.
+        # only tool processes/GitHub/STS are replaced with synthetic services.
         scripts = self.repository / "scripts"
         scripts.mkdir()
         adapter = scripts / "prepare.py"
@@ -208,7 +208,6 @@ class PublicationTests(unittest.TestCase):
         self.base = git(self.repository, "rev-parse", "HEAD").stdout.strip()
         git(self.repository, "push", "origin", "main", "HEAD:refs/heads/bot/sdk")
         config = self.config | {"adapter-script": "scripts/prepare.py", "allowed-paths": "Cargo.toml\nCargo.lock\nsrc/**/*.rs",
-                                "worker-image": "ghcr.io/example/repair@sha256:" + "a" * 64,
                                 "max-local-repairs": 3, "max-ci-repairs": 3, "repair-instructions": "migrate"}
         self.github.pulls.return_value = [self.existing | {"state": "OPEN", "headRefOid": self.base}]
         self.github.api.side_effect = lambda path: {"object": {"sha": self.base}}

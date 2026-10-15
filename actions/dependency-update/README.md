@@ -7,8 +7,8 @@ requests, deployment, and auto-merge remain in the caller repository.
 
 ## Caller
 
-This is a generic example; replace the SHA/image placeholders with reviewed
-releases. The workflow and any worker image must be pinned immutably.
+This is a generic example; replace the SHA/version placeholders with reviewed
+releases. Pin the workflow revision and tool versions.
 
 ```yaml
 name: Update SDK
@@ -33,7 +33,12 @@ jobs:
       adapter-script: scripts/prepare_sdk_update.py
       requested-ref: main
       sts-policy: update-sdk
-      worker-image: ghcr.io/example/repair@sha256:<approved-image-digest>
+      rust-toolchains: |
+        1.99.0
+        nightly-2026-08-21
+      nextest-version: "0.9.127"
+      amp-version: "0.0.1791388870-g4d32fb"
+      native-packages: build-essential pkg-config libssl-dev clang libclang-dev mold
       environment: dependency-updates
       local-checks: |
         cargo fmt --all --check
@@ -57,22 +62,35 @@ jobs:
 
 The caller owns scheduling and concurrency. Calls are accepted only from the
 `base-branch` input (default `main`) on schedule/manual dispatch; that branch is
-also the adapter source and PR base. `runner` defaults to `ubuntu-latest` and
-`worker-memory` to `4g`; choose limits/image tools appropriate to the workspace.
-Python 3.11+, Docker, Node, Git, gh, and cargo must be available on the Linux
-runner; cargo only fetches locked dependencies there (see
-[worker boundary](../amp-repair/README.md#worker-boundary)).
-`repair-budget-minutes` (at most 150) bounds worker time for checks and repairs;
-waiting for CI uses the rest of the 180-minute job.
+also the adapter source and PR base. `runner` defaults to `ubuntu-latest`.
+Use an ephemeral Ubuntu runner with Python 3.11+, Node/npm, Git, gh and rustup.
+The workflow installs the exact `rust-toolchains` (required, with rustfmt/Clippy),
+`nextest-version` (default `0.9.127`) and `amp-version` (default
+`0.0.1791388870-g4d32fb`). The first Rust toolchain becomes `RUSTUP_TOOLCHAIN`;
+explicit `cargo +<toolchain>` commands can select another installed toolchain.
+`native-packages` defaults to `build-essential pkg-config libssl-dev clang
+libclang-dev mold`; installation uses apt/sudo on the disposable runner.
+Amp is installed from the exact `@sourcegraph/amp` npm package version, including
+its native-binary installation script. Nextest uses the vendored installer.
+There is no image, registry setup or alternate Docker execution path.
 
+`repair-budget-minutes` (at most 150) bounds checks and repairs; setup runs before
+that budget and CI waiting uses the rest of the 180-minute job.
 Only named Amp credentials are forwarded. A public reusable workflow runs in
 the caller's context; private inputs, source, PRs and logs belong to the caller.
 Keep private adapters, prompts and real diagnostic fixtures in that repository.
 
+Amp and dependency build scripts execute directly on the same runner as the
+coordinator. Child environments omit GitHub/OIDC credentials and check state is
+fresh, but this is **not a credential or filesystem security boundary**. Use
+fresh disposable runners without unrelated secrets. See
+[runner execution](../amp-repair/README.md#runner-execution) for the trust model,
+process cleanup and verification behavior.
+
 ## Adapter contract
 
 The caller keeps a tracked, standalone, standard-library Python script on its base branch.
-The coordinator copies it outside the worker and invokes it with Python isolated
+The coordinator copies it outside the candidate and invokes it with Python isolated
 mode, so candidate source cannot replace it or supply imports. The adapter gets
 only a read-scoped GitHub token, never a publishing token or the Amp key.
 
@@ -97,10 +115,9 @@ revision once and implements release eligibility/downgrade/no-op rules. Return
 
 `python3 adapter.py apply --plan <trusted-plan.json>` runs with the exported
 candidate as its working directory. It edits manifest pins deterministically,
-preserving the selected SHAs, and does not run Cargo or other candidate code on
-the host. Cargo.lock resolution executes in a disposable writable worker copy,
-from which only Cargo.lock is imported; subsequent checks mount candidate source
-read-only and verify an unchanged snapshot.
+preserving the selected SHAs, and does not run Cargo or other candidate code.
+Cargo.lock resolution executes in a temporary source copy on the runner, from which only Cargo.lock is imported; subsequent checks
+verify an unchanged source snapshot.
 The engine captures every selected dependency identity after this trusted edit,
 then rejects source/revision changes, removal, aliases, or new Cargo overrides.
 
@@ -113,10 +130,10 @@ PR against the current base. On resume, everything the rebased branch already
 contains is kept, including maintainer fixes outside `allowed-paths` (for
 example `deny.toml`); repairs cannot modify those files further.
 The publisher rebuilds its index, validates the actual commit tree, and pushes
-with an explicit expected-head lease. It does not copy worker Git metadata.
+with an explicit expected-head lease. It does not use candidate Git metadata.
 Existing submodule pointers and symlinks stay frozen to the base and are not
-exported to workers; workspaces requiring submodule contents need a separate
-reviewed extension.
+exported to the repair directory; workspaces requiring submodule contents need a
+separate reviewed extension.
 
 ## STS
 
@@ -159,11 +176,13 @@ changed exact (`=x.y.z`) requirements, changed build scripts, and deleted files.
 Do not infer invariant correctness from CI success. Local commits use the STS bot
 identity; this initial publisher does not provide GitHub server-side signatures.
 
-Start with a caller-approved worker image and repository adapter, then run manual
-dispatch with merging disabled. For a moving upstream branch, keep a rolling PR
+Configure tool versions and a repository adapter, then run manual dispatch with
+merging disabled. For a moving upstream branch, keep a rolling PR
 and benchmark/audit jobs after this workflow. For stable releases, select a release
 and its compatible transitive revision and use one branch per release. Add source
 review and any merge policy in the caller, respecting existing branch rules.
 
-Tests use synthetic repositories and credentials. Live Docker/Amp/STS/GitHub
-integration requires a configured caller and is not exercised by the unit suite.
+Tests use synthetic repositories and credentials. The runner smoke job installs
+the tools, starts Amp with `--version` (no API calls), and runs Cargo checks on a
+small fixture. Live Amp repair/STS/GitHub publication requires a configured caller
+and is not exercised by these checks.

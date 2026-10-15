@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
+import sys
 import subprocess
 import tempfile
 import time
@@ -13,7 +15,6 @@ import repair
 
 URL = "https://github.com/example/sdk"
 SHA = "1" * 40
-IMAGE = "ghcr.io/example/repair@sha256:" + "a" * 64
 
 
 def manifest(revision=SHA):
@@ -229,65 +230,58 @@ class WorkerTests(unittest.TestCase):
         self.cache = Path(self.directory.name) / "cache"
         self.root.mkdir()
         self.cache.mkdir()
-        self.worker = repair.Worker(self.root, IMAGE, time.monotonic() + 60, self.cache)
+        self.worker = repair.Worker(self.root, time.monotonic() + 60, self.cache)
 
-    def test_checks_are_offline_and_agent_tmp_allows_native_modules(self):
-        check = self.worker.arguments("check", ["cargo", "check"])
-        self.assertEqual(check[check.index("--network") + 1], "none")
-        self.assertIn("CARGO_NET_OFFLINE=true", check)
-        self.assertIn(f"type=bind,src={self.worker.seed},dst=/cache/cargo,readonly", check)
-        agent = self.worker.arguments("agent", ["amp"], agent=True)
-        self.assertNotIn("--network", agent)
-        self.assertFalse(any(str(self.worker.seed) in arg for arg in agent))
-        # Docker adds noexec to /tmp unless exec is explicit; Amp dlopens modules from /tmp.
-        self.assertIn("/tmp:rw,exec,nosuid,nodev,size=1g", agent)
-
-    def test_runner_fetch_excludes_credentials_and_requires_offline_worker_access(self):
-        calls = []
-        def host(args, **kwargs):
-            calls.append(kwargs["env"])
-            return subprocess.CompletedProcess(args, 0, "", "")
+    def test_direct_process_environment_omits_credentials_except_agent_key(self):
         secrets = {name: "test-secret" for name in ("GH_TOKEN", "GITHUB_TOKEN", "AMP_API_KEY",
-                                                    "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "CARGO_REGISTRY_TOKEN")}
-        with patch.dict(os.environ, secrets), patch.object(repair.shutil, "which", return_value="/usr/bin/cargo"), \
-             patch.object(repair, "run", side_effect=host), \
-             patch.object(repair.Worker, "execute", autospec=True, return_value=(0, "")) as worker:
-            self.assertEqual(self.worker.fetch_dependencies(), (0, ""))
-            self.assertTrue(set(secrets).isdisjoint(calls[0]))
-            self.assertEqual(calls[0]["CARGO_HOME"], str(self.worker.seed))
-            self.assertEqual(worker.call_args.args[1], ["cargo", "fetch", "--locked"])
-            worker.return_value = (101, "missing offline source")
-            with self.assertRaisesRegex(RuntimeError, "offline"):
-                self.worker.fetch_dependencies()
-        blocked = subprocess.CompletedProcess([], 101, "", "blocked by package firewall")
-        with patch.object(repair.shutil, "which", return_value="/usr/bin/cargo"), \
-             patch.object(repair, "run", return_value=blocked), patch.object(repair.Worker, "execute") as worker:
+                   "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL", "GITHUB_OUTPUT",
+                   "CARGO_REGISTRY_TOKEN", "LD_PRELOAD")}
+        script = "import json,os; print(json.dumps(dict(os.environ)))"
+        with patch.dict(os.environ, secrets):
+            status, output = self.worker.execute([sys.executable, "-c", script])
+            self.assertEqual(status, 0)
+            check = json.loads(output)
+            self.assertTrue(set(secrets).isdisjoint(check))
+            self.assertEqual(check["CARGO_NET_OFFLINE"], "true")
+            status, output = self.worker.execute([sys.executable, "-c", script], agent=True)
+            agent = json.loads(output)
+            self.assertEqual(status, 0)
+            self.assertEqual(agent["AMP_API_KEY"], "test-secret")
+            self.assertTrue((set(secrets) - {"AMP_API_KEY"}).isdisjoint(agent))
+            self.assertNotIn("CARGO_NET_OFFLINE", agent)
+
+    def test_checks_use_fresh_state_and_never_agent_installed_subcommands(self):
+        self.worker.seed.mkdir()
+        (self.worker.seed / "download").write_text("downloaded crate")
+        script = ("import os,pathlib; p=pathlib.Path(os.environ['CARGO_HOME']); "
+                  "assert (p/'download').read_text()=='downloaded crate'; "
+                  "assert not (p/'bin').exists(); (p/'bin').mkdir(); "
+                  "print(str(p))")
+        (self.cache / "cargo/bin").mkdir(parents=True)
+        (self.cache / "cargo/bin/cargo-nextest").write_text("poisoned command")
+        caches = []
+        for _ in range(2):
+            status, output = self.worker.execute([sys.executable, "-c", script])
+            self.assertEqual(status, 0, output)
+            caches.append(output.strip())
+        self.assertNotEqual(*caches)
+        self.assertTrue(all(not Path(cache).exists() for cache in caches))
+        self.assertFalse((self.worker.seed / "bin").exists())
+        self.assertNotIn(str(self.cache), self.worker.path)
+
+    def test_fetch_replaces_download_seed_and_uses_online_scrubbed_process(self):
+        self.worker.seed.mkdir()
+        (self.worker.seed / "poisoned").touch()
+        def execute(args, **kwargs):
+            self.assertEqual(args, ["cargo", "fetch", "--locked"])
+            self.assertEqual(kwargs, {"fetch": True})
+            self.assertFalse(self.worker.seed.exists())
+            return 101, "blocked by package firewall"
+        with patch.object(self.worker, "execute", side_effect=execute):
             self.assertEqual(self.worker.fetch_dependencies(), (101, "blocked by package firewall"))
-            worker.assert_not_called()
 
-    def test_worker_has_no_host_namespaces_socket_or_trusted_mounts(self):
-        args = self.worker.arguments("test-worker", ["cargo", "check"])
-        self.assertIn("--read-only", args)
-        self.assertIn("--cap-drop=ALL", args)
-        self.assertIn("--security-opt=no-new-privileges:true", args)
-        self.assertIn("CARGO_TARGET_DIR=/cache/target", args)
-        for forbidden in ("--privileged", "--pid=host", "--network=host", "--env-file",
-                          "GH_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "docker.sock", ".git"):
-            self.assertFalse(any(forbidden in arg for arg in args), forbidden)
-        self.assertNotIn("AMP_API_KEY", args)
-        self.assertIn("AMP_API_KEY", self.worker.arguments("test", ["amp"], agent=True))
-
-    def test_mutable_images_are_rejected(self):
-        for image in ("ghcr.io/example/repair:latest", "--privileged", "image@sha256:bad"):
-            with self.assertRaises(ValueError):
-                repair.Worker(self.root, image, time.monotonic() + 60, self.cache)
-
-    def test_verification_is_read_only_and_lockfile_resolution_uses_a_disposable_copy(self):
+    def test_lockfile_resolution_uses_a_copy_and_imports_only_the_lockfile(self):
         (self.root / "Cargo.lock").write_text("original lockfile")
-        self.assertTrue(any(arg.endswith("dst=/workspace,readonly")
-                            for arg in self.worker.arguments("check", ["cargo", "test"])))
-        self.assertTrue(any(arg.endswith("dst=/workspace")
-                            for arg in self.worker.arguments("agent", ["amp"], agent=True)))
         def resolve(worker, args, **kwargs):
             self.assertNotEqual(worker.root, self.root)
             self.assertTrue(kwargs["lockfile"])
@@ -309,77 +303,41 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual((self.root / "lib.rs").read_text(), "original source")
         self.assertEqual((self.root / "Cargo.lock").read_text(), "original lockfile")
 
-    def test_poisoned_agent_and_check_state_never_enters_later_checks(self):
-        mounts = []
-        def fake(args, **kwargs):
-            if args[1] == "run":
-                mount = next(value for value in args if value.endswith(",dst=/cache"))
-                cache = Path(mount.split("src=", 1)[1].split(",dst=", 1)[0])
-                mounts.append(cache)
-                if "AMP_API_KEY" in args:
-                    self.assertEqual(cache, self.cache)
-                else:
-                    self.assertNotEqual(cache, self.cache)
-                    # Only the empty mount point for the read-only runner-fetched Cargo home.
-                    self.assertEqual([path.name for path in cache.iterdir()], ["cargo"])
-                    self.assertEqual(list((cache / "cargo").iterdir()), [])
-                (cache / "cargo/bin").mkdir(parents=True, exist_ok=True)
-                for tool in ("cargo-clippy", "cargo-fmt", "cargo-nextest"):
-                    (cache / "cargo/bin" / tool).write_text("#!/bin/sh\nexit 0\n")
-                self.assertIn(f"PATH={repair.TOOL_PATH}", args)
-                self.assertIn("RUSTUP_HOME=/usr/local/rustup", args)
-            return subprocess.CompletedProcess(args, 0, "", "")
-        with patch.dict(os.environ, {"AMP_API_KEY": "test-key"}), \
-             patch.object(repair.subprocess, "run", side_effect=fake):
-            self.worker.execute(["amp"], agent=True)
-            for tool in ("clippy", "fmt", "nextest"):
-                self.worker.execute(["cargo", tool])
-        self.assertEqual(len(set(mounts)), 4)
-        self.assertTrue(all(not path.exists() for path in mounts[1:]))
+    def test_timeout_kills_command_and_its_background_child(self):
+        marker = Path(self.directory.name) / "leaked-child"
+        self.worker.deadline = time.monotonic() + 0.2
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.worker.execute(["/bin/sh", "-c", f"(sleep 0.5; touch {marker}) & wait"])
+        time.sleep(0.6)
+        self.assertFalse(marker.exists())
 
-    def test_client_environment_excludes_runner_credentials(self):
-        captured = []
-        def fake(args, **kwargs):
-            captured.append((args, kwargs["env"]))
-            return subprocess.CompletedProcess(args, 0, "", "")
-        secrets = {name: "test-secret" for name in ("GH_TOKEN", "GITHUB_TOKEN", "AMP_API_KEY",
-                    "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL", "GITHUB_OUTPUT")}
-        with patch.dict(os.environ, secrets), patch.object(repair.subprocess, "run", side_effect=fake):
-            self.worker.execute(["cargo", "check"])
-            self.worker.execute(["amp"], agent=True)
-        self.assertTrue(set(secrets).isdisjoint(captured[0][1]))
-        self.assertEqual(captured[2][1]["AMP_API_KEY"], "test-secret")
-        self.assertTrue((set(secrets) - {"AMP_API_KEY"}).isdisjoint(captured[2][1]))
-        self.assertNotIn("test-secret", " ".join(captured[2][0]))
+    def test_successful_command_cannot_leave_background_children(self):
+        marker = Path(self.directory.name) / "leaked-child"
+        self.assertEqual(self.worker.execute(["/bin/sh", "-c", f"(sleep 0.3; touch {marker}) &"])[0], 0)
+        time.sleep(0.4)
+        self.assertFalse(marker.exists())
 
-    def test_timeout_forces_worker_removal(self):
-        def fake(args, **kwargs):
-            if args[1] == "run":
-                raise subprocess.TimeoutExpired(args, 1)
-            return subprocess.CompletedProcess(args, 0, "", "")
-        with patch.dict(os.environ, {"AMP_API_KEY": "test-key"}), patch.object(repair.subprocess, "run", side_effect=fake) as command:
-            with self.assertRaises(subprocess.TimeoutExpired):
-                self.worker.execute(["amp"], agent=True)
-        self.assertEqual(command.call_args.args[0][1:3], ["rm", "--force"])
+    def test_cancellation_kills_process_group(self):
+        from unittest.mock import Mock
+        process = Mock(pid=12345)
+        process.wait.side_effect = [KeyboardInterrupt(), 0]
+        with patch.object(repair.subprocess, "Popen", return_value=process), \
+                patch.object(repair.os, "killpg") as kill:
+            with self.assertRaises(KeyboardInterrupt):
+                self.worker.execute(["/bin/sh", "-c", "sleep 60"])
+        kill.assert_called_once_with(12345, signal.SIGKILL)
 
     def test_cleanup_failure_prevents_success(self):
-        def fake(args, **kwargs):
-            return subprocess.CompletedProcess(args, 1 if args[1] == "rm" else 0,
-                                               "", "daemon unavailable")
-        with patch.object(repair.subprocess, "run", side_effect=fake):
-            with self.assertRaisesRegex(RuntimeError, "cleanup"):
-                self.worker.execute(["cargo", "check"])
+        from unittest.mock import Mock
+        process = Mock(pid=12345)
+        with patch.object(repair.subprocess, "Popen", return_value=process), \
+                patch.object(repair.os, "killpg", side_effect=PermissionError("cannot stop children")):
+            with self.assertRaises(PermissionError):
+                self.worker.execute(["/bin/sh", "-c", "true"])
 
-    def test_already_removed_container_is_successful_cleanup(self):
-        def fake(args, **kwargs):
-            return subprocess.CompletedProcess(args, 1 if args[1] == "rm" else 0,
-                                               "", "No such container: already-removed")
-        with patch.object(repair.subprocess, "run", side_effect=fake):
-            self.assertEqual(self.worker.execute(["cargo", "check"])[0], 0)
-
-    def test_expired_deadline_does_not_start_worker(self):
+    def test_expired_deadline_does_not_start_process(self):
         self.worker.deadline = time.monotonic() - 1
-        with patch.object(repair.subprocess, "run") as command:
+        with patch.object(repair.subprocess, "Popen") as command:
             with self.assertRaises(TimeoutError):
                 self.worker.execute(["cargo", "check"])
             command.assert_not_called()
@@ -415,7 +373,7 @@ class LoopTests(unittest.TestCase):
     def test_standalone_rejects_empty_input_before_loading_source(self):
         for commands in ("", " \n\t"):
             with patch("sys.argv", ["repair.py", "--source", "/missing", "--baseline", "/missing",
-                                    "--pins", "{}", "--worker-image", IMAGE, "--checks", commands,
+                                    "--pins", "{}", "--checks", commands,
                                     "--allowed-paths", "Cargo.toml"]), patch.object(repair, "Worker") as worker:
                 with self.assertRaisesRegex(ValueError, "local-checks must not be empty"):
                     repair.main()

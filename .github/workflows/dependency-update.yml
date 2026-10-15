@@ -19,10 +19,22 @@ on:
         description: Caller-repository policy granting contents/PR write to this workflow.
         type: string
         required: true
-      worker-image:
-        description: Digest-pinned Linux image with the caller's Rust toolchains, nextest and Amp.
+      rust-toolchains:
+        description: Whitespace-separated exact Rust versions or dated nightlies; first is the default. Installs rustfmt and Clippy.
         type: string
         required: true
+      nextest-version:
+        description: Exact cargo-nextest release installed on the runner.
+        type: string
+        default: "0.9.127"
+      amp-version:
+        description: Exact @sourcegraph/amp npm version installed on the runner.
+        type: string
+        default: "0.0.1791388870-g4d32fb"
+      native-packages:
+        description: Whitespace-separated apt packages required by the Rust workspace.
+        type: string
+        default: build-essential pkg-config libssl-dev clang libclang-dev mold
       runner:
         type: string
         default: ubuntu-latest
@@ -30,10 +42,6 @@ on:
         description: Caller environment for the Amp credential and STS trust subject.
         type: string
         default: dependency-updates
-      worker-memory:
-        description: Docker memory limit for each worker; for example 4g.
-        type: string
-        default: 4g
       local-checks:
         description: Newline-separated verification commands, parsed without a shell.
         type: string
@@ -56,7 +64,7 @@ on:
         type: number
         default: 3
       repair-budget-minutes:
-        description: Worker time for checks and repairs (at most 150); CI waiting uses the rest of the 180-minute job.
+        description: Runner time for checks and repairs (at most 150); CI waiting uses the rest of the 180-minute job.
         type: number
         default: 120
     secrets:
@@ -109,6 +117,17 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .gh-actions
           persist-credentials: false
+      - name: Install Rust, Amp and native dependencies
+        env:
+          RUST_TOOLCHAINS: ${{ inputs.rust-toolchains }}
+          NEXTEST_VERSION: ${{ inputs.nextest-version }}
+          AMP_VERSION: ${{ inputs.amp-version }}
+          NATIVE_PACKAGES: ${{ inputs.native-packages }}
+        run: python3 -I .gh-actions/actions/dependency-update/setup_tools.py
+      - name: Install cargo-nextest
+        uses: tempoxyz/gh-actions/vendor/taiki-e/install-action@a4fa1d51aa4014d86628f43b1dff8ba88219e04d # 2026-10-15T00-03-55Z-a4fa1d51
+        with:
+          tool: cargo-nextest@${{ inputs.nextest-version }}
       - name: Prepare, repair, publish and verify CI
         id: update
         env:

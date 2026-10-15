@@ -1,4 +1,4 @@
-"""Trusted coordinator; worker checkouts never contain GitHub credentials or .git."""
+"""Runner coordinator; source exports exclude .git and child environments omit GitHub credentials."""
 
 import argparse
 import contextlib
@@ -360,8 +360,7 @@ class Coordinator:
             export_tree(repository, "HEAD", work, frozen_base=base)
             self.adapter(script, "apply", plan_file, cwd=work)
             policy.freeze(work)
-            worker = Worker(work, self.config["worker-image"], self.deadline, cache,
-                            memory=self.config.get("worker-memory", "4g"))
+            worker = Worker(work, self.deadline, cache)
             error, attempts = repair_local(worker, policy, self.commands,
                                            self.config["repair-instructions"], self.config["max-local-repairs"],
                                            resolve_lockfile=True)
