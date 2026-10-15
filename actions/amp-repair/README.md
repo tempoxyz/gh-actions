@@ -1,6 +1,6 @@
 # Amp repair
 
-Bounded Rust dependency repair with independent checks after every Amp invocation.
+Bounded Rust dependency repair on the runner, with independent checks after every Amp invocation.
 The Python standard-library implementation is also used by
 [`dependency-update.yml`](../../.github/workflows/dependency-update.yml).
 
@@ -8,63 +8,50 @@ Use the [shared workflow](../dependency-update/README.md) to prepare an update,
 publish a PR, and repair its CI failures. This standalone action only repairs a
 prepared source export; it does not fetch GitHub tokens, commit, push, or merge.
 
-## Worker boundary
+## Runner execution
 
-Requires Python 3.11+, a Linux Docker runner with `cargo` on `PATH` (preinstalled
-on GitHub-hosted Ubuntu), and a caller-approved image pinned by `@sha256:<digest>`. The image contains Amp, Rust/rustfmt/Clippy, cargo-nextest,
-and any native build dependencies. Tools must work as the runner UID with a
-read-only root filesystem; mutable Cargo/Amp state goes under `/cache`. Install
-tools in `/usr/local/cargo/bin`, `/usr/local/bin`, `/usr/bin` or `/bin`; worker
-PATH contains only those image directories, and Rust toolchains must be available
-read-only in `/usr/local/rustup`. Build
-and verify that image through the caller's existing image pipeline; this action
-does not execute a mutable installer on the privileged runner.
+Requires an ephemeral Linux runner with Python 3.11+, Rust/rustfmt/Clippy, Amp,
+cargo-nextest and the repository's native build dependencies already on PATH.
+The [shared workflow](../dependency-update/README.md) installs these tools from
+versioned inputs. The standalone action uses tools the caller installed.
+No Docker daemon, worker image, registry or image publication is involved.
 
-Each command gets a fresh container with only the exported source and an
-expendable worker cache mounted.
+Each command runs directly as a runner process in an exported source directory
+without `.git`. Child environments are built from an allowlist and omit GitHub,
+OIDC and registry credentials and Actions output paths. Only Amp gets
+`AMP_API_KEY`. Rustup uses the installed runner toolchains. Lockfile resolution
+runs in a temporary source copy and imports only Cargo.lock.
 
-Dependency downloads for checks happen on the runner: after each lockfile
-resolution, the coordinator runs `cargo fetch --locked` (no build scripts) with a
-scrubbed environment into a runner-owned Cargo home. Host-only package firewalls
-such as Aegis therefore inspect every crate the candidate locks, which they could
-not do for container traffic. Check containers run with `--network none`, offline
-Cargo, and that Cargo home mounted read-only; the action first confirms the
-image's Cargo can use it offline. Lockfile resolution and the agent still have
-network access; the agent's own Cargo runs inside its sandbox, and whatever it
-locks is fetched through the runner before any check or publication. Verification mounts source read-only and checks
-its snapshot before and after every command; all checks must verify the same
-unchanged candidate. Only Amp may edit the candidate. The coordinator resolves
-Cargo.lock separately in a disposable writable copy and imports only that lockfile.
-Every verification command gets a new empty
-cache, including HOME, Cargo downloads/configuration and target output; it never
-reuses agent state or an earlier check's build output. This prevents cache-written
-tools/configuration from replacing later checks, at the cost of fresh downloads
-and compilation for each command. Agent invocations can reuse their own cache.
-No `.git`, host HOME, runner temp directory,
-Docker socket, host PID namespace, or GitHub/OIDC credentials are mounted or
-forwarded. Containers have no capabilities, cannot gain privileges, and have
-memory/PID limits. `/tmp` is a 1 GiB tmpfs mounted with `exec`, because the Amp
-CLI loads native modules from it; workers already execute build output from
-their cache, so `noexec` would add no protection. Amp alone receives `AMP_API_KEY`; check workers do not receive
-it in their environment. Cache state is worker-owned and is never restored into
-trusted CI caches. This is process/container isolation, not a separate VM.
+After resolving the lockfile, `cargo fetch --locked` runs through the runner's
+package firewall (including Aegis when enabled). Verification uses offline Cargo
+with a copy of those downloads, fresh HOME/configuration/build output and no
+agent cache. Agent invocations may reuse their own cache. Checks compare source
+snapshots before and after every command, so a check that changes source fails.
+These checks detect changes; the source is not mounted read-only. Commands use
+new process groups, which are killed on completion, timeout and cancellation.
+Each command is limited to 45 minutes and the remaining total repair budget.
 
-Worker removal is mandatory on success, failure, cancellation, and timeout. If
-cleanup cannot be confirmed, the action fails rather than continuing. The Amp
-key necessarily belongs to the agent's trust boundary; private source and
-diagnostics can be sent to Amp. The action does not promise to establish the
-semantic correctness of an invariant migration.
+**This is not a security sandbox.** Amp and dependency build scripts run as the
+same OS user as the coordinator. Environment filtering, fresh state and process
+group cleanup do not prevent access to runner files, other processes, credentials,
+network, tool installations or same-user modifications. Use disposable runners
+without unrelated secrets or shared trusted caches. A process can deliberately
+escape its process group; this runner mode does not contain hostile code. STS
+publishing credentials are minted only after repair/check processes return and
+revoked before further repairs, but this is not credential isolation from code
+sharing the runner. Private source and diagnostics may be sent to Amp, whose key
+is necessarily available to the agent. Review migrations before merging.
 
 ## Inputs and outputs
 
 Required inputs: `source`, `baseline` (absolute paths to source exports without
 `.git`), `pins` (JSON map of selected GitHub HTTPS source URL to full commit SHA),
-`worker-image`, `local-checks`, `allowed-paths`, and `amp-api-key`.
+`local-checks`, `allowed-paths`, and `amp-api-key`.
 Optional inputs: `repair-instructions`, `max-repairs` (3), `budget-minutes` (60).
 
 Check commands are newline-separated argument lists parsed with `shlex`, not
 shell programs. Pipelines, substitutions, and environment assignments are not
-supported. Checks must work with read-only source and a prepared lockfile; use
+supported. Checks must leave source unchanged and use a prepared lockfile; use
 `--locked` for Cargo builds/tests. Source-changing fixes belong to the repair phase.
 Use an image-provided command for more complex checks.
 

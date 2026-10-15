@@ -1,4 +1,4 @@
-"""Bounded Rust dependency repair in disposable, credential-isolated workers."""
+"""Bounded Rust dependency repair using tools installed on an ephemeral runner."""
 
 import argparse
 import hashlib
@@ -13,12 +13,9 @@ import subprocess
 import tempfile
 import time
 import tomllib
-import uuid
 
 
 SHA = re.compile(r"[0-9a-f]{40}")
-IMAGE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}")
-TOOL_PATH = "/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin"
 DENIED_ROOTS = {".git", ".github", ".cargo", "scripts"}
 SOURCE_KEYS = ("git", "rev", "tag", "branch", "path", "registry", "workspace", "package")
 
@@ -256,95 +253,88 @@ class Policy:
 
 
 class Worker:
-    """Only source and an expendable cache are writable inside the container."""
+    """Run processes with explicit environments; this is not a security sandbox."""
 
-    def __init__(self, root, image, deadline, cache, *, memory="4g", seed=None):
-        if not IMAGE.fullmatch(image):
-            raise ValueError("worker-image must be pinned by sha256 digest")
-        if not re.fullmatch(r"[1-9][0-9]*[mg]", memory):
-            raise ValueError("worker-memory must be an explicit positive limit")
-        self.root, self.image, self.deadline, self.cache = root, image, deadline, cache
-        self.memory = memory
-        # Runner-fetched Cargo home: written only on the runner, read-only in checks.
+    def __init__(self, root, deadline, cache, *, seed=None):
+        self.root, self.deadline, self.cache = root, deadline, cache
         self.seed = seed or cache.with_name(cache.name + "-seed")
+        # Capture installed tools before any candidate code runs. Never search the
+        # candidate directory or agent cache for executables.
+        self.path = os.pathsep.join(path for path in os.get_exec_path() if Path(path).is_absolute())
+        self.rustup_home = os.environ.get("RUSTUP_HOME", str(Path.home() / ".rustup"))
+        self.toolchain = os.environ.get("RUSTUP_TOOLCHAIN")
 
-    def arguments(self, name, args, *, agent=False, cache=None, lockfile=False):
-        cache = self.cache if cache is None else cache
-        check = not (agent or lockfile)
-        for path in (self.root, cache, self.seed):
-            if "," in str(path):
-                raise ValueError("Docker mount paths must not contain commas")
-        # Docker always adds noexec to an unqualified tmpfs; Amp loads native modules from /tmp.
-        command = ["docker", "run", "--name", name, "--rm", "--init", "--read-only",
-                   "--cap-drop=ALL", "--security-opt=no-new-privileges:true",
-                   "--pids-limit=4096", "--memory", self.memory,
-                   "--user", f"{os.getuid()}:{os.getgid()}",
-                   "--mount", f"type=bind,src={self.root},dst=/workspace" + (",readonly" if check else ""),
-                   "--mount", f"type=bind,src={cache},dst=/cache",
-                   "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g", "--workdir", "/workspace",
-                   "--env", "HOME=/cache/home", "--env", "CARGO_HOME=/cache/cargo",
-                   "--env", "CARGO_TARGET_DIR=/cache/target",
-                   "--env", "XDG_CONFIG_HOME=/cache/config", "--env", "CI=true",
-                   "--env", f"PATH={TOOL_PATH}", "--env", "RUSTUP_HOME=/usr/local/rustup",
-                   "--env", "CARGO_HTTP_TIMEOUT=180", "--env", "CARGO_NET_RETRY=10"]
-        if check:
-            # Checks use only crates the runner fetched (through its package firewall).
-            command += ["--network", "none", "--env", "CARGO_NET_OFFLINE=true",
-                        "--mount", f"type=bind,src={self.seed},dst=/cache/cargo,readonly"]
-        if agent:
-            command += ["--env", "AMP_API_KEY"]
-        return command + ["--entrypoint", args[0], self.image, *args[1:]]
-
-    def execute(self, args, *, agent=False, lockfile=False):
-        if lockfile and (agent or args != ["cargo", "update", "--workspace"]):
-            raise ValueError("only dedicated lockfile resolution may write verification source")
-        remaining = int(self.deadline - time.monotonic())
-        if remaining <= 0:
-            raise TimeoutError("dependency repair budget exhausted")
-        name = "amp-repair-" + uuid.uuid4().hex
-        # Never copy the runner environment into the Docker client/worker.
-        env = {key: os.environ[key] for key in ("PATH", "LANG") if key in os.environ}
+    def environment(self, cache, *, agent=False, offline=False):
+        env = {key: os.environ[key] for key in ("LANG", "LC_ALL") if key in os.environ}
+        for directory in ("home", "cargo", "target", "config", "tmp"):
+            (cache / directory).mkdir(parents=True, exist_ok=True)
+        env.update(PATH=self.path, HOME=str(cache / "home"), CARGO_HOME=str(cache / "cargo"),
+                   CARGO_TARGET_DIR=str(cache / "target"), XDG_CONFIG_HOME=str(cache / "config"),
+                   TMPDIR=str(cache / "tmp"), RUSTUP_HOME=self.rustup_home, CI="true",
+                   CARGO_HTTP_TIMEOUT="180", CARGO_NET_RETRY="10", GIT_CONFIG_NOSYSTEM="1",
+                   GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT="0")
+        if self.toolchain:
+            env["RUSTUP_TOOLCHAIN"] = self.toolchain
+        if offline:
+            env["CARGO_NET_OFFLINE"] = "true"
         if agent:
             key = os.environ.get("AMP_API_KEY", "")
             if not key.strip():
                 raise ValueError("AMP_API_KEY is required when a repair is needed")
             env["AMP_API_KEY"] = key
-        with tempfile.TemporaryFile() as log, tempfile.TemporaryDirectory(
-                prefix="amp-docker-client-") as client:
-            env.update(HOME=client, DOCKER_CONFIG=client)
-            # Agent state and prior build scripts are untrusted. Each verification
-            # command starts with empty HOME/Cargo/target state, outside agent mounts.
-            with tempfile.TemporaryDirectory(prefix="amp-check-cache-",
-                                             dir=self.cache.parent) as clean_cache:
-                cache = self.cache if agent else Path(clean_cache)
-                (cache / "cargo").mkdir(exist_ok=True)
-                self.seed.mkdir(exist_ok=True)
-                return self._execute(name, args, agent, cache, env, log, remaining, lockfile)
+        return env
 
-    def _execute(self, name, args, agent, cache, env, log, remaining, lockfile):
-        try:
-            result = subprocess.run(self.arguments(name, args, agent=agent, cache=cache, lockfile=lockfile), env=env,
-                                    stdout=log, stderr=subprocess.STDOUT,
-                                    timeout=min(2700, remaining))
-            log.seek(0, 2)
-            length = log.tell()
-            log.seek(0)
-            beginning = log.read(min(length, 4096))
-            log.seek(max(len(beginning), length - 60000))
-            return result.returncode, (beginning + log.read()).decode(errors="replace")
-        finally:
-            # Killing the CLI alone does not stop a detached container's processes.
-            cleanup = subprocess.run(["docker", "rm", "--force", name], env=env,
-                                     capture_output=True, text=True, timeout=30, check=False)
-            if cleanup.returncode and "No such container" not in cleanup.stderr:
-                raise RuntimeError("cannot confirm worker cleanup; refusing further repair/publication")
+    def execute(self, args, *, agent=False, lockfile=False, fetch=False):
+        if lockfile and (agent or fetch or args != ["cargo", "update", "--workspace"]):
+            raise ValueError("only dedicated lockfile resolution may write verification source")
+        if fetch and (agent or args != ["cargo", "fetch", "--locked"]):
+            raise ValueError("only dedicated dependency fetch may populate the download cache")
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("dependency repair budget exhausted")
+        executable = shutil.which(args[0], path=self.path)
+        if not executable:
+            raise FileNotFoundError(f"required runner tool is not installed: {args[0]}")
+        with tempfile.TemporaryDirectory(prefix="amp-check-cache-", dir=self.cache.parent) as directory:
+            cache = self.cache if agent else Path(directory)
+            if not (agent or lockfile or fetch) and self.seed.exists():
+                # Each check gets downloads but none of the agent's Cargo config,
+                # installed subcommands, build output or HOME state.
+                shutil.copytree(self.seed, cache / "cargo")
+            env = self.environment(cache, agent=agent, offline=not (agent or lockfile or fetch))
+            if fetch:
+                self.seed.mkdir(parents=True, exist_ok=True)
+                env["CARGO_HOME"] = str(self.seed)
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("dependency repair budget exhausted")
+            with tempfile.TemporaryFile() as log:
+                process = subprocess.Popen([executable, *args[1:]], cwd=self.root, env=env,
+                                           stdin=subprocess.DEVNULL, stdout=log,
+                                           stderr=subprocess.STDOUT, start_new_session=True)
+                try:
+                    process.wait(timeout=min(2700, remaining))
+                finally:
+                    # Also stop background children after normal exit, cancellation
+                    # or timeout, before checking the tree or minting an STS token.
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    process.wait(timeout=30)
+                log.seek(0, 2)
+                length = log.tell()
+                log.seek(0)
+                beginning = log.read(min(length, 4096))
+                log.seek(max(len(beginning), length - 60000))
+                return process.returncode, (beginning + log.read()).decode(errors="replace")
 
     def resolve_lockfile(self):
         original = snapshot(self.root)
         with tempfile.TemporaryDirectory(prefix="amp-lockfile-", dir=self.cache.parent) as directory:
             source = Path(directory) / "source"
             shutil.copytree(self.root, source)
-            resolver = Worker(source, self.image, self.deadline, self.cache, memory=self.memory)
+            resolver = Worker(source, self.deadline, self.cache)
             status, log = resolver.execute(["cargo", "update", "--workspace"], lockfile=True)
             current = snapshot(source)
             if any(original.get(path) != current.get(path)
@@ -357,30 +347,11 @@ class Worker:
             return status, log
 
     def fetch_dependencies(self):
-        """Download the locked dependencies on the runner, under its package firewall.
-
-        `cargo fetch` runs no build scripts. Workers bypass host-only firewalls such as
-        Aegis, so checks run offline from this read-only cache instead.
-        """
-        cargo = shutil.which("cargo")
-        if not cargo:
-            raise RuntimeError("cargo is required on the runner to fetch dependencies")
-        remaining = int(self.deadline - time.monotonic())
-        if remaining <= 0:
-            raise TimeoutError("dependency repair budget exhausted")
-        self.seed.mkdir(exist_ok=True)
-        env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "RUSTUP_HOME") if key in os.environ}
-        env.update(CARGO_HOME=str(self.seed), CARGO_HTTP_TIMEOUT="180", CARGO_NET_RETRY="10",
-                   GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT="0")
-        result = run([cargo, "fetch", "--locked"], cwd=self.root, env=env, check=False,
-                     timeout=min(1200, remaining))
-        if result.returncode:
-            return result.returncode, (result.stdout + result.stderr)[-16000:]
-        # Confirm the image's Cargo finds every locked source offline in the read-only cache.
-        status, log = self.execute(["cargo", "fetch", "--locked"])
-        if status:
-            raise RuntimeError("worker Cargo cannot use runner-fetched dependencies offline:\n" + log[-4000:])
-        return 0, ""
+        """Fetch locked dependencies on the runner through its package firewall."""
+        # Rebuild the seed after every repair, independently of the agent cache.
+        if self.seed.exists():
+            shutil.rmtree(self.seed)
+        return self.execute(["cargo", "fetch", "--locked"], fetch=True)
 
 
 def checks(worker, commands):
@@ -465,7 +436,6 @@ def main():
     parser.add_argument("--source", required=True)
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--pins", required=True, help="trusted JSON map of selected URL to full SHA")
-    parser.add_argument("--worker-image", required=True)
     parser.add_argument("--checks", required=True)
     parser.add_argument("--allowed-paths", required=True)
     parser.add_argument("--instructions", default="Fix dependency API compatibility.")
@@ -482,7 +452,7 @@ def main():
     policy.freeze(source)
     with tempfile.TemporaryDirectory(prefix="amp-worker-cache-") as cache, \
             tempfile.TemporaryDirectory(prefix="amp-cargo-seed-") as seed:
-        worker = Worker(source, args.worker_image, time.monotonic() + args.budget_minutes * 60,
+        worker = Worker(source, time.monotonic() + args.budget_minutes * 60,
                         Path(cache), seed=Path(seed))
         error, attempts = repair_local(worker, policy, commands, args.instructions,
                                        args.max_repairs)
