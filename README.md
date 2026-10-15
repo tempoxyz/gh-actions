@@ -21,6 +21,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`socket-sts`](actions/socket-sts) | Exchange GitHub OIDC tokens for short-lived Socket API tokens
 | [`aegis`](actions/aegis) | Install Aegis with a short-lived, repository-scoped Socket token, or warn and skip installation when setup fails
 | [`create-pull-request`](actions/create-pull-request) | Commit working-tree changes and open a PR
+| [`skill-sync`](actions/skill-sync) | Copy agent skills from their source repositories and verify generated copies against a lock file
 | [`pr-audit-comment`](actions/pr-audit-comment) | Handle PR audit issue-comment commands
 | [`setup-rust-build`](actions/setup-rust-build) | Install Rust toolchain, mold linker, and sccache
 | [`setup-foundry`](actions/setup-foundry) | Install Foundry toolchain from an attested release
