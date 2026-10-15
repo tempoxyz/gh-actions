@@ -70,7 +70,7 @@ permissions:
 steps:
   - name: Fetch GitHub token via STS
     id: app-token
-    uses: tempoxyz/gh-actions/actions/github-sts@55fe3b63d9612623cc51e6c62d9d62fbcb175fb0 # 2026-09-29T01-25-15Z-55fe3b63
+    uses: tempoxyz/gh-actions/actions/github-sts@a4fa1d51aa4014d86628f43b1dff8ba88219e04d # 2026-10-15T00-03-55Z-a4fa1d51
     with:
       policy: bump-formula
 
