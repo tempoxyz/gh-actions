@@ -10,8 +10,11 @@ function sha256(data) {
   return createHash("sha256").update(data).digest("hex");
 }
 
+// Paths are POSIX and confined to the working directory. Backslashes are
+// rejected so a Windows runner cannot read `..\x` as a parent segment.
 function isRelativePath(value) {
-  return typeof value === "string" && value !== "" && !value.startsWith("/") && !value.split("/").some((part) => part === "" || part === "." || part === "..");
+  return typeof value === "string" && value !== "" && !value.startsWith("/") && !/[\\\0]/.test(value)
+    && !value.split("/").some((part) => part === "" || part === "." || part === "..");
 }
 
 // A registry entry names one skill, the plugin that ships it, and where its

@@ -168,6 +168,24 @@ test("only syncs the selected skills and keeps other lock entries", async (t) =>
   await assert.rejects(sync({ ...options, root, only: ["missing"], source }), /no skills match: missing/);
 });
 
+test("only can remove a plugin's last skill", async (t) => {
+  const root = workspace(t, registry);
+  await sync({ ...options, root, source: fakeSource(sources()) });
+  fs.writeFileSync(path.join(root, "skills.json"), JSON.stringify({ skills: registry.slice(0, 2) }));
+
+  const result = await sync({ ...options, root, only: ["mercator"], source: fakeSource(sources()) });
+
+  assert.equal(result.changed, true);
+  assert.equal(fs.existsSync(path.join(root, "plugins/mercator/skills/mercator-setup")), false);
+  assert.deepEqual(JSON.parse(read(root, "skills.lock.json")).skills.map(({ name }) => name), ["docs", "wallet"]);
+});
+
+test("writes a lock file in a new directory", async (t) => {
+  const root = workspace(t, registry);
+  await sync({ ...options, root, lock: ".generated/skills.lock.json", source: fakeSource(sources()) });
+  check({ ...options, root, lock: ".generated/skills.lock.json" });
+});
+
 test("moving a destination removes the old copy", async (t) => {
   const root = workspace(t, registry);
   await sync({ ...options, root, source: fakeSource(sources()) });
@@ -201,6 +219,21 @@ test("catalog mode mirrors another repository's lock with upstream provenance", 
 
   fs.appendFileSync(path.join(root, "public/skills/docs/SKILL.md"), "edit\n");
   assert.throws(() => check(mirror), /edit tempoxyz\/docs\/SKILL.md and let the sync update it/);
+  await sync({ ...mirror, source: fakeSource(repos) });
+
+  // A skill that moves to another source keeps its bytes but not its provenance.
+  const lock = JSON.parse(tree["skills.lock.json"]);
+  lock.skills.find(({ name }) => name === "docs").upstream = undefined;
+  Object.assign(lock.skills.find(({ name }) => name === "docs"), { repo: "tempoxyz/docs-next", path: "skill/SKILL.md", commit: sha("9") });
+  repos["tempoxyz/plugins"].commits[sha("f")]["skills.lock.json"] = JSON.stringify(lock);
+  const moved = await sync({ ...mirror, source: fakeSource(repos) });
+  assert.equal(moved.changed, true);
+  assert.deepEqual(JSON.parse(read(root, "skills.lock.json")).skills.find(({ name }) => name === "docs").upstream, { repo: "tempoxyz/docs-next", path: "skill/SKILL.md", commit: sha("9") });
+
+  // A new upstream commit with the same bytes and source is not a change.
+  Object.assign(lock.skills.find(({ name }) => name === "docs"), { commit: sha("8") });
+  repos["tempoxyz/plugins"].commits[sha("f")]["skills.lock.json"] = JSON.stringify(lock);
+  assert.equal((await sync({ ...mirror, source: fakeSource(repos) })).changed, false);
 });
 
 test("check accepts an empty repository and notes unsynced entries", (t) => {

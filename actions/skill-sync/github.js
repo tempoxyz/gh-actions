@@ -95,23 +95,40 @@ class GitHubSource {
     return Buffer.from(blob.content, blob.encoding);
   }
 
+  // Walks one tree level per path segment. Unlike Contents API listings,
+  // tree listings are not capped at 1,000 entries.
+  async entry(repo, commit, path) {
+    let found = { type: "tree", sha: commit };
+    for (const name of path.split("/")) {
+      if (found?.type !== "tree") {
+        found = undefined;
+        break;
+      }
+      const listing = await this.json(repo, `/repos/${repo}/git/trees/${found.sha}`);
+      if (listing.truncated) throw new Error(`${repo}@${commit.slice(0, 8)}: tree listing for ${path} is truncated`);
+      found = listing.tree.find((item) => item.path === name);
+    }
+    if (!found) throw new Error(`${repo}@${commit.slice(0, 8)}: ${path} does not exist`);
+    return found;
+  }
+
   // A file path is distributed as SKILL.md; a directory is copied whole.
-  // Symlinks and submodules are rejected rather than followed.
+  // Only regular, non-executable files are copied: the copies are committed
+  // through an API that does not keep file modes, so an executable bit
+  // would be lost silently.
   async files(repo, commit, path) {
-    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-    const listing = await this.json(repo, `/repos/${repo}/contents/${encodePath(parent)}?ref=${commit}`);
-    const entry = Array.isArray(listing) ? listing.find((item) => item.path === path) : undefined;
-    if (!entry) throw new Error(`${repo}@${commit.slice(0, 8)}: ${path} does not exist`);
-    if (entry.type === "file") return new Map([["SKILL.md", await this.blob(repo, entry.sha)]]);
-    if (entry.type !== "dir") throw new Error(`${repo}/${path}: ${entry.type} entries are not copied`);
+    const entry = await this.entry(repo, commit, path);
+    if (entry.type === "blob") {
+      assertCopyable(repo, path, entry);
+      return new Map([["SKILL.md", await this.blob(repo, entry.sha)]]);
+    }
+    if (entry.type !== "tree") throw new Error(`${repo}/${path}: submodules are not copied`);
     const tree = await this.json(repo, `/repos/${repo}/git/trees/${entry.sha}?recursive=1`);
     if (tree.truncated) throw new Error(`${repo}/${path}: tree listing is truncated`);
     const files = new Map();
     for (const item of tree.tree) {
       if (item.type === "tree") continue;
-      if (item.type !== "blob" || (item.mode !== "100644" && item.mode !== "100755")) {
-        throw new Error(`${repo}/${path}/${item.path}: symlinks and submodules are not copied`);
-      }
+      assertCopyable(repo, `${path}/${item.path}`, item);
       files.set(item.path, await this.blob(repo, item.sha));
     }
     if (!files.has("SKILL.md")) throw new Error(`${repo}/${path} has no SKILL.md`);
@@ -119,9 +136,16 @@ class GitHubSource {
   }
 
   async text(repo, commit, path) {
-    const entry = await this.json(repo, `/repos/${repo}/contents/${encodePath(path)}?ref=${commit}`);
+    const entry = await this.entry(repo, commit, path);
+    if (entry.type !== "blob") throw new Error(`${repo}/${path} is not a file`);
     return (await this.blob(repo, entry.sha)).toString("utf8");
   }
+}
+
+function assertCopyable(repo, path, item) {
+  if (item.type === "blob" && item.mode === "100644") return;
+  if (item.mode === "100755") throw new Error(`${repo}/${path}: executable files are not copied; invoke scripts through an interpreter instead`);
+  throw new Error(`${repo}/${path}: symlinks and submodules are not copied`);
 }
 
 module.exports = { GitHubSource, encodePath, stsMinter };

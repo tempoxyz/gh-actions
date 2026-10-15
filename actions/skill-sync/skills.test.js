@@ -31,6 +31,7 @@ for (const [label, skills, message] of [
   ["absolute path", [{ ...entry, path: "/SKILL.md" }], /"path" must be a relative path/],
   ["parent path", [{ ...entry, path: "../SKILL.md" }], /"path" must be a relative path/],
   ["trailing slash", [{ ...entry, path: "skills/docs/" }], /"path" must be a relative path/],
+  ["Windows separators", [{ ...entry, path: "..\\SKILL.md" }], /"path" must be a relative path/],
   ["empty ref", [{ ...entry, ref: "" }], /"ref" must be/],
   ["duplicate name", [entry, entry], /duplicate skill "docs"/],
 ]) {
@@ -53,6 +54,7 @@ for (const [template, message] of [
   ["skills/{repo}", /unknown placeholder \{repo\}/],
   ["/skills/{name}", /must be a relative path/],
   ["../{name}", /must be a relative path/],
+  ["..\\{name}", /must be a relative path/],
 ]) {
   test(`rejects dest ${template}`, () => {
     assert.throws(() => renderDest(template, { name: "docs", plugin: "docs" }), message);

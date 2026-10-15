@@ -49,45 +49,79 @@ test("rejects a ref that does not resolve to a commit", async () => {
   await assert.rejects(new GitHubSource({ send, apiUrl: API }).resolve("o/r", "main"), /did not resolve to a commit/);
 });
 
-test("copies a file source as SKILL.md", async () => {
-  const { send } = fakeSend({
-    [`/repos/o/r/contents/apps/cli?ref=${COMMIT}`]: json([{ path: "apps/cli/SKILL.md", type: "file", sha: "s1" }]),
+function tree(entries, truncated = false) {
+  return json({ truncated, tree: entries });
+}
+
+const blobEntry = (path, sha, mode = "100644") => ({ path, type: "blob", mode, sha });
+const treeEntry = (path, sha) => ({ path, type: "tree", mode: "040000", sha });
+
+test("copies a nested file source as SKILL.md by walking trees", async () => {
+  const { calls, send } = fakeSend({
+    [`/repos/o/r/git/trees/${COMMIT}`]: tree([treeEntry("apps", "t-apps")]),
+    "/repos/o/r/git/trees/t-apps": tree([treeEntry("cli", "t-cli")]),
+    "/repos/o/r/git/trees/t-cli": tree([blobEntry("SKILL.md", "s1")]),
     "/repos/o/r/git/blobs/s1": blob("skill"),
   });
   const files = await new GitHubSource({ send, apiUrl: API }).files("o/r", COMMIT, "apps/cli/SKILL.md");
   assert.deepEqual([...files].map(([name, content]) => [name, content.toString()]), [["SKILL.md", "skill"]]);
+  assert.ok(!calls.some(([route]) => route.includes("/contents/")));
 });
 
 test("copies a directory source whole", async () => {
   const { send } = fakeSend({
-    [`/repos/o/r/contents/?ref=${COMMIT}`]: json([{ path: "skill", type: "dir", sha: "t1" }]),
-    "/repos/o/r/git/trees/t1?recursive=1": json({ truncated: false, tree: [
-      { path: "SKILL.md", type: "blob", mode: "100644", sha: "s1" },
-      { path: "references", type: "tree", mode: "040000", sha: "t2" },
-      { path: "references/run.sh", type: "blob", mode: "100755", sha: "s2" },
-    ] }),
+    [`/repos/o/r/git/trees/${COMMIT}`]: tree([treeEntry("skill", "t1")]),
+    "/repos/o/r/git/trees/t1?recursive=1": tree([
+      blobEntry("SKILL.md", "s1"),
+      treeEntry("references", "t2"),
+      blobEntry("references/a.md", "s2"),
+    ]),
     "/repos/o/r/git/blobs/s1": blob("skill"),
-    "/repos/o/r/git/blobs/s2": blob("run"),
+    "/repos/o/r/git/blobs/s2": blob("ref"),
   });
   const files = await new GitHubSource({ send, apiUrl: API }).files("o/r", COMMIT, "skill");
-  assert.deepEqual([...files.keys()], ["SKILL.md", "references/run.sh"]);
+  assert.deepEqual([...files.keys()], ["SKILL.md", "references/a.md"]);
 });
 
-for (const [label, listing, tree, message] of [
+test("finds a source in a directory with more than 1,000 entries", async () => {
+  const siblings = Array.from({ length: 1500 }, (_, index) => blobEntry(`file-${index}.md`, `x${index}`));
+  const { send } = fakeSend({
+    [`/repos/o/r/git/trees/${COMMIT}`]: tree([...siblings, blobEntry("SKILL.md", "s1")]),
+    "/repos/o/r/git/blobs/s1": blob("skill"),
+  });
+  const files = await new GitHubSource({ send, apiUrl: API }).files("o/r", COMMIT, "SKILL.md");
+  assert.equal(files.get("SKILL.md").toString(), "skill");
+});
+
+for (const [label, root, subtree, message] of [
   ["a missing path", [], null, /skill does not exist/],
-  ["a symlink path", [{ path: "skill", type: "symlink", sha: "x" }], null, /symlink entries are not copied/],
-  ["a truncated tree", [{ path: "skill", type: "dir", sha: "t1" }], { truncated: true, tree: [] }, /truncated/],
-  ["a symlink inside", [{ path: "skill", type: "dir", sha: "t1" }], { truncated: false, tree: [{ path: "a", type: "blob", mode: "120000", sha: "x" }] }, /symlinks and submodules/],
-  ["a submodule inside", [{ path: "skill", type: "dir", sha: "t1" }], { truncated: false, tree: [{ path: "a", type: "commit", mode: "160000", sha: "x" }] }, /symlinks and submodules/],
-  ["no SKILL.md", [{ path: "skill", type: "dir", sha: "t1" }], { truncated: false, tree: [] }, /has no SKILL\.md/],
+  ["a path below a file", [blobEntry("skill", "s1")], null, /skill\/SKILL\.md does not exist/],
+  ["a truncated level", { truncated: true, entries: [] }, null, /tree listing for skill is truncated/],
+  ["a symlink path", [blobEntry("skill", "x", "120000")], null, /symlinks and submodules are not copied/],
+  ["a submodule path", [{ path: "skill", type: "commit", mode: "160000", sha: "x" }], null, /submodules are not copied/],
+  ["a truncated tree", [treeEntry("skill", "t1")], { truncated: true, entries: [] }, /tree listing is truncated/],
+  ["a symlink inside", [treeEntry("skill", "t1")], [blobEntry("a", "x", "120000")], /symlinks and submodules/],
+  ["a submodule inside", [treeEntry("skill", "t1")], [{ path: "a", type: "commit", mode: "160000", sha: "x" }], /symlinks and submodules/],
+  ["an executable inside", [treeEntry("skill", "t1")], [blobEntry("SKILL.md", "s1"), blobEntry("run.sh", "s2", "100755")], /skill\/run\.sh: executable files are not copied/],
+  ["no SKILL.md", [treeEntry("skill", "t1")], [], /has no SKILL\.md/],
 ]) {
   test(`rejects ${label}`, async () => {
-    const routes = { [`/repos/o/r/contents/?ref=${COMMIT}`]: json(listing) };
-    if (tree) routes["/repos/o/r/git/trees/t1?recursive=1"] = json(tree);
+    const listing = (value) => (Array.isArray(value) ? tree(value) : tree(value.entries, value.truncated));
+    const routes = { [`/repos/o/r/git/trees/${COMMIT}`]: listing(root), "/repos/o/r/git/blobs/s1": blob("skill") };
+    if (subtree) routes["/repos/o/r/git/trees/t1?recursive=1"] = listing(subtree);
     const { send } = fakeSend(routes);
-    await assert.rejects(new GitHubSource({ send, apiUrl: API }).files("o/r", COMMIT, "skill"), message);
+    const target = label === "a path below a file" ? "skill/SKILL.md" : "skill";
+    await assert.rejects(new GitHubSource({ send, apiUrl: API }).files("o/r", COMMIT, target), message);
   });
 }
+
+test("reads a text file such as a catalog lock", async () => {
+  const { send } = fakeSend({
+    [`/repos/o/r/git/trees/${COMMIT}`]: tree([blobEntry("skills.lock.json", "s1")]),
+    "/repos/o/r/git/blobs/s1": blob("{}"),
+  });
+  assert.equal(await new GitHubSource({ send, apiUrl: API }).text("o/r", COMMIT, "skills.lock.json"), "{}");
+});
 
 test("retries a hidden repository once with a minted read token", async () => {
   const { calls, send } = fakeSend({

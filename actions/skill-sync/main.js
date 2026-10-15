@@ -103,6 +103,12 @@ function syncIndex(root, index, baseUrl, entries, check) {
   return true;
 }
 
+// A catalog entry that moved to another source is refreshed even when its
+// bytes did not change; a new upstream commit alone is not a change.
+function sameUpstream(old, entry) {
+  return old.upstream?.repo === entry.upstream?.repo && old.upstream?.path === entry.upstream?.path;
+}
+
 function selects(only, entry) {
   return only.length === 0 || only.includes(entry.name) || only.includes(entry.plugin);
 }
@@ -117,7 +123,9 @@ async function sync({ root, config, lock, dest, catalog, index, baseUrl, only = 
     ? await catalogEntries(source, catalog)
     : parseRegistry(fs.readFileSync(path.join(root, config), "utf8"), config);
   const selected = entries.filter((entry) => selects(only, entry));
-  if (only.length && !selected.length) throw new Error(`no skills match: ${only.join(", ")}`);
+  if (only.length && !selected.length && ![...previous.values()].some((entry) => selects(only, entry))) {
+    throw new Error(`no skills match: ${only.join(", ")}`);
+  }
 
   const next = new Map(previous);
   const changes = [];
@@ -134,7 +142,8 @@ async function sync({ root, config, lock, dest, catalog, index, baseUrl, only = 
 
     const old = previous.get(entry.name);
     const unchanged = old && old.digest === digest && old.dest === target && old.repo === entry.repo
-      && old.path === entry.path && old.ref === entry.ref && digestOnDisk(root, target) === digest;
+      && old.path === entry.path && old.ref === entry.ref && sameUpstream(old, entry)
+      && digestOnDisk(root, target) === digest;
     if (unchanged) continue;
 
     if (old && old.dest !== target) removeTree(root, old.dest);
@@ -161,7 +170,10 @@ async function sync({ root, config, lock, dest, catalog, index, baseUrl, only = 
     changes.push({ ...old, removed: true });
   }
 
-  if (changes.length) fs.writeFileSync(lockFile, renderLock(next.values()));
+  if (changes.length) {
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+    fs.writeFileSync(lockFile, renderLock(next.values()));
+  }
   const indexChanged = syncIndex(root, index, baseUrl, next, false);
   return { changed: changes.length > 0 || indexChanged, summary: renderSummary(changes) };
 }
