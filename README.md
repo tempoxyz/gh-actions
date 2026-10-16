@@ -31,7 +31,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-helm`](actions/setup-helm) | Install Helm verified against the maintainers' GPG signatures
 | [`cargo-dependency-changes`](actions/cargo-dependency-changes) | Detect selected Cargo dependency version/source changes without running repository code |
 | [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
-| [`amp-repair`](actions/amp-repair) | Repair Rust dependency migrations on the runner with bounded independent checks |
+| [`codex-repair`](actions/codex-repair) | Repair Rust dependency migrations on the runner with bounded independent checks |
 
 ### Installer verification
 

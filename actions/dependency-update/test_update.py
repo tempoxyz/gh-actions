@@ -199,7 +199,7 @@ class PublicationTests(unittest.TestCase):
         scripts = self.repository / "scripts"
         scripts.mkdir()
         adapter = scripts / "prepare.py"
-        adapter.write_text('import json,os,sys\nassert "AMP_API_KEY" not in os.environ\n'
+        adapter.write_text('import json,os,sys\nassert "CODEX_API_KEY" not in os.environ\n'
                            'assert "ACTIONS_ID_TOKEN_REQUEST_TOKEN" not in os.environ\n'
                            'if sys.argv[1] == "resolve": print(' + repr(json.dumps(self.plan)) + ')\n')
         git(self.repository, "add", "scripts")
@@ -245,7 +245,7 @@ class PublicationTests(unittest.TestCase):
         coordinator = update.Coordinator(self.repository, self.root, config, self.github)
         coordinator.sts = self.coordinator.sts
         with patch.object(update, "git", side_effect=local_git), patch.object(update, "Worker", FakeWorker), \
-             patch.dict(os.environ, {"GH_TOKEN": "dummy-read-token", "AMP_API_KEY": "dummy-amp-key"}):
+             patch.dict(os.environ, {"GH_TOKEN": "dummy-read-token", "CODEX_API_KEY": "dummy-codex-key"}):
             coordinator.execute()
         self.assertEqual(len(polls), 2)
         self.assertNotEqual(polls[0], polls[1])

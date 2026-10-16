@@ -1,4 +1,4 @@
-"""Exercise installed updater tools without Amp API calls or GitHub writes."""
+"""Exercise installed updater tools without Codex API calls or GitHub writes."""
 
 import os
 from pathlib import Path
@@ -17,9 +17,9 @@ with tempfile.TemporaryDirectory(prefix="dependency-runner-smoke-") as directory
     (source / "src").mkdir()
     (source / "src/lib.rs").write_text('pub fn answer() -> u32 {\n    42\n}\n')
     worker = Worker(source, time.monotonic() + 120, cache)
-    # --version does not contact Amp or consume credits; no actual key is needed.
-    os.environ["AMP_API_KEY"] = "smoke-version-only"
-    status, log = worker.execute(["amp", "--version"], agent=True)
+    # --version does not contact Codex or consume credits; no actual key is needed.
+    os.environ["CODEX_API_KEY"] = "smoke-version-only"
+    status, log = worker.execute(["codex", "--version"], agent=True)
     print(log, flush=True)
     if status:
         raise RuntimeError("installed tool smoke failed")
@@ -33,4 +33,4 @@ with tempfile.TemporaryDirectory(prefix="dependency-runner-smoke-") as directory
                             "cargo nextest run --locked --no-tests=warn"])
     if error:
         raise RuntimeError(error)
-    print("Runner tool setup, Amp startup and Cargo checks passed.")
+    print("Runner tool setup, Codex startup and Cargo checks passed.")
