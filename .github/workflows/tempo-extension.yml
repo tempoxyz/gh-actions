@@ -110,7 +110,7 @@ jobs:
       matrix: ${{ steps.matrix.outputs.json }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
+        uses: tempoxyz/gh-actions/actions/secure-runner@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
 
       - name: Validate inputs and resolve the build matrix
         id: matrix
@@ -170,7 +170,7 @@ jobs:
       EXTENSION_VERSION: ${{ inputs.version }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
+        uses: tempoxyz/gh-actions/actions/secure-runner@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
 
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
@@ -225,7 +225,7 @@ jobs:
 
       - name: Generate SBOM (SPDX-JSON)
         if: inputs.publish
-        uses: tempoxyz/gh-actions/vendor/anchore/sbom-action@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
+        uses: tempoxyz/gh-actions/vendor/anchore/sbom-action@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
         with:
           file: ${{ env.EXTENSION_OUTPUT }}
           format: spdx-json
@@ -248,7 +248,7 @@ jobs:
 
       - name: Install cosign
         if: inputs.publish
-        uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
+        uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
 
       - name: Sign binary with cosign (keyless)
         if: inputs.publish
@@ -281,7 +281,7 @@ jobs:
       VERSION: ${{ inputs.version }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
+        uses: tempoxyz/gh-actions/actions/secure-runner@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
 
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
@@ -359,7 +359,7 @@ jobs:
       # Mint the token only after the slow signer build so its lifetime covers just the upload.
       - name: Fetch R2 token
         id: cloudflare-sts
-        uses: tempoxyz/gh-actions/actions/cloudflare-sts@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
+        uses: tempoxyz/gh-actions/actions/cloudflare-sts@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
         with:
           account: ${{ inputs.cloudflare-sts-account }}
           policy: ${{ inputs.cloudflare-sts-policy }}
