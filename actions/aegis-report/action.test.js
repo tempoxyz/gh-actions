@@ -3,6 +3,15 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { inflateSync } = require("node:zlib");
+const { createHash } = require("node:crypto");
+
+function linkedPurls(url) {
+  const params = new URL(url).searchParams;
+  return params.has("purls")
+    ? JSON.parse(inflateSync(Buffer.from(params.get("purls"), "base64url")))
+    : params.getAll("purl");
+}
 
 const manifest = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
 
@@ -214,10 +223,10 @@ test("post lists recently published blocks and links one exemption dialog for th
   const links = [...markdown.matchAll(/\[Add Aegis exemptions for these packages\]\((https:\/\/go\/aegis\/policies\?[^)\s]+)\)/g)];
   assert.equal(links.length, 1);
   const url = new URL(links[0][1]);
-  assert.deepEqual(Object.fromEntries([...url.searchParams].filter(([key]) => key !== "purl")), {
+  assert.deepEqual(Object.fromEntries([...url.searchParams].filter(([key]) => key !== "purl" && key !== "purls")), {
     org: "*", repo: "*", reason: "recentlyPublished", verdict: "warn", confirm: "1",
   });
-  assert.deepEqual(url.searchParams.getAll("purl"), ["pkg:npm/%40tempo/example@1.2.3", "pkg:pypi/requests@2.32.0?artifact_id=wheel"]);
+  assert.deepEqual(linkedPurls(url), ["pkg:npm/%40tempo/example@1.2.3", "pkg:pypi/requests@2.32.0?artifact_id=wheel"]);
   assert.doesNotMatch(markdown, /malware@|warned@|unavailable@|no-version|warning@/);
   const { escapeAnnotation } = require("../harden-runner/annotations.cjs");
   assert.equal(lines.filter((line) => line.startsWith("::error ")).length, 1);
@@ -225,11 +234,11 @@ test("post lists recently published blocks and links one exemption dialog for th
     "::error title=Aegis blocked recently published package versions::",
     escapeAnnotation([
       "Aegis blocked 2 recently published package versions:",
+      `Add Aegis exemptions: ${url.href}`,
       "- @tempo/example@1.2.3 (npm)",
       "- requests@2.32.0 (pypi)",
-      `Add Aegis exemptions: ${url.href}`,
       "Each exemption downgrades recentlyPublished to a warning for that exact version only.",
-      "After approval, rerun failed jobs.",
+      "After approval, rerun failed jobs. See the step summary for all packages and exemption links.",
     ].join("\n")),
   ].join(""));
 });
@@ -238,16 +247,16 @@ test("recently published annotations escape coordinates and batch exemption URLs
   const { recentlyPublishedAnnotation } = require("./runtime-warnings.cjs");
   assert.equal(recentlyPublishedAnnotation([]), "");
   const one = recentlyPublishedAnnotation(["pkg:npm/%40tempo/test%0A%3A%3Aerror%3A%3A@1.0.0"]);
-  assert.equal(one.split("\n")[1], "- @tempo/test ::error::@1.0.0 (npm)");
+  assert.equal(one.split("\n").find(line => line.startsWith("- ")), "- @tempo/test ::error::@1.0.0 (npm)");
   assert.match(one, /^Aegis blocked 1 recently published package version:/);
 
-  const purls = Array.from({ length: 205 }, (_, i) => `pkg:npm/p${i}@1.0.0`);
+  const purls = Array.from({ length: 51 }, (_, i) => `pkg:npm/p${i}@1.0.0`);
   const many = recentlyPublishedAnnotation(purls);
-  assert.equal(many.split("\n").filter((line) => line.startsWith("- ")).length, 200);
-  assert.match(many, /…and 5 more in the Aegis audit-log artifact\./);
+  assert.equal(many.split("\n").filter((line) => line.startsWith("- ")).length, 5);
+  assert.match(many, /See the step summary for all packages and exemption links\./);
   const links = [...many.matchAll(/^Add Aegis exemptions: (\S+)$/gm)];
-  assert.deepEqual(links.flatMap((link) => new URL(link[1]).searchParams.getAll("purl")), purls);
-  assert.equal(links.length, 5);
+  assert.deepEqual(links.flatMap((link) => linkedPurls(link[1])), purls);
+  assert.equal(links.length, 2);
 });
 
 test("recently published summaries batch links for the policies page and render coordinates inertly", () => {
@@ -258,10 +267,47 @@ test("recently published summaries batch links for the policies page and render 
   assert.ok(one.includes("> - `` `[x](https://evil) #@1.0.0 `` (`npm`)"), one);
   assert.match(one, /\[Add Aegis exemptions for this package\]\(https:\/\/go\/aegis\/policies\?[^)\s]+\)\n/);
 
-  const many = recentlyPublishedSummary(Array.from({ length: 205 }, (_, i) => `pkg:npm/p${i}@1.0.0`));
-  assert.equal((many.match(/^> - `p\d+@1\.0\.0` \(`npm`\)$/gm) || []).length, 200);
-  assert.match(many, /^> - …and 5 more in the Aegis audit-log artifact$/m);
+  const many = recentlyPublishedSummary(Array.from({ length: 51 }, (_, i) => `pkg:npm/p${i}@1.0.0`));
+  assert.equal((many.match(/^> - `p\d+@1\.0\.0` \(`npm`\)$/gm) || []).length, 50);
+  assert.match(many, /^> - …and 1 more in the Aegis audit-log artifact$/m);
   const links = [...many.matchAll(/\[Add Aegis exemptions for these packages \((\d+)–(\d+)\)\]\(([^)]+)\)/g)];
-  assert.deepEqual(links.map((link) => [link[1], link[2]]), [["1", "50"], ["51", "100"], ["101", "150"], ["151", "200"], ["201", "205"]]);
-  assert.deepEqual(new URL(links[4][3]).searchParams.getAll("purl"), ["pkg:npm/p200@1.0.0", "pkg:npm/p201@1.0.0", "pkg:npm/p202@1.0.0", "pkg:npm/p203@1.0.0", "pkg:npm/p204@1.0.0"]);
+  assert.deepEqual(links.map((link) => [link[1], link[2]]), [["1", "50"], ["51", "51"]]);
+  assert.deepEqual(linkedPurls(links[1][3]), ["pkg:npm/p50@1.0.0"]);
+});
+
+test("compressed exemption links round-trip coordinates and keep short legacy links", () => {
+  const { exemptionUrl } = require("./runtime-warnings.cjs");
+  const one = ["pkg:npm/x@1"];
+  assert.equal(new URL(exemptionUrl(one)).searchParams.has("purl"), true);
+  const purls = Array.from({ length: 50 }, (_, i) => `pkg:npm/%40scope/package-${i}@1.2.3+linux-x64?artifact=tarball`);
+  const url = exemptionUrl(purls);
+  assert.equal(new URL(url).searchParams.has("purls"), true);
+  assert.deepEqual(linkedPurls(url), purls);
+});
+
+test("annotation size budgets preserve complete URLs and direct overflow to the summary", () => {
+  const { recentlyPublishedAnnotation, recentlyPublishedSummary } = require("./runtime-warnings.cjs");
+  const { escapeAnnotation } = require("../harden-runner/annotations.cjs");
+  // Long distinct coordinates defeat the compression ratio of numbered fixtures.
+  const purls = Array.from({ length: 50 }, (_, i) => "pkg:npm/" + Array.from({ length: 8 }, (_, j) =>
+    createHash("sha256").update(`${i}-${j}`).digest("hex")).join("") + "@1.2.3");
+  const summary = recentlyPublishedSummary(purls);
+  const summaryLinks = [...summary.matchAll(/\]\((https:\/\/go\/aegis\/policies\?[^)]+)\)/g)].map(match => match[1]);
+  assert.deepEqual(summaryLinks.flatMap(linkedPurls), purls);
+  assert.ok(summaryLinks.length > 1);
+  for (const url of summaryLinks) assert.ok(url.length <= 3500);
+  const annotation = recentlyPublishedAnnotation(purls);
+  const links = [...annotation.matchAll(/^Add Aegis exemptions: (\S+)$/gm)].map(match => match[1]);
+  assert.ok(links.length > 0 && links.length < summaryLinks.length);
+  for (const url of links) assert.ok(summaryLinks.includes(url));
+  assert.ok(escapeAnnotation(annotation).length <= 4000);
+  assert.ok(`::error title=Aegis blocked recently published package versions::${escapeAnnotation(annotation)}`.length < 4096);
+  assert.match(annotation, /See the step summary for all packages and exemption links\./);
+});
+
+test("an oversized individual coordinate falls back without emitting a partial URL", () => {
+  const { recentlyPublishedAnnotation, recentlyPublishedSummary } = require("./runtime-warnings.cjs");
+  const purl = "pkg:npm/" + Array.from({length: 160}, (_, i) => createHash("sha256").update(String(i)).digest("hex")).join("") + "@1";
+  assert.doesNotMatch(recentlyPublishedAnnotation([purl]), /Add Aegis exemptions:/);
+  assert.match(recentlyPublishedSummary([purl]), /too large for an exemption link/);
 });
