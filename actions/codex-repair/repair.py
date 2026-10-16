@@ -385,7 +385,7 @@ def repair(worker, error, instructions):
         args += ["--model", model]
     if effort := os.environ.get("CODEX_EFFORT", "").strip():
         args += ["-c", "model_reasoning_effort=" + json.dumps(effort)]
-    status, log = worker.execute([*args, prompt], agent=True)
+    status, log = worker.execute([*args, "--", prompt], agent=True)
     threads = []
     for line in log.splitlines():
         try:

@@ -272,7 +272,7 @@ class WorkerTests(unittest.TestCase):
         ]))
         with patch.dict(os.environ, {"CODEX_MODEL": "test-model", "CODEX_EFFORT": "high"}), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
-            repair.repair(worker, "compile failure", "Preserve monitor invariants.")
+            repair.repair(worker, "compile failure", "- Preserve monitor invariants.")
         args = worker.execute.call_args.args[0]
         self.assertEqual(args[:4], ["codex", "--ask-for-approval", "never", "exec"])
         self.assertIn("--skip-git-repo-check", args)
@@ -281,6 +281,8 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(args[args.index("--model") + 1], "test-model")
         self.assertIn('model_reasoning_effort="high"', args)
         self.assertIn('shell_environment_policy.exclude=["CODEX_API_KEY"]', args)
+        self.assertEqual(args[-2], "--")
+        self.assertTrue(args[-1].startswith("- Preserve monitor invariants."))
         self.assertIn("compile failure", args[-1])
         self.assertIn("Do not weaken invariants", args[-1])
         self.assertEqual(worker.execute.call_args.kwargs, {"agent": True})
