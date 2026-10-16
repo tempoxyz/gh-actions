@@ -3,6 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import signal
 import sys
@@ -260,7 +261,7 @@ class WorkerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "CODEX_API_KEY is required"):
                 self.worker.environment(self.cache, agent=True)
 
-    def test_codex_repairs_export_and_reports_valid_thread_ids(self):
+    def test_codex_repairs_export_without_logging_agent_output(self):
         worker = Mock()
         worker.execute.return_value = (1, '\n'.join([
             'not json', '[]',
@@ -286,8 +287,8 @@ class WorkerTests(unittest.TestCase):
         self.assertIn("compile failure", args[-1])
         self.assertIn("Do not weaken invariants", args[-1])
         self.assertEqual(worker.execute.call_args.kwargs, {"agent": True})
-        self.assertEqual(output.getvalue(), "Codex thread ID: thread-123\n"
-                         "::warning::Codex exited with status 1; validating the resulting source tree.\n")
+        self.assertEqual(output.getvalue(),
+                         "Codex exited with status 1; validating the resulting source tree.\n")
 
     def test_checks_use_fresh_state_and_never_agent_installed_subcommands(self):
         self.worker.seed.mkdir()
@@ -345,7 +346,7 @@ class WorkerTests(unittest.TestCase):
     def test_timeout_kills_command_and_its_background_child(self):
         marker = Path(self.directory.name) / "leaked-child"
         self.worker.deadline = time.monotonic() + 0.2
-        with self.assertRaises(subprocess.TimeoutExpired):
+        with self.assertRaises(TimeoutError):
             self.worker.execute(["/bin/sh", "-c", f"(sleep 0.5; touch {marker}) & wait"])
         time.sleep(0.6)
         self.assertFalse(marker.exists())
@@ -380,6 +381,92 @@ class WorkerTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 self.worker.execute(["cargo", "check"])
             command.assert_not_called()
+
+    def test_progress_never_streams_child_output_arguments_or_credentials(self):
+        secret = "synthetic-key-do-not-log"
+        script = ("import os,sys; print(os.environ.get('CODEX_API_KEY','')); "
+                  "print(sys.argv[1],file=sys.stderr); print('::error::injected'); sys.exit(7)")
+        with patch.dict(os.environ, {"CODEX_API_KEY": secret}), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout, \
+                contextlib.redirect_stderr(io.StringIO()) as stderr:
+            status, captured = self.worker.execute([sys.executable, "-c", script, secret], agent=True)
+        self.assertEqual(status, 7)
+        self.assertIn(secret, captured)  # Still available privately to the repair loop.
+        self.assertEqual(stdout.getvalue().splitlines()[:2],
+                         ["Codex repair: started", "Codex repair: exit status 7"])
+        self.assertRegex(stdout.getvalue().splitlines()[2], r"^Codex repair: finished after \d+s$")
+        self.assertNotIn(secret, stdout.getvalue() + stderr.getvalue())
+        self.assertNotIn("::error::injected", stdout.getvalue())
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_heartbeat_does_not_serialize_timeout_command(self):
+        process = Mock(pid=12345, returncode=0)
+        process.wait.side_effect = [subprocess.TimeoutExpired(["synthetic-secret"], 30), 0, 0]
+        with patch.object(repair.subprocess, "Popen", return_value=process), \
+                patch.object(repair.os, "killpg"), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.worker.execute(["/bin/sh", "-c", "true"])
+        self.assertRegex(output.getvalue(), r"verification command: running for \d+s")
+        self.assertNotIn("synthetic-secret", output.getvalue())
+
+    def test_verifier_target_reused_only_within_one_unchanged_candidate(self):
+        (self.cache / "target").mkdir()
+        (self.cache / "target/agent-poison").touch()
+        first = ("import os,pathlib; t=pathlib.Path(os.environ['CARGO_TARGET_DIR']); "
+                 "assert not (t/'agent-poison').exists(); assert not (t/'probe').exists(); "
+                 "(t/'probe').write_text(os.environ['HOME']); "
+                 "c=pathlib.Path(os.environ['CARGO_HOME']); (t/'cargo').write_text(str(c)); "
+                 "(c/'config.toml').write_text('poison'); (c/'bin').mkdir()")
+        second = ("import os,pathlib; t=pathlib.Path(os.environ['CARGO_TARGET_DIR']); "
+                  "assert (t/'probe').read_text()!=os.environ['HOME']; "
+                  "c=pathlib.Path(os.environ['CARGO_HOME']); assert (t/'cargo').read_text()==str(c); "
+                  "assert not (c/'config.toml').exists(); assert not (c/'bin').exists()")
+        commands = [shlex.join([sys.executable, "-c", script]) for script in (first, second)]
+        targets = []
+        execute = self.worker.execute
+        def observe(args):
+            targets.append(self.worker.verification_target)
+            return execute(args)
+        with patch.object(self.worker, "execute", side_effect=observe):
+            for _ in range(2):
+                self.assertIsNone(repair.checks(self.worker, commands))
+                self.assertIsNone(self.worker.verification_target)
+        self.assertEqual(targets[0], targets[1])
+        self.assertEqual(targets[2], targets[3])
+        self.assertNotEqual(targets[0], targets[2])
+        self.assertTrue(all(not target.exists() for target in targets))
+        self.assertTrue((self.cache / "target/agent-poison").exists())
+
+    def test_failed_verification_discards_target_before_repair(self):
+        with patch.object(self.worker, "execute", return_value=(1, "private failure")):
+            self.assertIsNotNone(repair.checks(self.worker, ["cargo check"]))
+        self.assertIsNone(self.worker.verification_target)
+
+
+class DiagnosticTests(unittest.TestCase):
+    def test_entrypoint_errors_never_print_exception_payloads(self):
+        secret = "synthetic-credential-::error::do-not-log"
+        errors = [subprocess.CalledProcessError(1, ["codex", secret], secret, secret),
+                  subprocess.TimeoutExpired(["codex", secret], 1, secret, secret),
+                  ValueError(secret), KeyboardInterrupt(secret)]
+        for error in errors:
+            with self.subTest(error=type(error).__name__), \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout, \
+                    contextlib.redirect_stderr(io.StringIO()) as stderr:
+                with self.assertRaises(SystemExit) as exit:
+                    repair.safe_main(Mock(side_effect=error))
+            self.assertEqual(exit.exception.code, 1)
+            reason = "timed out" if isinstance(error, subprocess.TimeoutExpired) else "failed"
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertEqual(stderr.getvalue(),
+                             f"Dependency update {reason}; private diagnostic details withheld.\n")
+
+    def test_progress_rejects_untrusted_labels_without_printing_them(self):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(ValueError):
+                with repair.progress("synthetic-secret"):
+                    pass
+        self.assertEqual(output.getvalue(), "")
 
 
 class LoopTests(unittest.TestCase):

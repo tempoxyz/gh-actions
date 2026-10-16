@@ -77,6 +77,11 @@ There is no image, registry setup or alternate Docker execution path.
 
 `repair-budget-minutes` (at most 150) bounds checks and repairs; setup runs before
 that budget and CI waiting uses the rest of the 180-minute job.
+Actions logs report preparation, worker phases, numbered checks/repair attempts,
+PR publication and CI waiting. Worker commands emit a 30-second heartbeat without
+streaming captured output. Failure messages omit exception payloads; no raw
+diagnostic artifacts are uploaded. See [progress logging](../codex-repair/README.md#runner-execution)
+for the output policy and verifier build-cache lifetime.
 The secret `CODEX_API_KEY` must contain a standard OpenAI API key. Only the
 named Codex credential is forwarded to the agent process. A public reusable
 workflow runs in the caller's context; private inputs, source, PRs and logs belong

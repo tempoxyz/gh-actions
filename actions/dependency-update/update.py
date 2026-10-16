@@ -16,7 +16,7 @@ import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "codex-repair"))
 from repair import (Policy, SHA, Worker, export_tree, frozen_links, git, lines,
-                    repair, repair_local, run, safe_path, set_output, snapshot)
+                    progress, repair, repair_local, run, safe_main, safe_path, set_output, snapshot)
 
 JOB_MINUTES = 180  # dependency-update.yml timeout-minutes
 BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,199}")
@@ -235,6 +235,7 @@ class Coordinator:
         askpass.chmod(0o700)
         return {"GIT_ASKPASS": str(askpass), "DEPENDENCY_GIT_TOKEN": token}
 
+    @progress("PR publication")
     def publish(self, repository, work, policy, plan, existing, expected, base, directory):
         # A newer base is fine: the commit's parent is the base it was validated against,
         # and GitHub tests the pull request against the current base.
@@ -292,13 +293,16 @@ class Coordinator:
         set_output("head-sha", head)
         return existing, head
 
+    @progress("CI verification")
     def poll(self, number, head):
+        started = time.monotonic()
         while time.monotonic() < self.ci_deadline:
             self.github.require_head(number, head)
             runs = self.github.runs(head)
             green, failed = workflow_state(runs, head, self.required)
             if green or failed:
                 return green, failed
+            print(f"CI verification: waiting for {time.monotonic() - started:.0f}s", flush=True)
             time.sleep(min(30, max(0, self.ci_deadline - time.monotonic())))
         raise TimeoutError("CI deadline exceeded; update PR retained")
 
@@ -312,8 +316,9 @@ class Coordinator:
             directory = Path(directory)
             script = directory / "adapter.py"
             script.write_bytes((self.source / adapter_path).read_bytes())
-            plan = json.loads(self.adapter(script, "resolve"))
-            validate_plan(plan, self.base)
+            with progress("update preparation"):
+                plan = json.loads(self.adapter(script, "resolve"))
+                validate_plan(plan, self.base)
             if plan.get("skip"):
                 set_output("status", "skipped")
                 return
@@ -377,6 +382,7 @@ class Coordinator:
             if error:
                 raise RuntimeError("local repair attempts exhausted; best-effort PR retained")
             for attempt in range(self.config["max-ci-repairs"] + 1):
+                print(f"CI verification attempt {attempt + 1}/{self.config['max-ci-repairs'] + 1}", flush=True)
                 green, failed = self.poll(existing["number"], head)
                 if green:
                     policy.validate(work)
@@ -435,4 +441,4 @@ if __name__ == "__main__":
         raise KeyboardInterrupt("dependency update cancelled")
 
     signal.signal(signal.SIGTERM, interrupt)
-    main()
+    safe_main(main)

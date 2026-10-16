@@ -1,6 +1,7 @@
 """Bounded Rust dependency repair using tools installed on an ephemeral runner."""
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -10,6 +11,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import tomllib
@@ -18,6 +20,36 @@ import tomllib
 SHA = re.compile(r"[0-9a-f]{40}")
 DENIED_ROOTS = {".git", ".github", ".cargo", "scripts"}
 SOURCE_KEYS = ("git", "rev", "tag", "branch", "path", "registry", "workspace", "package")
+PHASES = {"update preparation", "lockfile resolution", "dependency downloads",
+          "verification command", "Codex repair", "PR publication", "CI verification"}
+
+
+@contextlib.contextmanager
+def progress(phase):
+    # Only trusted labels and numeric metadata reach Actions logs. Never include
+    # argv, paths, candidate output, prompts, exception messages or environments.
+    if phase not in PHASES:
+        raise ValueError("unknown progress phase")
+    started = time.monotonic()
+    print(f"{phase}: started", flush=True)
+    try:
+        yield started
+    except BaseException:
+        print(f"{phase}: failed after {time.monotonic() - started:.0f}s; output withheld", flush=True)
+        raise
+    else:
+        print(f"{phase}: finished after {time.monotonic() - started:.0f}s", flush=True)
+
+
+def safe_main(entrypoint):
+    try:
+        entrypoint()
+    except (Exception, KeyboardInterrupt) as error:
+        # Tracebacks/CalledProcessError/TimeoutExpired can include full commands,
+        # repair prompts and captured output. Do not serialize them to Actions.
+        reason = "timed out" if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)) else "failed"
+        print(f"Dependency update {reason}; private diagnostic details withheld.", file=sys.stderr, flush=True)
+        raise SystemExit(1) from None
 
 
 def run(args, *, cwd=None, env=None, timeout=120, check=True):
@@ -263,6 +295,7 @@ class Worker:
         self.path = os.pathsep.join(path for path in os.get_exec_path() if Path(path).is_absolute())
         self.rustup_home = os.environ.get("RUSTUP_HOME", str(Path.home() / ".rustup"))
         self.toolchain = os.environ.get("RUSTUP_TOOLCHAIN")
+        self.verification_target = None
 
     def environment(self, cache, *, agent=False, offline=False):
         env = {key: os.environ[key] for key in ("LANG", "LC_ALL") if key in os.environ}
@@ -296,13 +329,25 @@ class Worker:
         executable = shutil.which(args[0], path=self.path)
         if not executable:
             raise FileNotFoundError(f"required runner tool is not installed: {args[0]}")
-        with tempfile.TemporaryDirectory(prefix="codex-check-cache-", dir=self.cache.parent) as directory:
+        phase = ("Codex repair" if agent else "lockfile resolution" if lockfile else
+                 "dependency downloads" if fetch else "verification command")
+        with progress(phase) as started, \
+                tempfile.TemporaryDirectory(prefix="codex-check-cache-", dir=self.cache.parent) as directory:
             cache = self.cache if agent else Path(directory)
+            verifying = not (agent or lockfile or fetch) and self.verification_target is not None
+            cargo_home = self.verification_target.parent / "cargo" if verifying else cache / "cargo"
+            if verifying and cargo_home.exists():
+                shutil.rmtree(cargo_home)
             if not (agent or lockfile or fetch) and self.seed.exists():
-                # Each check gets downloads but none of the agent's Cargo config,
-                # installed subcommands, build output or HOME state.
-                shutil.copytree(self.seed, cache / "cargo")
+                # Recreate Cargo state from downloads, never agent/previous-check
+                # config or installed commands. Keep source paths stable within
+                # a check pass so Cargo can reuse verifier build fingerprints.
+                shutil.copytree(self.seed, cargo_home)
             env = self.environment(cache, agent=agent, offline=not (agent or lockfile or fetch))
+            if verifying:
+                cargo_home.mkdir(exist_ok=True)
+                env["CARGO_HOME"] = str(cargo_home)
+                env["CARGO_TARGET_DIR"] = str(self.verification_target)
             if fetch:
                 self.seed.mkdir(parents=True, exist_ok=True)
                 env["CARGO_HOME"] = str(self.seed)
@@ -314,7 +359,16 @@ class Worker:
                                            stdin=subprocess.DEVNULL, stdout=log,
                                            stderr=subprocess.STDOUT, start_new_session=True)
                 try:
-                    process.wait(timeout=min(2700, remaining))
+                    command_deadline = time.monotonic() + min(2700, remaining)
+                    while True:
+                        wait = command_deadline - time.monotonic()
+                        if wait <= 0:
+                            raise TimeoutError("worker command timed out")
+                        try:
+                            process.wait(timeout=min(30, wait))
+                            break
+                        except subprocess.TimeoutExpired:
+                            print(f"{phase}: running for {time.monotonic() - started:.0f}s", flush=True)
                 finally:
                     # Also stop background children after normal exit, cancellation
                     # or timeout, before checking the tree or minting an STS token.
@@ -323,6 +377,7 @@ class Worker:
                     except ProcessLookupError:
                         pass
                     process.wait(timeout=30)
+                print(f"{phase}: exit status {process.returncode}", flush=True)
                 log.seek(0, 2)
                 length = log.tell()
                 log.seek(0)
@@ -359,17 +414,26 @@ def checks(worker, commands):
     if not commands:
         raise ValueError("local-checks must not be empty")
     expected = snapshot(worker.root)
-    for command in commands:
-        args = shlex.split(command)
-        if not args:
-            raise ValueError("empty check command")
-        if snapshot(worker.root) != expected:
-            raise ValueError("candidate changed between verification commands")
-        status, log = worker.execute(args)
-        if snapshot(worker.root) != expected:
-            raise ValueError("verification command changed candidate source")
-        if status:
-            return "Command: " + shlex.join(args) + "\n" + log[-16000:]
+    # Reuse only verifier build output for this unchanged candidate. HOME/Cargo
+    # config stay fresh per command; the target is discarded before any repair.
+    with tempfile.TemporaryDirectory(prefix="codex-verification-target-") as target:
+        worker.verification_target = Path(target) / "target"
+        worker.verification_target.mkdir()
+        try:
+            for index, command in enumerate(commands, 1):
+                print(f"Verification check {index}/{len(commands)}", flush=True)
+                args = shlex.split(command)
+                if not args:
+                    raise ValueError("empty check command")
+                if snapshot(worker.root) != expected:
+                    raise ValueError("candidate changed between verification commands")
+                status, log = worker.execute(args)
+                if snapshot(worker.root) != expected:
+                    raise ValueError("verification command changed candidate source")
+                if status:
+                    return "Command: " + shlex.join(args) + "\n" + log[-16000:]
+        finally:
+            worker.verification_target = None
     return None
 
 
@@ -385,24 +449,14 @@ def repair(worker, error, instructions):
         args += ["--model", model]
     if effort := os.environ.get("CODEX_EFFORT", "").strip():
         args += ["-c", "model_reasoning_effort=" + json.dumps(effort)]
-    status, log = worker.execute([*args, "--", prompt], agent=True)
-    threads = []
-    for line in log.splitlines():
-        try:
-            message = json.loads(line)
-        except (ValueError, TypeError):
-            continue
-        thread = (message.get("thread_id", "") if isinstance(message, dict) and
-                  message.get("type") == "thread.started" else "")
-        if isinstance(thread, str) and re.fullmatch(r"[A-Za-z0-9_-]+", thread) and thread not in threads:
-            threads.append(thread)
-            print("Codex thread ID: " + thread)
+    status, _ = worker.execute([*args, "--", prompt], agent=True)
     if status:
-        print(f"::warning::Codex exited with status {status}; validating the resulting source tree.")
+        print(f"Codex exited with status {status}; validating the resulting source tree.", flush=True)
 
 
 def repair_local(worker, policy, commands, instructions, max_repairs, *, resolve_lockfile=False):
     for attempt in range(max_repairs + 1):
+        print(f"Local verification attempt {attempt + 1}/{max_repairs + 1}", flush=True)
         # Validate before executing any candidate code and after each agent invocation.
         policy.validate(worker.root, lockfile=False)
         error = None
@@ -475,4 +529,4 @@ if __name__ == "__main__":
         raise KeyboardInterrupt("repair cancelled")
 
     signal.signal(signal.SIGTERM, interrupt)
-    main()
+    safe_main(main)

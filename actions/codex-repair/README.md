@@ -24,8 +24,14 @@ runs in a temporary source copy and imports only Cargo.lock.
 
 After resolving the lockfile, `cargo fetch --locked` runs through the runner's
 package firewall (including Aegis when enabled). Verification uses offline Cargo
-with a copy of those downloads, fresh HOME/configuration/build output and no
-agent cache. Agent invocations may reuse their own cache. Codex state stays in a
+with a copy of those downloads, fresh HOME/configuration and no agent cache.
+Verification commands share a separate build target only within one check pass
+on an unchanged candidate; it is deleted before repairs and on success/failure.
+Artifacts from different toolchains, build modes and feature sets can coexist
+until that pass ends, so peak disk use can exceed the largest individual check.
+Select a runner with enough free storage for the combined verification artifacts
+through the shared workflow's `runner` input.
+Agent invocations may reuse their own cache. Codex state stays in a
 separate `CODEX_HOME` outside the candidate; runs are ephemeral and ignore user config.
 `codex exec` skips the Git repository check for the exported source and runs
 non-interactively with full runner access, matching the existing runner model.
@@ -35,6 +41,15 @@ snapshots before and after every command, so a check that changes source fails.
 These checks detect changes; the source is not mounted read-only. Commands use
 new process groups, which are killed on completion, timeout and cancellation.
 Each command is limited to 45 minutes and the remaining total repair budget.
+
+Progress logs contain only fixed phase names, numeric check/attempt counters,
+elapsed seconds and exit codes, with a heartbeat every 30 seconds while a worker
+command runs. Child output remains private to the repair loop: command arguments,
+prompts, Codex events/thread IDs, environments, paths and exception details are
+not printed. Entrypoint failures report a generic failure/timeout without a
+traceback. Raw logs are not uploaded as artifacts, including on timeout; the
+phase/timing messages remain available in Actions. This limits diagnosis to
+phase/status metadata rather than relying on credential redaction or masking.
 
 **This is not a security sandbox.** Codex and dependency build scripts run as the
 same OS user as the coordinator. Environment filtering, fresh state and process
