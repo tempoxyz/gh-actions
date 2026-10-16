@@ -28,8 +28,8 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
-    - uses: tempoxyz/gh-actions/vendor/astral-sh/setup-uv@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
+    - uses: tempoxyz/gh-actions/vendor/sigstore/cosign-installer@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
+    - uses: tempoxyz/gh-actions/vendor/astral-sh/setup-uv@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
       with:
         version: ${{ inputs.uv_version }}
         github-token: ${{ inputs.github_token }}

@@ -126,7 +126,7 @@ runs:
       # "allowing select actions" feature can be used to whitelist the dependent action by a hash.
       # This is needed since some organizations have a policy to only allow pinned 3rd party actions to 
       # be used.
-      uses: tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
+      uses: tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
       with:
         # version is pinned by default; using a floating tag like `latest` is the caller's responsibility
         version: ${{ inputs.version }} # zizmor: ignore[unpinned-tools]

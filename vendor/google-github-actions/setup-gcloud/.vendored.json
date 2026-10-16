@@ -9,7 +9,7 @@
   "consume_as": "tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@<gh-actions-sha>",
   "files_removed": 18,
   "nested_rewrites": [
-    "google-github-actions/setup-gcloud@v3 -> tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@aaec1d2a49380949d267946d343f0cb9440248b7",
-    "google-github-actions/setup-gcloud@v3 -> tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@aaec1d2a49380949d267946d343f0cb9440248b7"
+    "google-github-actions/setup-gcloud@v3 -> tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@22f68514ca39af6de7309037b7df07a02ce160a9",
+    "google-github-actions/setup-gcloud@v3 -> tempoxyz/gh-actions/vendor/google-github-actions/setup-gcloud@22f68514ca39af6de7309037b7df07a02ce160a9"
   ]
 }
