@@ -37,7 +37,7 @@ jobs:
         1.99.0
         nightly-2026-08-21
       nextest-version: "0.9.127"
-      codex-version: "0.163.0"
+      codex-version: "0.162.0"
       native-packages: build-essential pkg-config libssl-dev clang libclang-dev mold
       environment: dependency-updates
       local-checks: |
@@ -66,7 +66,7 @@ also the adapter source and PR base. `runner` defaults to `ubuntu-latest`.
 Use an ephemeral Ubuntu runner with Python 3.11+, Node/npm, Git, gh and rustup.
 The workflow installs the exact `rust-toolchains` (required, with rustfmt/Clippy),
 `nextest-version` (default `0.9.127`) and `codex-version` (default
-`0.163.0`). The first Rust toolchain becomes `RUSTUP_TOOLCHAIN`;
+`0.162.0`). The first Rust toolchain becomes `RUSTUP_TOOLCHAIN`;
 explicit `cargo +<toolchain>` commands can select another installed toolchain.
 `native-packages` defaults to `build-essential pkg-config libssl-dev clang
 libclang-dev mold`; installation uses apt/sudo on the disposable runner.

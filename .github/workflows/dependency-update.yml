@@ -30,7 +30,7 @@ on:
       codex-version:
         description: Exact @openai/codex npm version installed on the runner.
         type: string
-        default: "0.163.0"
+        default: "0.162.0"
       codex-model:
         description: Codex model override; empty uses the pinned CLI default.
         type: string

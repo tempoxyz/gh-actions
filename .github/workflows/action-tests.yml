@@ -117,7 +117,7 @@ jobs:
         env:
           RUST_TOOLCHAINS: "1.99.0 nightly-2026-08-21"
           NEXTEST_VERSION: "0.9.127"
-          CODEX_VERSION: "0.163.0"
+          CODEX_VERSION: "0.162.0"
           NATIVE_PACKAGES: build-essential pkg-config libssl-dev clang libclang-dev mold
         run: python3 -I actions/dependency-update/setup_tools.py
       - name: Install cargo-nextest

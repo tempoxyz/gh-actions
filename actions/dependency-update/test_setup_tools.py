@@ -10,7 +10,7 @@ import setup_tools
 class SetupTests(unittest.TestCase):
     def setUp(self):
         self.env = dict(RUST_TOOLCHAINS="1.99.0\nnightly-2026-08-21", NEXTEST_VERSION="0.9.127",
-                        CODEX_VERSION="0.163.0", NATIVE_PACKAGES="clang libssl-dev mold")
+                        CODEX_VERSION="0.162.0", NATIVE_PACKAGES="clang libssl-dev mold")
 
     def test_rejects_unpinned_versions_and_package_options(self):
         for key, value in (("RUST_TOOLCHAINS", "stable"), ("RUST_TOOLCHAINS", ""),
@@ -30,7 +30,7 @@ class SetupTests(unittest.TestCase):
             commands = [call.args[0] for call in command.call_args_list]
             self.assertIn(["rustup", "toolchain", "install", "nightly-2026-08-21", "--profile",
                            "minimal", "--component", "rustfmt", "--component", "clippy"], commands)
-            self.assertEqual(commands[-2][-1], "@openai/codex@0.163.0")
+            self.assertEqual(commands[-2][-1], "@openai/codex@0.162.0")
             self.assertEqual((root / "env").read_text(), "RUSTUP_TOOLCHAIN=1.99.0\n")
             self.assertEqual((root / "path").read_text(), str(root / "dependency-update-tools/node_modules/.bin") + "\n")
 
