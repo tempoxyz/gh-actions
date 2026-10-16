@@ -27,6 +27,10 @@ package firewall (including Aegis when enabled). Verification uses offline Cargo
 with a copy of those downloads, fresh HOME/configuration and no agent cache.
 Verification commands share a separate build target only within one check pass
 on an unchanged candidate; it is deleted before repairs and on success/failure.
+Artifacts from different toolchains, build modes and feature sets can coexist
+until that pass ends, so peak disk use can exceed the largest individual check.
+Select a runner with enough free storage for the combined verification artifacts
+through the shared workflow's `runner` input.
 Agent invocations may reuse their own cache. Codex state stays in a
 separate `CODEX_HOME` outside the candidate; runs are ephemeral and ignore user config.
 `codex exec` skips the Git repository check for the exported source and runs
