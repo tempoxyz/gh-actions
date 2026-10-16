@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { test } = require("node:test");
 
-for (const directory of ["amp-repair", "dependency-update"]) {
+for (const directory of ["codex-repair", "dependency-update"]) {
   test(`${directory}: Python regression tests`, () => {
     const source = path.resolve(__dirname, "..", directory);
     const result = spawnSync("python3", ["-m", "unittest", "discover", "-s", source, "-v"], {

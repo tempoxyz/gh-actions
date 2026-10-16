@@ -27,10 +27,18 @@ on:
         description: Exact cargo-nextest release installed on the runner.
         type: string
         default: "0.9.127"
-      amp-version:
-        description: Exact @sourcegraph/amp npm version installed on the runner.
+      codex-version:
+        description: Exact @openai/codex npm version installed on the runner.
         type: string
-        default: "0.0.1791388870-g4d32fb"
+        default: "0.163.0"
+      codex-model:
+        description: Codex model override; empty uses the pinned CLI default.
+        type: string
+        default: ""
+      codex-effort:
+        description: Codex reasoning effort override; empty uses the model default.
+        type: string
+        default: ""
       native-packages:
         description: Whitespace-separated apt packages required by the Rust workspace.
         type: string
@@ -39,7 +47,7 @@ on:
         type: string
         default: ubuntu-latest
       environment:
-        description: Caller environment for the Amp credential and STS trust subject.
+        description: Caller environment for the Codex credential and STS trust subject.
         type: string
         default: dependency-updates
       local-checks:
@@ -68,7 +76,7 @@ on:
         type: number
         default: 120
     secrets:
-      AMP_API_KEY:
+      CODEX_API_KEY:
         required: true
     outputs:
       pull-request-number:
@@ -117,11 +125,11 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .gh-actions
           persist-credentials: false
-      - name: Install Rust, Amp and native dependencies
+      - name: Install Rust, Codex and native dependencies
         env:
           RUST_TOOLCHAINS: ${{ inputs.rust-toolchains }}
           NEXTEST_VERSION: ${{ inputs.nextest-version }}
-          AMP_VERSION: ${{ inputs.amp-version }}
+          CODEX_VERSION: ${{ inputs.codex-version }}
           NATIVE_PACKAGES: ${{ inputs.native-packages }}
         run: python3 -I .gh-actions/actions/dependency-update/setup_tools.py
       - name: Install cargo-nextest
@@ -133,7 +141,9 @@ jobs:
         env:
           DEPENDENCY_UPDATE_CONFIG: ${{ toJSON(inputs) }}
           GH_TOKEN: ${{ github.token }}
-          AMP_API_KEY: ${{ secrets.AMP_API_KEY }}
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+          CODEX_MODEL: ${{ inputs.codex-model }}
+          CODEX_EFFORT: ${{ inputs.codex-effort }}
         run: |
           python3 -I .gh-actions/actions/dependency-update/update.py \
             --source "$GITHUB_WORKSPACE/caller" --shared "$GITHUB_WORKSPACE/.gh-actions"

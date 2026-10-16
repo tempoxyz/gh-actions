@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -8,7 +10,7 @@ import subprocess
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import repair
 
@@ -116,7 +118,7 @@ sdk-build = {{ git = "{URL}", rev = "{SHA}" }}
             self.policy.validate(self.work)
 
     def test_source_containing_raw_credentials_is_rejected(self):
-        with patch.dict(os.environ, {"AMP_API_KEY": "test-only-secret"}):
+        with patch.dict(os.environ, {"CODEX_API_KEY": "test-only-secret"}):
             (self.work / "src/lib.rs").write_text('const KEY: &str = "test-only-secret";')
             with self.assertRaisesRegex(ValueError, "credential"):
                 self.policy.validate(self.work)
@@ -233,7 +235,7 @@ class WorkerTests(unittest.TestCase):
         self.worker = repair.Worker(self.root, time.monotonic() + 60, self.cache)
 
     def test_direct_process_environment_omits_credentials_except_agent_key(self):
-        secrets = {name: "test-secret" for name in ("GH_TOKEN", "GITHUB_TOKEN", "AMP_API_KEY",
+        secrets = {name: "test-secret" for name in ("GH_TOKEN", "GITHUB_TOKEN", "CODEX_API_KEY", "OPENAI_API_KEY",
                    "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL", "GITHUB_OUTPUT",
                    "CARGO_REGISTRY_TOKEN", "LD_PRELOAD")}
         script = "import json,os; print(json.dumps(dict(os.environ)))"
@@ -246,9 +248,44 @@ class WorkerTests(unittest.TestCase):
             status, output = self.worker.execute([sys.executable, "-c", script], agent=True)
             agent = json.loads(output)
             self.assertEqual(status, 0)
-            self.assertEqual(agent["AMP_API_KEY"], "test-secret")
-            self.assertTrue((set(secrets) - {"AMP_API_KEY"}).isdisjoint(agent))
+            self.assertEqual(agent["CODEX_API_KEY"], "test-secret")
+            self.assertTrue((set(secrets) - {"CODEX_API_KEY"}).isdisjoint(agent))
             self.assertNotIn("CARGO_NET_OFFLINE", agent)
+            self.assertEqual(agent["CODEX_HOME"], str(self.cache / "codex"))
+            self.assertFalse(Path(agent["CODEX_HOME"]).is_relative_to(self.root))
+
+    def test_missing_codex_key_fails_only_when_a_repair_is_needed(self):
+        with patch.dict(os.environ, {"CODEX_API_KEY": " "}):
+            self.worker.environment(self.cache)
+            with self.assertRaisesRegex(ValueError, "CODEX_API_KEY is required"):
+                self.worker.environment(self.cache, agent=True)
+
+    def test_codex_repairs_export_and_reports_valid_thread_ids(self):
+        worker = Mock()
+        worker.execute.return_value = (1, '\n'.join([
+            'not json', '[]',
+            '{"type":"thread.started","thread_id":null}',
+            '{"type":"thread.started","thread_id":"thread-123"}',
+            '{"type":"thread.started","thread_id":"thread-123"}',
+            '{"type":"thread.started","thread_id":"bad\\n::error::injected"}',
+            '{"type":"turn.completed","thread_id":"ignored"}',
+        ]))
+        with patch.dict(os.environ, {"CODEX_MODEL": "test-model", "CODEX_EFFORT": "high"}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            repair.repair(worker, "compile failure", "Preserve monitor invariants.")
+        args = worker.execute.call_args.args[0]
+        self.assertEqual(args[:4], ["codex", "--ask-for-approval", "never", "exec"])
+        self.assertIn("--skip-git-repo-check", args)
+        self.assertIn("--ephemeral", args)
+        self.assertIn("--ignore-user-config", args)
+        self.assertEqual(args[args.index("--model") + 1], "test-model")
+        self.assertIn('model_reasoning_effort="high"', args)
+        self.assertIn('shell_environment_policy.exclude=["CODEX_API_KEY"]', args)
+        self.assertIn("compile failure", args[-1])
+        self.assertIn("Do not weaken invariants", args[-1])
+        self.assertEqual(worker.execute.call_args.kwargs, {"agent": True})
+        self.assertEqual(output.getvalue(), "Codex thread ID: thread-123\n"
+                         "::warning::Codex exited with status 1; validating the resulting source tree.\n")
 
     def test_checks_use_fresh_state_and_never_agent_installed_subcommands(self):
         self.worker.seed.mkdir()

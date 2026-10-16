@@ -14,7 +14,7 @@ import tempfile
 import time
 import tomllib
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "amp-repair"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "codex-repair"))
 from repair import (Policy, SHA, Worker, export_tree, frozen_links, git, lines,
                     repair, repair_local, run, safe_path, set_output, snapshot)
 

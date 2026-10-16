@@ -1,4 +1,4 @@
-name: Amp Repair
+name: Codex Repair
 description: Validate and repair Rust dependency migrations in runner processes.
 
 inputs:
@@ -21,21 +21,27 @@ inputs:
     description: Repository-specific migration instructions; not a substitute for validation.
     default: Fix API compatibility without weakening invariants or tests.
   max-repairs:
-    description: Maximum Amp invocations after failed local checks.
+    description: Maximum Codex invocations after failed local checks.
     default: "3"
   budget-minutes:
     description: Total repair budget, including verification commands.
     default: "60"
-  amp-api-key:
-    description: Amp credential; included only in agent process environments.
+  codex-api-key:
+    description: Codex credential; included only in agent process environments.
     required: true
+  codex-model:
+    description: Codex model override; empty uses the installed CLI default.
+    default: ""
+  codex-effort:
+    description: Codex reasoning effort override; empty uses the model default.
+    default: ""
 
 outputs:
   status:
     description: passed or failed; exhausted repairs fail the action.
     value: ${{ steps.repair.outputs.status }}
   repair-attempts:
-    description: Number of Amp repair invocations.
+    description: Number of Codex repair invocations.
     value: ${{ steps.repair.outputs.repair-attempts }}
 
 runs:
@@ -54,7 +60,9 @@ runs:
         INSTRUCTIONS: ${{ inputs.repair-instructions }}
         MAX_REPAIRS: ${{ inputs.max-repairs }}
         BUDGET_MINUTES: ${{ inputs.budget-minutes }}
-        AMP_API_KEY: ${{ inputs.amp-api-key }}
+        CODEX_API_KEY: ${{ inputs.codex-api-key }}
+        CODEX_MODEL: ${{ inputs.codex-model }}
+        CODEX_EFFORT: ${{ inputs.codex-effort }}
       run: |
         set -euo pipefail
         python3 -I "$ACTION_DIR/repair.py" \

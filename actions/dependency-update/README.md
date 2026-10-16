@@ -37,7 +37,7 @@ jobs:
         1.99.0
         nightly-2026-08-21
       nextest-version: "0.9.127"
-      amp-version: "0.0.1791388870-g4d32fb"
+      codex-version: "0.163.0"
       native-packages: build-essential pkg-config libssl-dev clang libclang-dev mold
       environment: dependency-updates
       local-checks: |
@@ -57,7 +57,7 @@ jobs:
       max-ci-repairs: 3
       repair-budget-minutes: 120
     secrets:
-      AMP_API_KEY: ${{ secrets.AMP_API_KEY }}
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
 ```
 
 The caller owns scheduling and concurrency. Calls are accepted only from the
@@ -65,26 +65,29 @@ The caller owns scheduling and concurrency. Calls are accepted only from the
 also the adapter source and PR base. `runner` defaults to `ubuntu-latest`.
 Use an ephemeral Ubuntu runner with Python 3.11+, Node/npm, Git, gh and rustup.
 The workflow installs the exact `rust-toolchains` (required, with rustfmt/Clippy),
-`nextest-version` (default `0.9.127`) and `amp-version` (default
-`0.0.1791388870-g4d32fb`). The first Rust toolchain becomes `RUSTUP_TOOLCHAIN`;
+`nextest-version` (default `0.9.127`) and `codex-version` (default
+`0.163.0`). The first Rust toolchain becomes `RUSTUP_TOOLCHAIN`;
 explicit `cargo +<toolchain>` commands can select another installed toolchain.
 `native-packages` defaults to `build-essential pkg-config libssl-dev clang
 libclang-dev mold`; installation uses apt/sudo on the disposable runner.
-Amp is installed from the exact `@sourcegraph/amp` npm package version, including
-its native-binary installation script. Nextest uses the vendored installer.
+Codex is installed from the exact `@openai/codex` npm package version and its
+platform-specific binary package. Nextest uses the vendored installer.
+`codex-model` and `codex-effort` optionally override the CLI/model defaults.
 There is no image, registry setup or alternate Docker execution path.
 
 `repair-budget-minutes` (at most 150) bounds checks and repairs; setup runs before
 that budget and CI waiting uses the rest of the 180-minute job.
-Only named Amp credentials are forwarded. A public reusable workflow runs in
-the caller's context; private inputs, source, PRs and logs belong to the caller.
+The secret `CODEX_API_KEY` must contain a standard OpenAI API key. Only the
+named Codex credential is forwarded to the agent process. A public reusable
+workflow runs in the caller's context; private inputs, source, PRs and logs belong
+to the caller.
 Keep private adapters, prompts and real diagnostic fixtures in that repository.
 
-Amp and dependency build scripts execute directly on the same runner as the
+Codex and dependency build scripts execute directly on the same runner as the
 coordinator. Child environments omit GitHub/OIDC credentials and check state is
 fresh, but this is **not a credential or filesystem security boundary**. Use
 fresh disposable runners without unrelated secrets. See
-[runner execution](../amp-repair/README.md#runner-execution) for the trust model,
+[runner execution](../codex-repair/README.md#runner-execution) for the trust model,
 process cleanup and verification behavior.
 
 ## Adapter contract
@@ -92,7 +95,7 @@ process cleanup and verification behavior.
 The caller keeps a tracked, standalone, standard-library Python script on its base branch.
 The coordinator copies it outside the candidate and invokes it with Python isolated
 mode, so candidate source cannot replace it or supply imports. The adapter gets
-only a read-scoped GitHub token, never a publishing token or the Amp key.
+only a read-scoped GitHub token, never a publishing token or the Codex key.
 
 `python3 adapter.py resolve` receives `UPDATE_REQUESTED_REF` and prints exactly
 one JSON plan to stdout. Diagnostics go to stderr. It selects the upstream
@@ -153,7 +156,7 @@ max_ttl: 15m
 
 The App installation must grant those permissions without branch-rule bypass.
 The environment is in the caller repository; configure its secrets/protection
-there. An environment `AMP_API_KEY` overrides the explicitly forwarded repository
+there. An environment `CODEX_API_KEY` overrides the explicitly forwarded repository
 secret if both exist. No stored GitHub token or extra STS Actions permission is
 needed: reads use the caller's read-scoped `GITHUB_TOKEN`, and each short publishing
 phase exchanges a fresh STS token, revoked before returning to repair. The STS
@@ -183,6 +186,6 @@ and its compatible transitive revision and use one branch per release. Add sourc
 review and any merge policy in the caller, respecting existing branch rules.
 
 Tests use synthetic repositories and credentials. The runner smoke job installs
-the tools, starts Amp with `--version` (no API calls), and runs Cargo checks on a
-small fixture. Live Amp repair/STS/GitHub publication requires a configured caller
+the tools, starts Codex with `--version` (no API calls), and runs Cargo checks on a
+small fixture. Live Codex repair/STS/GitHub publication requires a configured caller
 and is not exercised by these checks.

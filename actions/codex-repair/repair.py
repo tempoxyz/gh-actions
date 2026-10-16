@@ -195,7 +195,7 @@ class Policy:
                 raise ValueError(f"new build scripts are not allowed: {path}")
             if path in current:
                 content = (root / path).read_bytes()
-                for key in ("AMP_API_KEY", "GH_TOKEN", "GITHUB_TOKEN"):
+                for key in ("CODEX_API_KEY", "OPENAI_API_KEY", "GH_TOKEN", "GITHUB_TOKEN"):
                     secret = os.environ.get(key, "")
                     if secret and secret.encode() in content:
                         raise ValueError("candidate contains a runner credential")
@@ -266,7 +266,7 @@ class Worker:
 
     def environment(self, cache, *, agent=False, offline=False):
         env = {key: os.environ[key] for key in ("LANG", "LC_ALL") if key in os.environ}
-        for directory in ("home", "cargo", "target", "config", "tmp"):
+        for directory in ("home", "cargo", "target", "config", "tmp", "codex"):
             (cache / directory).mkdir(parents=True, exist_ok=True)
         env.update(PATH=self.path, HOME=str(cache / "home"), CARGO_HOME=str(cache / "cargo"),
                    CARGO_TARGET_DIR=str(cache / "target"), XDG_CONFIG_HOME=str(cache / "config"),
@@ -278,10 +278,11 @@ class Worker:
         if offline:
             env["CARGO_NET_OFFLINE"] = "true"
         if agent:
-            key = os.environ.get("AMP_API_KEY", "")
+            key = os.environ.get("CODEX_API_KEY", "")
             if not key.strip():
-                raise ValueError("AMP_API_KEY is required when a repair is needed")
-            env["AMP_API_KEY"] = key
+                raise ValueError("CODEX_API_KEY is required when a repair is needed")
+            env["CODEX_API_KEY"] = key
+            env["CODEX_HOME"] = str(cache / "codex")
         return env
 
     def execute(self, args, *, agent=False, lockfile=False, fetch=False):
@@ -295,7 +296,7 @@ class Worker:
         executable = shutil.which(args[0], path=self.path)
         if not executable:
             raise FileNotFoundError(f"required runner tool is not installed: {args[0]}")
-        with tempfile.TemporaryDirectory(prefix="amp-check-cache-", dir=self.cache.parent) as directory:
+        with tempfile.TemporaryDirectory(prefix="codex-check-cache-", dir=self.cache.parent) as directory:
             cache = self.cache if agent else Path(directory)
             if not (agent or lockfile or fetch) and self.seed.exists():
                 # Each check gets downloads but none of the agent's Cargo config,
@@ -331,7 +332,7 @@ class Worker:
 
     def resolve_lockfile(self):
         original = snapshot(self.root)
-        with tempfile.TemporaryDirectory(prefix="amp-lockfile-", dir=self.cache.parent) as directory:
+        with tempfile.TemporaryDirectory(prefix="codex-lockfile-", dir=self.cache.parent) as directory:
             source = Path(directory) / "source"
             shutil.copytree(self.root, source)
             resolver = Worker(source, self.deadline, self.cache)
@@ -377,20 +378,27 @@ def repair(worker, error, instructions):
               "\nKeep frozen Git dependencies unchanged. Only edit allowed Rust/manifests/lockfiles. "
               "Do not weaken invariants, remove tests, suppress warnings, edit configuration, "
               "commit, push, merge, or repair infrastructure/credential problems.")
-    status, log = worker.execute(["amp", "--stream-json", "--dangerously-allow-all", "-x", prompt],
-                                 agent=True)
+    args = ["codex", "--ask-for-approval", "never", "exec", "--json", "--ephemeral",
+            "--skip-git-repo-check", "--ignore-user-config", "--sandbox", "danger-full-access",
+            "-c", 'shell_environment_policy.exclude=["CODEX_API_KEY"]']
+    if model := os.environ.get("CODEX_MODEL", "").strip():
+        args += ["--model", model]
+    if effort := os.environ.get("CODEX_EFFORT", "").strip():
+        args += ["-c", "model_reasoning_effort=" + json.dumps(effort)]
+    status, log = worker.execute([*args, prompt], agent=True)
     threads = []
     for line in log.splitlines():
         try:
             message = json.loads(line)
         except (ValueError, TypeError):
             continue
-        thread = message.get("session_id", "") if isinstance(message, dict) else ""
-        if re.fullmatch(r"[A-Za-z0-9_-]+", thread) and thread not in threads:
+        thread = (message.get("thread_id", "") if isinstance(message, dict) and
+                  message.get("type") == "thread.started" else "")
+        if isinstance(thread, str) and re.fullmatch(r"[A-Za-z0-9_-]+", thread) and thread not in threads:
             threads.append(thread)
-            print("Amp thread: https://ampcode.com/threads/" + thread)
+            print("Codex thread ID: " + thread)
     if status:
-        print(f"::warning::Amp exited with status {status}; validating the resulting source tree.")
+        print(f"::warning::Codex exited with status {status}; validating the resulting source tree.")
 
 
 def repair_local(worker, policy, commands, instructions, max_repairs, *, resolve_lockfile=False):
@@ -450,8 +458,8 @@ def main():
     source, baseline = Path(args.source).resolve(), Path(args.baseline).resolve()
     policy = Policy(snapshot(baseline), lines(args.allowed_paths), json.loads(args.pins))
     policy.freeze(source)
-    with tempfile.TemporaryDirectory(prefix="amp-worker-cache-") as cache, \
-            tempfile.TemporaryDirectory(prefix="amp-cargo-seed-") as seed:
+    with tempfile.TemporaryDirectory(prefix="codex-worker-cache-") as cache, \
+            tempfile.TemporaryDirectory(prefix="codex-cargo-seed-") as seed:
         worker = Worker(source, time.monotonic() + args.budget_minutes * 60,
                         Path(cache), seed=Path(seed))
         error, attempts = repair_local(worker, policy, commands, args.instructions,
