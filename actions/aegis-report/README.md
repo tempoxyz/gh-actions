@@ -11,10 +11,19 @@ Blocked downloads are also counted in the step summary. Package versions blocked
 as `recentlyPublished` are listed by name and version, with a link to the Aegis
 policies page. That page opens one dialog that adds version-specific Warn
 exemptions for all of them after a single Voight-Kampff approval, with one link
-per 50 packages. The same package versions and exemption URLs appear in an error
-annotation in the post-job step, with instructions to rerun failed jobs after
-approval. This annotation also appears when used through Secure Runner; it does
-not change the job's exit status. When either blocked
+per 50 packages, with smaller batches when needed to keep URLs under 3,500
+characters and decoded payloads under 32 KiB. Links use deflate-compressed JSON
+and base64url when shorter than repeated `purl` parameters. Deploy Aegis server
+support for the `purls` parameter before releasing this action.
+
+The post-job error annotation puts complete exemption URLs before a preview of
+at most five package versions and instructions to rerun failed jobs after
+approval. Its escaped message stays at or below 4,000 characters, below the
+runner's 4,096-character truncation limit. Links that do not fit remain in the
+step summary, which lists up to 50 package versions; the audit-log artifact
+retains the full list. This annotation also appears when used through Secure
+Runner; it does not change the job's exit status. See [link size measurements](link-limits.md).
+When either blocked
 downloads or warning verdicts occur, the summary links to the current workflow
 run attempt in Aegis, showing all events across its jobs.
 

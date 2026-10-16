@@ -1,5 +1,7 @@
 const fs = require("node:fs");
 const readline = require("node:readline");
+const { deflateSync } = require("node:zlib");
+const { escapeAnnotation } = require("../harden-runner/annotations.cjs");
 
 // Only client-owned, fixed strings are included in annotations. Policy reasons
 // can contain upstream text, so those are counted without quoting them.
@@ -69,7 +71,13 @@ function runtimeWarningMessage({ total, counts }) {
 
 // The policies page approves at most this many exemptions at once.
 const EXEMPTION_LINK_PACKAGES = 50;
-const LISTED_PACKAGES = 200;
+const LISTED_PACKAGES = 50;
+const ANNOTATION_PACKAGES = 5;
+// Leave room for instructions and the workflow-command title under 4096 chars.
+const ANNOTATION_MESSAGE_LIMIT = 4000;
+const EXEMPTION_URL_LIMIT = 3500;
+// Match the policies page's bounded decompression budget.
+const EXEMPTION_PAYLOAD_LIMIT = 32 * 1024;
 
 function decode(value) {
   try {
@@ -94,7 +102,29 @@ function packageLabel(purl) {
 function exemptionUrl(purls) {
   const query = new URLSearchParams({ org: "*", repo: "*", reason: "recentlyPublished", verdict: "warn", confirm: "1" });
   for (const purl of purls) query.append("purl", purl);
-  return `https://go/aegis/policies?${query}`;
+  const plain = `https://go/aegis/policies?${query}`;
+  query.delete("purl");
+  query.set("purls", deflateSync(JSON.stringify(purls)).toString("base64url"));
+  const packed = `https://go/aegis/policies?${query}`;
+  return packed.length < plain.length ? packed : plain;
+}
+
+// Split on count and encoded size, never by cutting a URL or package coordinate.
+function exemptionBatches(purls) {
+  const batches = [];
+  for (let start = 0; start < purls.length;) {
+    const batch = purls.slice(start, start + EXEMPTION_LINK_PACKAGES);
+    let url;
+    while (true) {
+      url = exemptionUrl(batch);
+      if (url.length <= EXEMPTION_URL_LIMIT && Buffer.byteLength(JSON.stringify(batch)) <= EXEMPTION_PAYLOAD_LIMIT) break;
+      if (batch.length === 1) { url = ""; break; }
+      batch.pop();
+    }
+    batches.push({ start, count: batch.length, url });
+    start += batch.length;
+  }
+  return batches;
 }
 
 // Lists each blocked package version and links to one policies-page dialog
@@ -108,34 +138,37 @@ function recentlyPublishedSummary(purls) {
   ];
   if (purls.length > LISTED_PACKAGES) lines.push(`> - …and ${purls.length - LISTED_PACKAGES} more in the Aegis audit-log artifact`);
   lines.push(">");
-  for (let start = 0; start < purls.length; start += EXEMPTION_LINK_PACKAGES) {
-    const batch = purls.slice(start, start + EXEMPTION_LINK_PACKAGES);
-    const range = purls.length > EXEMPTION_LINK_PACKAGES ? ` (${start + 1}–${start + batch.length})` : "";
-    lines.push(`> [Add Aegis exemptions for ${purls.length === 1 ? "this package" : "these packages"}${range}](${exemptionUrl(batch)})`);
+  const batches = exemptionBatches(purls);
+  for (const { start, count, url } of batches) {
+    const range = batches.length > 1 ? ` (${start + 1}–${start + count})` : "";
+    lines.push(url
+      ? `> [Add Aegis exemptions for ${purls.length === 1 ? "this package" : "these packages"}${range}](${url})`
+      : `> Package ${start + 1} is too large for an exemption link; use the Aegis policies page and audit-log artifact.`);
   }
   lines.push(">", "> Each exemption downgrades recentlyPublished to a warning for that exact version only.");
   return lines.join("\n");
 }
 
-// Annotation messages are plain text; bare URLs are clickable in the run UI.
+// Bare URLs are clickable. Budget the escaped form too, so runner truncation
+// cannot turn a complete exemption link into a partial package selection.
 function recentlyPublishedAnnotation(purls) {
   if (!purls.length) return "";
-  const lines = [
-    `Aegis blocked ${purls.length} recently published package version${purls.length === 1 ? "" : "s"}:`,
-    ...purls.slice(0, LISTED_PACKAGES).map((purl) => {
-      const { type, name, version } = packageVersion(purl);
-      return `- ${name.split("/").map(decode).join("/")}@${decode(version)} (${decode(type)})`
-        .replace(/[\u0000-\u001f\u007f]/g, " ");
-    }),
-  ];
-  if (purls.length > LISTED_PACKAGES) lines.push(`…and ${purls.length - LISTED_PACKAGES} more in the Aegis audit-log artifact.`);
-  for (let start = 0; start < purls.length; start += EXEMPTION_LINK_PACKAGES) {
-    const batch = purls.slice(start, start + EXEMPTION_LINK_PACKAGES);
-    lines.push(`Add Aegis exemptions: ${exemptionUrl(batch)}`);
+  const lines = [`Aegis blocked ${purls.length} recently published package version${purls.length === 1 ? "" : "s"}:`];
+  const footer = ["Each exemption downgrades recentlyPublished to a warning for that exact version only.",
+    "After approval, rerun failed jobs. See the step summary for all packages and exemption links."];
+  const fits = candidate => escapeAnnotation([...candidate, ...footer].join("\n")).length <= ANNOTATION_MESSAGE_LIMIT;
+  for (const { url } of exemptionBatches(purls)) {
+    if (!url || !fits([...lines, `Add Aegis exemptions: ${url}`])) break;
+    lines.push(`Add Aegis exemptions: ${url}`);
   }
-  lines.push("Each exemption downgrades recentlyPublished to a warning for that exact version only.",
-    "After approval, rerun failed jobs.");
-  return lines.join("\n");
+  for (const purl of purls.slice(0, ANNOTATION_PACKAGES)) {
+    const { type, name, version } = packageVersion(purl);
+    const label = `- ${name.split("/").map(decode).join("/")}@${decode(version)} (${decode(type)})`
+      .replace(/[\u0000-\u001f\u007f]/g, " ");
+    if (!fits([...lines, label])) break;
+    lines.push(label);
+  }
+  return [...lines, ...footer].join("\n");
 }
 
 module.exports = { scanRuntimeWarnings, runtimeWarningMessage, recentlyPublishedSummary, recentlyPublishedAnnotation, exemptionUrl };
