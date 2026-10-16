@@ -344,7 +344,7 @@ jobs:
 
   tempo-extension-build:
     name: tempo-extension build
-    uses: ./.github/workflows/tempo-extension.yml
+    uses: ./.github/workflows/tempo-extension.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
     permissions:
       attestations: write
       contents: read
