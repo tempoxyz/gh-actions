@@ -43,7 +43,7 @@ jobs:
       contents: read
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@a4fa1d51aa4014d86628f43b1dff8ba88219e04d # 2026-10-15T00-03-55Z-a4fa1d51
+        uses: tempoxyz/gh-actions/actions/secure-runner@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
 
       - name: Checkout repository
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
@@ -68,7 +68,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: tempoxyz/gh-actions/vendor/docker/setup-buildx-action@a4fa1d51aa4014d86628f43b1dff8ba88219e04d # 2026-10-15T00-03-55Z-a4fa1d51
+        uses: tempoxyz/gh-actions/vendor/docker/setup-buildx-action@aaec1d2a49380949d267946d343f0cb9440248b7 # 2026-10-16T03-27-40Z-aaec1d2a
 
       - name: Build reproducible binary
         env:
