@@ -755,3 +755,76 @@ test("main reports a disabled Socket STS as a warning and still fails", async ()
     Object.assign(process.env, previous);
   }
 });
+
+const consumedAssertion = {
+  status: 409,
+  body: '{"message":"bearer token has already been used"}',
+};
+
+test("recovers a consumed assertion after a failed token lease schedule", async () => {
+  const { exchange } = require("./main.cjs");
+  const assertions = [];
+  const delays = [];
+  let issued = 0;
+  const token = "recovered-socket-api-token";
+  const responses = [
+    { status: 502, body: '{"message":"unable to schedule token expiration"}' },
+    consumedAssertion,
+    { status: 200, body: JSON.stringify({ token, expires_at: "2099-01-01T00:00:00Z" }) },
+  ];
+  const result = await exchange({
+    endpoint: "socket-sts.example.test",
+    getAssertion: async () => `assertion-${++issued}`,
+    checkStatus: async () => {},
+    request: async (_url, options) => {
+      assertions.push(options.headers.authorization);
+      assert.ok(responses.length > 0, "must refresh instead of retrying a consumed assertion");
+      return responses.shift();
+    },
+    now: () => 0,
+    sleep: async (delay) => delays.push(delay),
+    random: () => 0,
+  });
+  assert.equal(result.token, token);
+  assert.deepEqual(assertions, ["Bearer assertion-1", "Bearer assertion-1", "Bearer assertion-2"]);
+  assert.deepEqual(delays, [1_000]);
+});
+
+test("only retries a consumed assertion once and keeps the original deadline", async () => {
+  let issued = 0;
+  let clock = 0;
+  const attempts = [];
+  await assert.rejects(
+    exchangeWithRetry(
+      async () => `assertion-${++issued}`,
+      async (assertion, timeoutMs) => {
+        attempts.push([assertion, timeoutMs]);
+        clock += 2_500;
+        return consumedAssertion;
+      },
+      { now: () => clock, deadline: 4_000, sleep: async () => assert.fail("must not back off with a consumed assertion") },
+    ),
+    { code: "ESTS_FRESH_ASSERTION_REQUIRED", message: "Socket STS rejected a consumed assertion" },
+  );
+  assert.deepEqual(attempts, [["assertion-1", 4_000], ["assertion-2", 1_500]]);
+  assert.equal(issued, 2);
+});
+
+for (const response of [
+  { status: 409, body: '{"message":"unknown conflict"}' },
+  { status: 409, body: "bearer token has already been used" },
+  { status: 403, body: consumedAssertion.body },
+]) {
+  test(`does not refresh an assertion for an unrelated ${response.status}: ${response.body}`, async () => {
+    let issued = 0;
+    const assertions = [];
+    const result = await exchangeWithRetry(
+      async () => `assertion-${++issued}`,
+      async (assertion) => { assertions.push(assertion); return response; },
+      { now: () => 0, sleep: async () => {} },
+    );
+    assert.deepEqual(result, response);
+    assert.equal(issued, 1);
+    assert.deepEqual(assertions, Array(4).fill("assertion-1"));
+  });
+}
