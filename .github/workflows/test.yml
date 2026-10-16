@@ -9,8 +9,9 @@ name: Test
 #
 # Scanner checks run in a single job so the suite surfaces as one status check
 # (`Test / integration`), which can be marked required in branch protection.
-# Separate reusable-workflow smoke tests check rust-lint's disabled-job gate and build a
-# fixture with tempo-extension (build only, no publishing).
+# Separate reusable-workflow smoke tests check rust-lint's disabled-job gate, build a
+# fixture with tempo-extension (build only, no publishing), and build tempo-extension's
+# pinned signer to sign that fixture with a throwaway key.
 
 on:
   push:
@@ -356,6 +357,95 @@ jobs:
       install-command: echo "The fixture has no dependencies"
       build-command: bash testdata/fixtures/tempo-extension/build.sh
       targets: linux-amd64
+
+  # tempo-extension only builds the signer when publishing, so check here that the pinned
+  # tempo ref still builds `tempo-sign` and signs a manifest the launcher accepts.
+  tempo-sign:
+    name: tempo-extension signer
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@392079a54ac0240e1b21417eca38b7c0a50bf55d # 2026-10-01T18-10-09Z-392079a5
+
+      - name: Checkout repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+
+      - name: Read signer ref from tempo-extension
+        id: pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref=$(sed -nE '/name: Checkout release signing tool/,/- name:/s/^ +ref: ([0-9a-f]{40}).*/\1/p' \
+            .github/workflows/tempo-extension.yml)
+          [ -n "$ref" ] || { echo "::error::no pinned signer ref in tempo-extension.yml"; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release signing tool
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          path: release-signer
+          persist-credentials: false
+          ref: ${{ steps.pin.outputs.ref }}
+          repository: tempoxyz/tempo
+
+      - name: Cache signer git dependencies
+        uses: actions/cache@3edfce9056124e459a23f683a21433670d47daca # main
+        with:
+          path: ~/.cargo/git/db
+          key: tempo-sign-git-${{ runner.os }}-${{ hashFiles('release-signer/Cargo.lock') }}
+
+      - name: Build release signer
+        working-directory: release-signer
+        run: |
+          set -euo pipefail
+          rustup default stable
+          cargo build --locked --release -p tempo-ext --features sign --bin tempo-sign
+
+      - name: Sign fixture release
+        shell: bash
+        run: |
+          set -euo pipefail
+          signer="$PWD/release-signer/target/release/tempo-sign"
+          work="${RUNNER_TEMP:?}/tempo-sign"
+          mkdir -p "$work/artifacts"
+          EXTENSION_OUTPUT="$work/artifacts/tempo-fixture-linux-amd64" EXTENSION_PACKAGE=tempo-fixture \
+            EXTENSION_VERSION=0.0.0-test EXTENSION_SUFFIX=linux-amd64 bash testdata/fixtures/tempo-extension/build.sh
+          sha256sum "$work/artifacts/tempo-fixture-linux-amd64" > "$work/artifacts/tempo-fixture-linux-amd64.sha256"
+          printf '# fixture skill\n' > "$work/SKILL.md"
+
+          "$signer" generate-key "$work/release.key"
+          if "$signer" generate-key "$work/release.key" 2>/dev/null; then
+            echo "::error::generate-key replaced an existing key"; exit 1
+          fi
+          [ "$(stat -c %a "$work/release.key")" = 600 ] || { echo "::error::key is not mode 600"; exit 1; }
+
+          url=https://cli.tempo.xyz/extensions/tempo-fixture
+          "$signer" sign \
+            --key-file "$work/release.key" \
+            --artifacts-dir "$work/artifacts" \
+            --version 0.0.0-test \
+            --base-url "$url" \
+            --description "Fixture extension" \
+            --skill "$url/v0.0.0-test/SKILL.md" \
+            --skill-sha256 "$(sha256sum "$work/SKILL.md" | cut -d' ' -f1)" \
+            --skill-file "$work/SKILL.md" \
+            --output "$work/manifest.json"
+
+          # The installer requires these fields and trusted-comment tokens (crates/ext/src/installer).
+          jq -e --arg url "$url" '
+            .version == "v0.0.0-test"
+            and (.binaries | keys == ["tempo-fixture-linux-amd64"])
+            and .binaries["tempo-fixture-linux-amd64"].url == "\($url)/v0.0.0-test/tempo-fixture-linux-amd64"
+            and (.binaries["tempo-fixture-linux-amd64"].signature
+              | contains("trusted comment: file:tempo-fixture-linux-amd64\tversion:v0.0.0-test"))
+            and (.skill_signature | contains("trusted comment: skill:tempo-fixture\tversion:v0.0.0-test"))
+          ' "$work/manifest.json" >/dev/null || { cat "$work/manifest.json"; exit 1; }
+          echo "ok: signed manifest with $(jq '.binaries | length' "$work/manifest.json") binary"
 
   integration:
     name: integration
