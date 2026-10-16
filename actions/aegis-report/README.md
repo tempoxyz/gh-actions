@@ -11,7 +11,10 @@ Blocked downloads are also counted in the step summary. Package versions blocked
 as `recentlyPublished` are listed by name and version, with a link to the Aegis
 policies page. That page opens one dialog that adds version-specific Warn
 exemptions for all of them after a single Voight-Kampff approval, with one link
-per 50 packages. When either blocked
+per 50 packages. The same package versions and exemption URLs appear in an error
+annotation in the post-job step, with instructions to rerun failed jobs after
+approval. This annotation also appears when used through Secure Runner; it does
+not change the job's exit status. When either blocked
 downloads or warning verdicts occur, the summary links to the current workflow
 run attempt in Aegis, showing all events across its jobs.
 

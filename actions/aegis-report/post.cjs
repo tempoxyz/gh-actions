@@ -1,9 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { aegisReportPath, uploadAegisReport } = require("./dist/artifact-upload.cjs");
-const { stepSummary, warning } = require("../harden-runner/annotations.cjs");
+const { escapeAnnotation, stepSummary, warning } = require("../harden-runner/annotations.cjs");
 const { retireAsync, quiesceAsync } = require("./linux-lifecycle.cjs");
-const { scanRuntimeWarnings, runtimeWarningMessage, recentlyPublishedSummary } = require("./runtime-warnings.cjs");
+const { scanRuntimeWarnings, runtimeWarningMessage, recentlyPublishedSummary, recentlyPublishedAnnotation } = require("./runtime-warnings.cjs");
 
 function workflowEventsUrl(env) {
   const repository = env.GITHUB_REPOSITORY?.split("/");
@@ -42,6 +42,8 @@ async function report({
         }
         const exemptions = recentlyPublishedSummary(decisions.recentlyPublished || []);
         if (exemptions) stepSummary(env, `\n${exemptions}`);
+        const annotation = recentlyPublishedAnnotation(decisions.recentlyPublished || []);
+        if (annotation) console.log(`::error title=Aegis blocked recently published package versions::${escapeAnnotation(annotation)}`);
         if (message || decisions.blocked) {
           const url = workflowEventsUrl(env);
           if (url) stepSummary(env, `\n[View all events for this workflow in Aegis](${url})`);

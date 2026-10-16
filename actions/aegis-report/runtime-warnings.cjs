@@ -117,4 +117,25 @@ function recentlyPublishedSummary(purls) {
   return lines.join("\n");
 }
 
-module.exports = { scanRuntimeWarnings, runtimeWarningMessage, recentlyPublishedSummary, exemptionUrl };
+// Annotation messages are plain text; bare URLs are clickable in the run UI.
+function recentlyPublishedAnnotation(purls) {
+  if (!purls.length) return "";
+  const lines = [
+    `Aegis blocked ${purls.length} recently published package version${purls.length === 1 ? "" : "s"}:`,
+    ...purls.slice(0, LISTED_PACKAGES).map((purl) => {
+      const { type, name, version } = packageVersion(purl);
+      return `- ${name.split("/").map(decode).join("/")}@${decode(version)} (${decode(type)})`
+        .replace(/[\u0000-\u001f\u007f]/g, " ");
+    }),
+  ];
+  if (purls.length > LISTED_PACKAGES) lines.push(`…and ${purls.length - LISTED_PACKAGES} more in the Aegis audit-log artifact.`);
+  for (let start = 0; start < purls.length; start += EXEMPTION_LINK_PACKAGES) {
+    const batch = purls.slice(start, start + EXEMPTION_LINK_PACKAGES);
+    lines.push(`Add Aegis exemptions: ${exemptionUrl(batch)}`);
+  }
+  lines.push("Each exemption downgrades recentlyPublished to a warning for that exact version only.",
+    "After approval, rerun failed jobs.");
+  return lines.join("\n");
+}
+
+module.exports = { scanRuntimeWarnings, runtimeWarningMessage, recentlyPublishedSummary, recentlyPublishedAnnotation, exemptionUrl };

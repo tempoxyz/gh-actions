@@ -184,6 +184,8 @@ test("post lists recently published blocks and links one exemption dialog for th
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-exemptions-test-"));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const summary = path.join(temp, "summary.md");
+  const lines = [];
+  t.mock.method(console, "log", (line) => lines.push(String(line)));
   const decision = (fields) => ({ msg: "package decision", action: "block", category: "policy", ...fields });
   const records = [
     decision({ purl: "pkg:npm/%40tempo/example@1.2.3", reason: "didYouMean, recentlyPublished" }),
@@ -217,6 +219,35 @@ test("post lists recently published blocks and links one exemption dialog for th
   });
   assert.deepEqual(url.searchParams.getAll("purl"), ["pkg:npm/%40tempo/example@1.2.3", "pkg:pypi/requests@2.32.0?artifact_id=wheel"]);
   assert.doesNotMatch(markdown, /malware@|warned@|unavailable@|no-version|warning@/);
+  const { escapeAnnotation } = require("../harden-runner/annotations.cjs");
+  assert.equal(lines.filter((line) => line.startsWith("::error ")).length, 1);
+  assert.equal(lines.find((line) => line.startsWith("::error ")), [
+    "::error title=Aegis blocked recently published package versions::",
+    escapeAnnotation([
+      "Aegis blocked 2 recently published package versions:",
+      "- @tempo/example@1.2.3 (npm)",
+      "- requests@2.32.0 (pypi)",
+      `Add Aegis exemptions: ${url.href}`,
+      "Each exemption downgrades recentlyPublished to a warning for that exact version only.",
+      "After approval, rerun failed jobs.",
+    ].join("\n")),
+  ].join(""));
+});
+
+test("recently published annotations escape coordinates and batch exemption URLs", () => {
+  const { recentlyPublishedAnnotation } = require("./runtime-warnings.cjs");
+  assert.equal(recentlyPublishedAnnotation([]), "");
+  const one = recentlyPublishedAnnotation(["pkg:npm/%40tempo/test%0A%3A%3Aerror%3A%3A@1.0.0"]);
+  assert.equal(one.split("\n")[1], "- @tempo/test ::error::@1.0.0 (npm)");
+  assert.match(one, /^Aegis blocked 1 recently published package version:/);
+
+  const purls = Array.from({ length: 205 }, (_, i) => `pkg:npm/p${i}@1.0.0`);
+  const many = recentlyPublishedAnnotation(purls);
+  assert.equal(many.split("\n").filter((line) => line.startsWith("- ")).length, 200);
+  assert.match(many, /…and 5 more in the Aegis audit-log artifact\./);
+  const links = [...many.matchAll(/^Add Aegis exemptions: (\S+)$/gm)];
+  assert.deepEqual(links.flatMap((link) => new URL(link[1]).searchParams.getAll("purl")), purls);
+  assert.equal(links.length, 5);
 });
 
 test("recently published summaries batch links for the policies page and render coordinates inertly", () => {
