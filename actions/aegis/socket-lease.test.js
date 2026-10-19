@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { once } = require("node:events");
+const http = require("node:http");
 const { createSocketLease, RENEW_BEFORE_MS, RETRY_AFTER_MS } = require("./socket-lease.cjs");
 const { createTokenServer } = require("./token-server.cjs");
 const { retireProvider, startProvider } = require("./token-provider.cjs");
@@ -185,17 +186,35 @@ test("retirement validates the loopback capability and bounds stalled or unsafe 
   assert.deepEqual(await retireProvider(url, { fetcher: async () => Response.json({ tokens: [INITIAL, INITIAL] }) }), [INITIAL]);
   await assert.rejects(retireProvider(url, { fetcher: async () => { throw new Error("private credential"); } }),
     { message: "Socket token provider cleanup unavailable" });
-  await assert.rejects(retireProvider(url, { fetcher: async (_url, { signal }) => ({ status: 200,
-    body: new ReadableStream({ start(controller) {
-      signal.addEventListener("abort", () => controller.error(new Error("private response")), { once: true });
-    } }),
-  }) }), { message: "Socket token provider cleanup unavailable" });
+});
+
+test("retirement aborts a real stalled HTTP response within its cleanup deadline", { timeout: 5_000 }, async (t) => {
+  // A real pending socket keeps the event loop alive, as it does in production.
+  // AbortSignal.timeout alone is unref'ed and cannot keep a mock stream alive
+  // when this file runs by itself under the CI runner's Node version.
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.flushHeaders();
+  });
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const url = `http://127.0.0.1:${server.address().port}/` + "a".repeat(43);
+  try {
+    await assert.rejects(retireProvider(url), { message: "Socket token provider cleanup unavailable" });
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("detached IPC hands off lease metadata, keeps credentials out of argv, and exits after retirement", async () => {
   const { child, url } = await startProvider(INITIAL, {}, {
     endpoint: "socket-sts.tempoxyz.net", expiresAt: iso(Date.now() + HOUR),
   });
+  // Production detaches/unrefs the provider so setup can exit. This test owns
+  // the child and must keep its exit event referenced until it is observed.
+  child.ref();
   const exited = once(child, "exit");
   try {
     assert.deepEqual(await (await fetch(url, { method: "POST" })).json(), { token: INITIAL });
