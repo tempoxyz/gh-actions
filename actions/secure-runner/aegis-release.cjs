@@ -13,6 +13,14 @@ const RELEASE_PATH = "/v1/actions/releases";
 const AUDIENCE = ORIGIN;
 const RELEASE_TAG = /^(?:v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?|[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12})$/;
 const TRANSFER_TIMEOUT_MS = 120_000;
+// The two TUF repositories `gh attestation trusted-root` reads without flags, in
+// its output order. gh walks them one after the other; fetching each in its own
+// process overlaps them. Each starts from a reviewed copy of that repository's
+// current root, which TUF still updates and verifies like gh's embedded one.
+const TUF_REPOSITORIES = [
+  { url: "https://tuf-repo-cdn.sigstore.dev", root: path.join(__dirname, "tuf", "tuf-repo-cdn.sigstore.dev.json") },
+  { url: "https://tuf-repo.github.com", root: path.join(__dirname, "tuf", "tuf-repo.github.com.json") },
+];
 
 function releaseChannel(tag) {
   return tag.startsWith("v") && !tag.slice(1).includes("-") ? "regular" : "pre-release";
@@ -104,23 +112,28 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
   const directory = fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), "aegis-release-"));
   const trustedRoot = path.join(directory, "trusted_root.jsonl");
   const commandOptions = { timeout: 60_000, env: ghEnvironment(token, env, pathEntries) };
+  const roots = TUF_REPOSITORIES.map((repository) => ({
+    ...repository, file: path.join(directory, `${new URL(repository.url).hostname}.jsonl`),
+  }));
   // Fetch current roots using gh's authenticated TUF flow, independently of
   // release lookup and asset transfers. Never reuse a root file across jobs.
   const [{ artifact, commit }] = await settle([
     downloadAssets({ version, getOidc, runnerOS, runnerArch, directory, fetcher, sleep }),
-    retry(async () => {
+    ...roots.map(({ url, root, file }) => retry(async () => {
       // Truncate on every attempt so partial output cannot survive a retry.
-      const output = fs.openSync(trustedRoot, "w", 0o600);
+      const output = fs.openSync(file, "w", 0o600);
       try {
-        await execute("gh", ["attestation", "trusted-root"], {
+        await execute("gh", ["attestation", "trusted-root", "--tuf-url", url, "--tuf-root", root], {
           ...commandOptions, stdio: ["ignore", output, "inherit"],
         });
       } finally {
         fs.closeSync(output);
       }
-      if (fs.statSync(trustedRoot).size === 0) throw new Error("GitHub CLI returned no trusted roots");
-    }, "Sigstore trusted-root download", sleep, 0.25),
+      if (fs.statSync(file).size === 0) throw new Error(`GitHub CLI returned no trusted roots from ${url}`);
+    }, `Sigstore trusted-root download from ${url}`, sleep, 0.25)),
   ]);
+  // Byte for byte what `gh attestation trusted-root` writes for both repositories.
+  fs.writeFileSync(trustedRoot, Buffer.concat(roots.map(({ file }) => fs.readFileSync(file))), { mode: 0o600, flag: "wx" });
   await retry(() => execute("gh", [
     "attestation", "verify", artifact,
     "--repo", "tempoxyz/aegis",
@@ -135,4 +148,4 @@ async function downloadAndVerify({ version = "", getOidc, token, runnerOS, runne
   return { package: artifact, directory };
 }
 
-module.exports = { AUDIENCE, ORIGIN, RELEASE_TAG, downloadAndVerify, releaseChannel, retry, validateMetadata };
+module.exports = { AUDIENCE, ORIGIN, RELEASE_TAG, TUF_REPOSITORIES, downloadAndVerify, releaseChannel, retry, validateMetadata };

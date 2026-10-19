@@ -4,7 +4,13 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { downloadAndVerify, retry } = require("./aegis-release.cjs");
+const { TUF_REPOSITORIES, downloadAndVerify, retry } = require("./aegis-release.cjs");
+
+// Writes one line per TUF repository so tests can check the combined file.
+function writeRoot(args, options) {
+  fs.writeSync(options.stdio[1], `roots from ${args[args.indexOf("--tuf-url") + 1]}\n`);
+}
+const ROOTS = TUF_REPOSITORIES.map(({ url }) => `roots from ${url}\n`).join("");
 
 for (const [requested, tag, version, channel] of [
   ["", "v0.15.0", "0.15.0", "regular"],
@@ -39,7 +45,7 @@ for (const [requested, tag, version, channel] of [
         execute: async (command, args, options) => {
           commands.push({ command, args, options });
           await new Promise((resolve) => setImmediate(resolve));
-          if (args[1] === "trusted-root") fs.writeSync(options.stdio[1], "trusted roots\n");
+          if (args[1] === "trusted-root") writeRoot(args, options);
           else verified = true;
         },
         sleep: async () => {},
@@ -50,14 +56,16 @@ for (const [requested, tag, version, channel] of [
       assert.equal(requests[requested === "" ? 1 : 0].url,
         `https://aegis.tempoxyz.net/v1/actions/releases/${channel}/${tag}`);
       assert.ok(requests.every(({ options }) => options.headers["x-aegis-github-oidc-jwt"] === "oidc-assertion"));
-      assert.equal(commands.length, 2);
-      assert.equal(commands[0].command, "gh");
-      assert.equal(commands[0].options.env.GH_TOKEN, "job-token");
-      assert.deepEqual(commands[0].args, ["attestation", "trusted-root"]);
-      const rootIndex = commands[1].args.indexOf("--custom-trusted-root");
+      assert.equal(commands.length, 3);
+      for (const [index, { url, root }] of TUF_REPOSITORIES.entries()) {
+        assert.equal(commands[index].command, "gh");
+        assert.equal(commands[index].options.env.GH_TOKEN, "job-token");
+        assert.deepEqual(commands[index].args, ["attestation", "trusted-root", "--tuf-url", url, "--tuf-root", root]);
+      }
+      const rootIndex = commands[2].args.indexOf("--custom-trusted-root");
       assert.ok(rootIndex > 0);
-      assert.equal(fs.readFileSync(commands[1].args[rootIndex + 1], "utf8"), "trusted roots\n");
-      assert.deepEqual(commands[1].args.slice(-5), ["--source-digest", "a".repeat(40),
+      assert.equal(fs.readFileSync(commands[2].args[rootIndex + 1], "utf8"), ROOTS);
+      assert.deepEqual(commands[2].args.slice(-5), ["--source-digest", "a".repeat(40),
         "--source-ref", "refs/heads/main", "--deny-self-hosted-runners"]);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -93,7 +101,7 @@ for (const status of [401, 403]) {
       getOidc: async () => "assertion", runnerOS: "Linux", runnerArch: "X64",
       env: { RUNNER_TEMP: directory },
       fetcher: async (url) => { requests.push(url); return new Response("{}", { status }); },
-      execute: async (command, args, options) => { if (args[1] === "trusted-root") fs.writeSync(options.stdio[1], "roots\n"); },
+      execute: async (command, args, options) => { if (args[1] === "trusted-root") writeRoot(args, options); },
       sleep: async (ms) => { waits.push(ms); },
     }), new RegExp(`HTTP ${status} for /v1/actions/releases/next`));
     assert.equal(requests.filter((url) => url.includes("/next?")).length, 1);
@@ -109,7 +117,7 @@ test("server errors from the release server are still retried three times", asyn
     getOidc: async () => "assertion", runnerOS: "Linux", runnerArch: "X64",
     env: { RUNNER_TEMP: directory },
     fetcher: async (url) => { requests.push(url); return new Response("{}", { status: 503 }); },
-    execute: async (command, args, options) => { if (args[1] === "trusted-root") fs.writeSync(options.stdio[1], "roots\n"); },
+    execute: async (command, args, options) => { if (args[1] === "trusted-root") writeRoot(args, options); },
     sleep: async () => {},
   }), /HTTP 503 for \/v1\/actions\/releases\/next/);
   assert.equal(requests.filter((url) => url.includes("/next?")).length, 3);
@@ -133,18 +141,18 @@ function fixture(t, { fetcher, execute } = {}) {
     fetcher: (url) => fetcher ? fetcher(url, response) : response(url),
     execute: async (command, args, options) => {
       if (execute) return execute(args, options);
-      if (args[1] === "trusted-root") fs.writeSync(options.stdio[1], "roots\n");
+      if (args[1] === "trusted-root") writeRoot(args, options);
     },
   };
 }
 
-test("all three transfers overlap roots and verification waits for every completed body", async (t) => {
+test("all three transfers overlap both root fetches and verification waits for every completed body", async (t) => {
   const started = new Set();
   const allStarted = Promise.withResolvers();
   const rootsDone = Promise.withResolvers();
   const bodyDone = Promise.withResolvers();
   let verified = false;
-  const start = (name) => { started.add(name); if (started.size === 4) allStarted.resolve(); };
+  const start = (name) => { started.add(name); if (started.size === 5) allStarted.resolve(); };
   const running = downloadAndVerify(fixture(t, {
     fetcher: async (url, response) => {
       if (!url.includes("/assets/")) return response(url);
@@ -159,9 +167,9 @@ test("all three transfers overlap roots and verification waits for every complet
     },
     execute: async (args, options) => {
       if (args[1] === "trusted-root") {
-        start("roots");
+        start(args[args.indexOf("--tuf-url") + 1]);
         await rootsDone.promise;
-        fs.writeSync(options.stdio[1], "roots\n");
+        writeRoot(args, options);
       } else { verified = true; }
     },
   }));
@@ -192,12 +200,12 @@ test("root and asset failures drain their peers and never verify", async (t) => 
       },
       execute: async (args, options) => {
         assert.equal(args[1], "trusted-root", "must not verify after preparation fails");
-        if (failure === "roots") {
+        if (failure === "roots" && args.includes(TUF_REPOSITORIES[1].url)) {
           if (++attempts === 3) failed.resolve();
           throw new Error("roots failed");
         }
         await release.promise;
-        fs.writeSync(options.stdio[1], "roots\n");
+        writeRoot(args, options);
       },
     })).then(() => assert.fail("must fail"), (error) => { finished = true; return error; });
     await failed.promise;
@@ -215,20 +223,53 @@ test("root retries discard partial output, close descriptors, and preserve verif
   await downloadAndVerify(fixture(t, { execute: async (args, options) => {
     if (args[1] === "trusted-root") {
       descriptors.push(options.stdio[1]);
-      if (++attempts === 1) {
+      if (args.includes(TUF_REPOSITORIES[0].url) && ++attempts === 1) {
         fs.writeSync(options.stdio[1], "partial invalid roots");
         throw new Error("interrupted");
       }
-      fs.writeSync(options.stdio[1], "roots\n");
+      writeRoot(args, options);
     } else {
-      assert.equal(fs.readFileSync(args[args.indexOf("--custom-trusted-root") + 1], "utf8"), "roots\n");
+      assert.equal(fs.readFileSync(args[args.indexOf("--custom-trusted-root") + 1], "utf8"), ROOTS);
       assert.ok(args.includes("--deny-self-hosted-runners"));
       assert.equal(args[args.indexOf("--signer-workflow") + 1], "tempoxyz/aegis/.github/workflows/release.yml");
       assert.equal(options.timeout, 60_000);
     }
   } }));
   assert.equal(attempts, 2);
+  assert.equal(descriptors.length, 3);
   for (const fd of descriptors) assert.throws(() => fs.fstatSync(fd), { code: "EBADF" });
+});
+
+test("both TUF repositories are fetched at once and combined in gh's output order", async (t) => {
+  const [publicGood, github] = TUF_REPOSITORIES.map(({ url }) => url);
+  const started = new Set();
+  const bothStarted = Promise.withResolvers();
+  const githubDone = Promise.withResolvers();
+  let roots;
+  await downloadAndVerify(fixture(t, { execute: async (args, options) => {
+    if (args[1] !== "trusted-root") {
+      roots = fs.readFileSync(args[args.indexOf("--custom-trusted-root") + 1], "utf8");
+      return;
+    }
+    const url = args[args.indexOf("--tuf-url") + 1];
+    started.add(url);
+    if (started.size === 2) bothStarted.resolve();
+    await bothStarted.promise;
+    // GitHub's repository answers first; the combined file keeps gh's order.
+    if (url === publicGood) await githubDone.promise;
+    writeRoot(args, options);
+    if (url === github) githubDone.resolve();
+  } }));
+  assert.equal(roots, `roots from ${publicGood}\nroots from ${github}\n`);
+});
+
+test("bootstrap roots are TUF root metadata", () => {
+  for (const { url, root } of TUF_REPOSITORIES) {
+    const { signed, signatures } = JSON.parse(fs.readFileSync(root, "utf8"));
+    assert.equal(signed._type, "root", url);
+    assert.ok(Number.isSafeInteger(signed.version) && signed.version > 1, url);
+    assert.ok(signed.roles.root.threshold >= 1 && signatures.length >= signed.roles.root.threshold, url);
+  }
 });
 
 test("empty roots, checksum mismatches, and rejected provenance never return an artifact", async (t) => {
