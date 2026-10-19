@@ -280,6 +280,24 @@ test("main passes an exact Aegis release tag to the server downloader", async ()
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test("main hands the Socket expiry to the provider and registers cleanup before installation", async () => {
+  const { env, config, directory } = pipelineEnv();
+  const providerURL = "http://127.0.0.1:1234/" + "a".repeat(43);
+  const { deps } = pipelineDeps({
+    prepareConfig: async (_token, options) => {
+      assert.deepEqual(options.socket, { endpoint: "socket-sts.tempoxyz.net", expiresAt: "2026-09-26T00:00:00Z" });
+      options.onProvider(providerURL);
+      return config;
+    },
+    install: async () => {
+      assert.ok(fs.readFileSync(env.GITHUB_STATE, "utf8").includes(`socket_provider_url=${providerURL}\n`));
+      return { binary: "/usr/bin/aegis" };
+    },
+  });
+  try { await captured(() => mainMain({ env, platform: "linux", deps })); }
+  finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("main exports Node trust only after successful Aegis installation", async () => {
   const { env, config, directory } = pipelineEnv();
   let installed = false;
