@@ -62,6 +62,42 @@ test("all concurrent failures are collected after every cleanup is attempted", a
   });
 });
 
+test("post freezes the provider alongside quiescing and revokes every collected lease once", async () => {
+  const teardown = Promise.withResolvers();
+  const calls = [], tokens = [];
+  const post = main({ env: { STATE_aegis_action: "secure-runner", STATE_socket_token: "original",
+    STATE_socket_provider_url: "loopback-capability" }, hooks: {
+    aegis: async () => {},
+    retire: async () => { calls.push("quiesce"); await teardown.promise; },
+    stopProvider: async (url) => {
+      assert.equal(url, "loopback-capability"); calls.push("freeze"); return ["original", "replacement"];
+    },
+    socket: async ({ env }) => { calls.push("revoke"); tokens.push(env.STATE_token); },
+    hardenRunner: async () => {},
+  } });
+  await new Promise(setImmediate);
+  assert.deepEqual(calls, ["quiesce", "freeze"]);
+  teardown.resolve();
+  await post;
+  assert.deepEqual(tokens.sort(), ["original", "replacement"]);
+});
+
+test("post still revokes the initial token when the provider is unreachable", async () => {
+  const tokens = [], output = [], originalLog = console.log;
+  console.log = (line) => output.push(line);
+  try {
+    await main({ env: { STATE_socket_token: "original", STATE_socket_provider_url: "loopback-capability" }, hooks: {
+      stopProvider: async () => { throw new Error("private request and credentials"); },
+      socket: async ({ env }) => tokens.push(env.STATE_token),
+      hardenRunner: async () => {},
+    } });
+  } finally { console.log = originalLog; }
+  assert.deepEqual(tokens, ["original"]);
+  assert.equal(output.length, 1);
+  assert.match(output[0], /Socket credential cleanup incomplete/);
+  assert.doesNotMatch(output[0], /private request|loopback-capability/);
+});
+
 test("a stuck job-end CLI is killed promptly, then tokens revoke while audit upload continues", async () => {
   const { spawn } = require("node:child_process");
   const { identity, quiesceAsync } = require("../aegis-report/linux-lifecycle.cjs");

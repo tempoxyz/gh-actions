@@ -18,7 +18,8 @@ runs:
   using: "composite"
   steps:
     - name: Log in to GHCR
-      uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a # master
+      # Untagged master snapshot; retain the immutable pin as the branch advances.
+      uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a # master # zizmor: ignore[ref-version-mismatch]
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
@@ -26,7 +27,8 @@ runs:
 
     - name: Log in to Docker Hub
       if: inputs.dockerhub-username != '' && inputs.dockerhub-token != ''
-      uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a # master
+      # Untagged master snapshot; retain the immutable pin as the branch advances.
+      uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a # master # zizmor: ignore[ref-version-mismatch]
       with:
         username: ${{ inputs.dockerhub-username }}
         password: ${{ inputs.dockerhub-token }}

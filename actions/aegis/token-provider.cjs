@@ -22,7 +22,7 @@ function childEnvironment() {
   );
 }
 
-async function startProvider(token, oidc = runnerOIDCEnvironment()) {
+async function startProvider(token, oidc = runnerOIDCEnvironment(), socket) {
   if (!/^\S{20,4096}$/.test(token)) throw new Error("Socket token is invalid");
   const child = spawn(process.execPath, [path.join(__dirname, "token-server.cjs")], {
     detached: true,
@@ -48,7 +48,7 @@ async function startProvider(token, oidc = runnerOIDCEnvironment()) {
   });
   // The detached service cannot inherit the job environment. Pass only the
   // required credentials over IPC; never put them in argv, env, or config.
-  child.send({ token, oidc });
+  child.send({ token, oidc, socket });
   const url = await ready;
   child.disconnect();
   child.unref();
@@ -57,12 +57,39 @@ async function startProvider(token, oidc = runnerOIDCEnvironment()) {
 
 // Starts the detached token provider for `token` and writes the Aegis
 // installation configuration that points at it. Returns the configuration path.
-async function prepareConfiguration(token, { env = process.env, oidc = runnerOIDCEnvironment(env) } = {}) {
-  const { url } = await startProvider(token, oidc);
-  const directory = fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), "aegis-config-"));
-  const config = path.join(directory, "install.json");
-  fs.writeFileSync(config, JSON.stringify({ managers: MANAGERS, test_token_url: url }), { mode: 0o600, flag: "wx" });
-  return config;
+async function prepareConfiguration(token, { env = process.env, oidc = runnerOIDCEnvironment(env), socket, onProvider } = {}) {
+  const { child, url } = await startProvider(token, oidc, socket);
+  try {
+    onProvider?.(url);
+    const directory = fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), "aegis-config-"));
+    const config = path.join(directory, "install.json");
+    fs.writeFileSync(config, JSON.stringify({ managers: MANAGERS, test_token_url: url }), { mode: 0o600, flag: "wx" });
+    return config;
+  } catch (error) { child.kill(); throw error; }
+}
+
+// Freeze renewal and collect the still-valid credentials for the existing
+// post hook to revoke. A slow/missing local provider cannot hold cleanup open.
+async function retireProvider(url, { fetcher = fetch } = {}) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" || parsed.hostname !== "127.0.0.1" || !parsed.port ||
+        parsed.username || parsed.password || parsed.search || parsed.hash || !/^\/[A-Za-z0-9_-]{43}$/.test(parsed.pathname)) throw new Error();
+    const response = await fetcher(parsed, { method: "POST", body: JSON.stringify({ retire: true }),
+      redirect: "error", signal: AbortSignal.timeout(1_000) });
+    if (response.status !== 200) throw new Error();
+    const bytes = [];
+    let length = 0;
+    for await (const chunk of response.body) {
+      length += chunk.length;
+      if (length > 64 * 1024) throw new Error();
+      bytes.push(Buffer.from(chunk));
+    }
+    const tokens = JSON.parse(Buffer.concat(bytes).toString("utf8")).tokens;
+    if (!Array.isArray(tokens) || tokens.length > 16 ||
+        tokens.some((token) => typeof token !== "string" || !/^\S{20,4096}$/.test(token))) throw new Error();
+    return [...new Set(tokens)];
+  } catch { throw new Error("Socket token provider cleanup unavailable"); }
 }
 
 async function main() {
@@ -76,4 +103,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { MANAGERS, childEnvironment, prepareConfiguration, startProvider };
+module.exports = { MANAGERS, childEnvironment, prepareConfiguration, startProvider, retireProvider };

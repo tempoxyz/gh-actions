@@ -183,7 +183,10 @@ async function setupAegis({ env, platform, deps }) {
       // If it aged out during installation preparation, the setup OIDC client
       // refreshes it with its existing bounded retries before service startup.
       const initialToken = await oidc.token(AEGIS_AUDIENCE);
-      return prepareConfig(socket.token, { env, oidc: { ...runnerOIDCEnvironment(env), initialToken } });
+      return prepareConfig(socket.token, { env, oidc: { ...runnerOIDCEnvironment(env), initialToken },
+        socket: { endpoint: socketEndpoint, expiresAt: socket.expiresAt },
+        onProvider: (url) => append(state, "socket_provider_url", url),
+      });
     });
 
     // Register the log upload before installing, so a failed install still
