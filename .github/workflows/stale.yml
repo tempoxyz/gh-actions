@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
 
       - name: Close stale PRs
         uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0

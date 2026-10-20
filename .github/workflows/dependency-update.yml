@@ -110,7 +110,7 @@ jobs:
       status: ${{ steps.update.outputs.status }}
     steps:
       - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
       - name: Checkout trusted caller base branch
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
@@ -133,7 +133,7 @@ jobs:
           NATIVE_PACKAGES: ${{ inputs.native-packages }}
         run: python3 -I .gh-actions/actions/dependency-update/setup_tools.py
       - name: Install cargo-nextest
-        uses: tempoxyz/gh-actions/vendor/taiki-e/install-action@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
+        uses: tempoxyz/gh-actions/vendor/taiki-e/install-action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
         with:
           tool: cargo-nextest@${{ inputs.nextest-version }}
       - name: Prepare, repair, publish and verify CI

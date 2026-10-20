@@ -90,11 +90,11 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     - name: Set up Docker Buildx
-      uses: tempoxyz/gh-actions/vendor/docker/setup-buildx-action@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
+      uses: tempoxyz/gh-actions/vendor/docker/setup-buildx-action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
 
     - name: Build and push
       id: build
-      uses: tempoxyz/gh-actions/vendor/docker/build-push-action@22f68514ca39af6de7309037b7df07a02ce160a9 # 2026-10-16T06-53-07Z-22f68514
+      uses: tempoxyz/gh-actions/vendor/docker/build-push-action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.file }}
