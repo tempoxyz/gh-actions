@@ -6,7 +6,7 @@ const { spawnSync } = require("child_process");
 const usage = [
   '**Usage:** `cyclops [private] audit [super-fast] [fast] [perf] [iterations=N] [hours=N] [config=pr-review.yaml] ',
   '[models="anthropic/claude-opus-4-7,openai/gpt-5.5"] [run-label=LABEL] ',
-  '[dry-run] [env=staging|prod|ab] [note="per-run audit guidance"]`',
+  '[dry-run] [env=staging|prod|ab] [note="per-run audit guidance"|notes="per-run audit guidance"]`',
 ].join("");
 
 // `super-fast` is the documented spelling; `superfast` is the variant people
@@ -75,7 +75,8 @@ function parseArgs(body, commandRegex, defaultEnv = "prod") {
       continue;
     }
 
-    const key = part.slice(0, sep);
+    const rawKey = part.slice(0, sep);
+    const key = rawKey === "notes" ? "note" : rawKey;
     let value = part.slice(sep + 1);
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
