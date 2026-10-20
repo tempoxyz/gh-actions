@@ -2,7 +2,8 @@
 
 Keep one pull request (or issue) comment up to date. The comment is identified by a hidden
 marker derived from `header`, so re-running a workflow edits the same comment instead of adding
-another. Replaces `marocchino/sticky-pull-request-comment` and the
+another. If the existing comments cannot be listed, the step fails rather than posting a
+duplicate. Replaces `marocchino/sticky-pull-request-comment` and the
 `peter-evans/find-comment` + `create-or-update-comment` pair.
 
 ## Inputs
