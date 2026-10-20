@@ -268,7 +268,10 @@ test("bootstrap roots are TUF root metadata", () => {
     const { signed, signatures } = JSON.parse(fs.readFileSync(root, "utf8"));
     assert.equal(signed._type, "root", url);
     assert.ok(Number.isSafeInteger(signed.version) && signed.version > 1, url);
-    assert.ok(signed.roles.root.threshold >= 1 && signatures.length >= signed.roles.root.threshold, url);
+    // tuf-on-ci leaves "sig": "" placeholders for keys that have not signed yet.
+    const { keyids, threshold } = signed.roles.root;
+    const signers = new Set(signatures.filter(({ keyid, sig }) => sig && keyids.includes(keyid)).map(({ keyid }) => keyid));
+    assert.ok(threshold >= 1 && signers.size >= threshold, url);
   }
 });
 
