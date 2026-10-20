@@ -53,9 +53,11 @@ runs:
         body_file="$(mktemp "$RUNNER_TEMP/pr-comment-XXXXXX")"
         if [[ -n "$BODY_PATH" ]]; then cat "$BODY_PATH" > "$body_file"; else printf '%s' "$MESSAGE" > "$body_file"; fi
 
-        # Find the existing comment carrying this marker (newest last).
-        existing="$(gh api "repos/${REPO}/issues/${NUMBER}/comments" --paginate \
-          --jq --arg m "$marker" '.[] | select(.body | contains($m)) | .id' | tail -1 || true)"
+        # Find the newest comment carrying this marker. gh's --jq takes one expression and
+        # no --arg, so the marker is read from the environment. A failed lookup fails the
+        # step rather than posting a duplicate.
+        existing="$(MARKER="$marker" gh api "repos/${REPO}/issues/${NUMBER}/comments" --paginate \
+          --jq '.[] | select(.body | contains(env.MARKER)) | .id' | tail -1)"
 
         case "$MODE" in
           delete)
