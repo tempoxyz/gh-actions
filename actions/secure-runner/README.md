@@ -45,6 +45,21 @@ the package. Aegis is never installed without a Socket API token, and only a
 verified release is ever installed. See [Aegis](../aegis) for policy behavior
 and supported runners.
 
+For jobs that outlive the Socket STS's one-hour lease, the loopback provider
+renews five minutes before expiry using a fresh GitHub assertion for the STS.
+Concurrent scans keep using the valid credential while renewal runs. Failed
+renewals retry every 30 seconds; the provider never serves an expired key.
+Replacement credentials stay in provider memory and are passed over loopback,
+not written to configuration, action state, environment, or logs. This renewal
+is enabled by Secure Runner's lease metadata; standalone legacy providers keep
+their existing static-token protocol.
+
+Aegis 0.41.0 already re-reads the provider and reconnects when Socket rejects
+its cached key. A long-lived connection can therefore record a recovered 401
+at the old lease's expiry, but its retry uses the replacement instead of
+repeatedly receiving the revoked key. This change does not promise zero raw
+401 responses or proactively replace the client's cached key.
+
 ## Inputs
 
 Accepts all inputs and defaults from [Harden Runner](../harden-runner/action.yml)
@@ -145,6 +160,12 @@ GitHub discards the runner after the job. Other Linux runners retain identity-ch
 uninstall in a child process, so the upload can progress during teardown.
 Once quiescing or teardown finishes, Socket token revocation and Harden
 Runner's telemetry flush run concurrently, without waiting for the audit upload.
+The provider stops renewal alongside quiescing. Collecting its live leases is
+capped at one second, and the post hook revokes the initial and replacement
+tokens concurrently. It does not wait for a pending renewal; if that mint
+finishes after cleanup, the provider attempts to revoke its result instead of
+publishing it. A missing provider produces a warning and still revokes the initial token;
+STS lease expiry remains the bound for an unreachable replacement credential.
 The Step Security lease is revoked only after its telemetry flush finishes.
 On GitHub-hosted runners, StepSecurity's post event and completion acknowledgement
 are retained, but process teardown and diagnostic log harvesting are skipped;
