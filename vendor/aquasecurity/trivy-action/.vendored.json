@@ -9,7 +9,7 @@
   "consume_as": "tempoxyz/gh-actions/vendor/aquasecurity/trivy-action@<gh-actions-sha>",
   "files_removed": 6,
   "nested_rewrites": [
-    "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 -> tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@22f68514ca39af6de7309037b7df07a02ce160a9",
+    "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 -> tempoxyz/gh-actions/vendor/aquasecurity/setup-trivy@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71",
     "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 -> actions/cache@3edfce9056124e459a23f683a21433670d47daca"
   ]
 }
