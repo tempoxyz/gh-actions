@@ -1120,6 +1120,8 @@ actions:
       package-lock.json, Makefile
 
   - name: tailscale/gitops-acl-action
+    security_patches:
+      - vendor/patches/tailscale-gitops-go.patch
     ref: main
     ref_type: branch
     sha: 5a4a17f5708e9bf96f4ee915a95e9f83c2eebe1a
