@@ -25,10 +25,19 @@ client warms the Socket STS and release-server assertions concurrently.
 
 Release preparation fetches the binary, checksums, and provenance concurrently.
 It also fetches fresh Sigstore trusted roots through `gh attestation trusted-root`
-alongside release lookup and downloads, then passes those roots to verification
-with `--custom-trusted-root`. Roots are not cached across jobs; checksum and
-provenance constraints still apply before installation. All started transfers
-and the root-fetch subprocess finish before setup returns, even on failure.
+alongside release lookup and downloads. gh reads the Sigstore Public Good and
+GitHub TUF repositories one after the other, so the action runs one process per
+repository and passes their combined output, the same file gh writes for both,
+to verification with `--custom-trusted-root`. Each process starts from a
+reviewed copy of its repository's current root in [`tuf/`](tuf). TUF still
+verifies any newer root and fetches fresh timestamp, snapshot, and targets
+metadata. Roots are not cached across jobs; checksum and provenance constraints
+still apply before installation. All started transfers and root-fetch
+subprocesses finish before setup returns, even on failure.
+
+To refresh the bootstrap roots, run `gh attestation trusted-root` with an empty
+`HOME` and copy each `~/.cache/gh/.sigstore/root/<repository>/root.json` to
+`tuf/<repository>.json`. gh verifies both against its embedded roots first.
 
 Aegis setup exchanges a Socket API token concurrently with its release preparation.
 The release branch bootstraps a GitHub CLI with attestation support on Linux if
