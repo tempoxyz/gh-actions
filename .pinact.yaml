@@ -35,12 +35,6 @@ rules:
   - ignore: true
     conditions:
       - expr: ActionName == "actions/cache" && ActionVersion == "3edfce9056124e459a23f683a21433670d47daca"
-  - ignore: true
-    conditions:
-      - expr: ActionName == "sigstore/cosign-installer" && ActionVersion == "828df1e55de306ba29db814d6057ddae71883cda"
-  - ignore: true
-    conditions:
-      - expr: ActionName == "docker/metadata-action" && ActionVersion == "8e671d84a3bd81afdfc4fdbb96a42b07c2a80934"
   # The latest published repository commit is intentionally inside the cooldown.
   - min_age: 0
     conditions:
