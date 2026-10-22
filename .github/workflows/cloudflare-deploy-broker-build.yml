@@ -1,0 +1,1248 @@
+name: Build and attest Cloudflare Worker
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Repository-relative directory containing the Worker package"
+        required: false
+        type: string
+        default: "."
+      install-directory:
+        description: "Repository-relative package and lockfile directory; defaults to working-directory"
+        required: false
+        type: string
+        default: ""
+      build-command:
+        description: "Optional application build command, run in working-directory before Wrangler packaging (no provider credentials)"
+        required: false
+        type: string
+        default: ""
+      wrangler-config:
+        description: "Path to the Wrangler configuration, relative to working-directory"
+        required: false
+        type: string
+        default: "wrangler.toml"
+      wrangler-environment:
+        description: "Optional Wrangler environment used to produce the attested configuration"
+        required: false
+        type: string
+        default: ""
+      dispatch-namespace:
+        description: "Workers for Platforms dispatch namespace for a namespace script build"
+        required: false
+        type: string
+        default: ""
+      d1-migrations-directory:
+        description: "Optional directory of D1 .sql migrations, relative to working-directory"
+        required: false
+        type: string
+        default: ""
+      publish-container-image:
+        description: "Build the Wrangler Dockerfile and push an attested image to the private Tempo Docker Hub registry"
+        required: false
+        type: boolean
+        default: false
+      dockerhub-oidc-connection-id:
+        description: "Docker Hub OIDC connection with read/write access to private Tempo repositories"
+        required: false
+        type: string
+        default: ""
+      artifact-name:
+        description: "Unique safe name prefix for the uploaded artifact"
+        required: false
+        type: string
+        default: "cloudflare-worker"
+      build-cache-paths:
+        description: "Newline-separated directories, relative to working-directory, restored before the build and saved after a successful one"
+        required: false
+        type: string
+        default: ""
+      build-cache-key-files:
+        description: "Newline-separated tracked-file globs, relative to working-directory, that invalidate the build cache in addition to package.json and pnpm-lock.yaml"
+        required: false
+        type: string
+        default: ""
+    outputs:
+      artifact-id:
+        description: "Immutable GitHub Actions artifact ID"
+        value: ${{ jobs.build.outputs.artifact-id }}
+      archive-digest:
+        description: "SHA-256 digest emitted by actions/upload-artifact"
+        value: ${{ jobs.build.outputs.archive-digest }}
+      module-digest:
+        description: "SHA-256 digest of the attested Worker module"
+        value: ${{ jobs.build.outputs.module-digest }}
+      d1-migrations-digest:
+        description: "SHA-256 digest of the attested D1 migration manifest, or empty when disabled"
+        value: ${{ jobs.build.outputs.d1-migrations-digest }}
+      worker-configuration-digest:
+        description: "SHA-256 digest of the attested canonical Worker configuration"
+        value: ${{ jobs.build.outputs.worker-configuration-digest }}
+      static-assets-digest:
+        description: "SHA-256 digest of the attested static asset manifest, or empty when disabled"
+        value: ${{ jobs.build.outputs.static-assets-digest }}
+      container-image-digest:
+        description: "Digest of the pushed Container image, or empty when disabled"
+        value: ${{ jobs.build.outputs.container-image-digest }}
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      archive-digest: ${{ steps.upload.outputs.artifact-digest }}
+      module-digest: ${{ steps.prepare.outputs.module-digest }}
+      d1-migrations-digest: ${{ steps.prepare-migrations.outputs.migration-digest }}
+      worker-configuration-digest: ${{ steps.prepare-configuration.outputs.configuration-digest }}
+      static-assets-digest: ${{ steps.prepare-assets.outputs.assets-digest }}
+      container-image-digest: ${{ steps.publish-container.outputs.image-digest }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Validate build inputs
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          INSTALL_DIRECTORY: ${{ inputs.install-directory || inputs.working-directory }}
+          BUILD_COMMAND: ${{ inputs.build-command }}
+          WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
+          WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
+          DISPATCH_NAMESPACE: ${{ inputs.dispatch-namespace }}
+          D1_MIGRATIONS_DIRECTORY: ${{ inputs.d1-migrations-directory }}
+          PUBLISH_CONTAINER_IMAGE: ${{ inputs.publish-container-image }}
+          DOCKERHUB_OIDC_CONNECTION_ID: ${{ inputs.dockerhub-oidc-connection-id }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        run: |
+          set -euo pipefail
+          safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
+          [[ "${WORKING_DIRECTORY}" =~ ${safe_path} ]]
+          INSTALL_DIRECTORY="${INSTALL_DIRECTORY:-${WORKING_DIRECTORY}}"
+          [[ "${INSTALL_DIRECTORY}" =~ ${safe_path} ]]
+          [[ ! "/${INSTALL_DIRECTORY}/" =~ /\.\./ ]]
+          [[ "${WRANGLER_CONFIG}" =~ ${safe_path} ]]
+          [[ "${WRANGLER_ENVIRONMENT}" =~ ^$|^[a-z][a-z0-9_-]{0,31}$ ]]
+          [[ ! "/${WORKING_DIRECTORY}/" =~ /\.\./ ]]
+          [[ ! "/${WRANGLER_CONFIG}/" =~ /\.\./ ]]
+          [[ "${DISPATCH_NAMESPACE}" =~ ^$|^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]
+          [[ "${D1_MIGRATIONS_DIRECTORY}" =~ ^$|${safe_path}$ ]]
+          [[ "${PUBLISH_CONTAINER_IMAGE}" =~ ^(true|false)$ ]]
+          [[ "${DOCKERHUB_OIDC_CONNECTION_ID}" =~ ^$|^[0-9a-fA-F-]{36}$ ]]
+          [[ "${ARTIFACT_NAME}" =~ ^[a-z0-9]([a-z0-9-]{0,62})$ ]]
+          test -d "${WORKING_DIRECTORY}"
+          if [[ -z "${BUILD_COMMAND:-}" ]]; then
+            test -f "${WORKING_DIRECTORY}/${WRANGLER_CONFIG}"
+          fi
+          test -f "${INSTALL_DIRECTORY}/pnpm-lock.yaml"
+          test -f "${INSTALL_DIRECTORY}/package.json"
+          if [[ "${PUBLISH_CONTAINER_IMAGE}" == "true" ]]; then
+            test -n "${DOCKERHUB_OIDC_CONNECTION_ID}"
+          fi
+          if [[ -n "${D1_MIGRATIONS_DIRECTORY}" ]]; then
+            test ! -L "${WORKING_DIRECTORY}/${D1_MIGRATIONS_DIRECTORY}"
+            test -d "${WORKING_DIRECTORY}/${D1_MIGRATIONS_DIRECTORY}"
+          fi
+
+      - uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
+        with:
+          package_json_file: ${{ inputs.install-directory || inputs.working-directory }}/package.json
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.install-directory || inputs.working-directory }}/pnpm-lock.yaml
+
+      - name: Prepare build cache
+        if: ${{ inputs.build-cache-paths != '' }}
+        id: build-cache
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          INSTALL_DIRECTORY: ${{ inputs.install-directory || inputs.working-directory }}
+          BUILD_CACHE_PATHS: ${{ inputs.build-cache-paths }}
+          BUILD_CACHE_KEY_FILES: ${{ inputs.build-cache-key-files }}
+          # In a reusable workflow these identify the caller. GitHub already
+          # scopes caches to a repository; the immutable repository ID keeps
+          # keys distinct even if that scoping or a repository name changes.
+          REPOSITORY_ID: ${{ github.repository_id }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
+          safe_glob='^[A-Za-z0-9._*-]+(/[A-Za-z0-9._*-]+)*$'
+          relative_segment='/(\.|\.\.)/'
+          git_segment='/\.git/'
+          invalid() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+          [[ "${REPOSITORY_ID}" =~ ^[1-9][0-9]*$ ]] || invalid "repository ID is malformed"
+          [[ "${COMMIT_SHA}" =~ ^[0-9a-f]{40}$ ]] || invalid "commit SHA is malformed"
+          INSTALL_DIRECTORY="${INSTALL_DIRECTORY:-${WORKING_DIRECTORY}}"
+          [[ "${INSTALL_DIRECTORY}" =~ ${safe_path} ]] || invalid "install-directory is malformed"
+          [[ ! "/${INSTALL_DIRECTORY}/" =~ /\.\./ ]] || invalid "install-directory must stay inside the repository"
+          cd "${WORKING_DIRECTORY}"
+
+          paths=()
+          while read -r path; do
+            [[ -n "${path}" ]] || continue
+            if [[ ! "${path}" =~ ${safe_path} ]] ||
+              [[ "/${path}/" =~ ${relative_segment} ]] ||
+              [[ "/${path}/" =~ ${git_segment} ]]; then
+              invalid "build cache path ${path} must be a directory below working-directory"
+            fi
+            # Restored entries must never replace source the build compiles.
+            [[ -z "$(git ls-files -- "${path}")" ]] ||
+              invalid "build cache path ${path} contains tracked files"
+            paths+=("${path}")
+          done <<< "${BUILD_CACHE_PATHS}"
+          (( ${#paths[@]} > 0 )) || invalid "build-cache-paths lists no directories"
+
+          pathspecs=(package.json)
+          # The shared lockfile may live above the app. Top-anchored pathspecs
+          # keep it in the cache key without allowing caller-supplied traversal.
+          install_prefix="${INSTALL_DIRECTORY#./}"
+          if [[ "${install_prefix}" == "." ]]; then install_prefix=""; else install_prefix="${install_prefix}/"; fi
+          pathspecs+=(":(top)${install_prefix}package.json" ":(top)${install_prefix}pnpm-lock.yaml")
+          while read -r pattern; do
+            [[ -n "${pattern}" ]] || continue
+            if [[ ! "${pattern}" =~ ${safe_glob} ]] ||
+              [[ "/${pattern}/" =~ ${relative_segment} ]]; then
+              invalid "build cache key file ${pattern} must be a glob below working-directory"
+            fi
+            pathspecs+=(":(glob)${pattern}")
+          done <<< "${BUILD_CACHE_KEY_FILES}"
+
+          # Every pattern must match a tracked file so a typo cannot silently
+          # share one cache across configuration changes.
+          git ls-files --error-unmatch -- "${pathspecs[@]}" > /dev/null ||
+            invalid "every build cache key file pattern must match a tracked file"
+          digest="$(
+            {
+              printf 'directory %s\n' "${WORKING_DIRECTORY}"
+              printf 'path %s\n' "${paths[@]}"
+              git ls-files -z -- "${pathspecs[@]}" \
+                | LC_ALL=C sort -z \
+                | xargs -0 sha256sum
+            } | sha256sum | cut -d ' ' -f 1
+          )"
+          prefix="worker-build-v1-${REPOSITORY_ID}-${RUNNER_OS}-${digest}-"
+          delimiter="EOF_$(openssl rand -hex 16)"
+          {
+            echo "key=${prefix}${COMMIT_SHA}"
+            echo "restore-key=${prefix}"
+            echo "paths<<${delimiter}"
+            for path in "${paths[@]}"; do
+              if [[ "${WORKING_DIRECTORY}" == "." ]]; then
+                echo "${path}"
+              else
+                echo "${WORKING_DIRECTORY}/${path}"
+              fi
+            done
+            echo "${delimiter}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Restore build cache
+        if: ${{ inputs.build-cache-paths != '' }}
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ steps.build-cache.outputs.paths }}
+          key: ${{ steps.build-cache.outputs.key }}
+          restore-keys: ${{ steps.build-cache.outputs.restore-key }}
+
+      - name: Install dependencies
+        shell: bash
+        env:
+          INSTALL_DIRECTORY: ${{ inputs.install-directory || inputs.working-directory }}
+        run: cd "${INSTALL_DIRECTORY}" && pnpm install --frozen-lockfile
+
+      - name: Build application
+        if: ${{ inputs.build-command != '' }}
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: |
+          set -euo pipefail
+          bash --noprofile --norc -eo pipefail -c "${BUILD_COMMAND}"
+
+      - name: Log in to Docker Hub via OIDC
+        if: ${{ inputs.publish-container-image }}
+        uses: tempoxyz/gh-actions/vendor/docker/login-action@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ inputs.dockerhub-oidc-connection-id }}
+        with:
+          username: tempoxyz
+
+      - name: Build and publish Container image
+        if: ${{ inputs.publish-container-image }}
+        id: publish-container
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
+          WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
+        run: |
+          set -euo pipefail
+          cd "${WORKING_DIRECTORY}"
+          node --input-type=module <<'NODE'
+          import { spawnSync } from "node:child_process";
+          import { lstatSync, readFileSync, writeFileSync } from "node:fs";
+          import { dirname, relative, resolve } from "node:path";
+          import { unstable_readConfig } from "wrangler";
+
+          function invariant(condition, message) {
+            if (!condition) throw new Error(message);
+          }
+          const root = resolve(".");
+          const configPath = resolve(process.env.WRANGLER_CONFIG);
+          const environment = process.env.WRANGLER_ENVIRONMENT ?? "";
+          const config = unstable_readConfig(
+            { config: configPath, ...(environment === "" ? {} : { env: environment }) },
+            { hideWarnings: true },
+          );
+          invariant(Array.isArray(config.containers) && config.containers.length === 1, "Container publishing requires exactly one Wrangler Container");
+          const container = config.containers[0];
+          invariant(typeof config.account_id === "string" && /^[0-9a-f]{32}$/.test(config.account_id), "Wrangler account_id must be explicit");
+          invariant(typeof container.name === "string" && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(container.name), "Container name is invalid");
+          invariant(typeof container.image === "string", "Container image must name a Dockerfile");
+          const dockerfile = resolve(dirname(configPath), container.image);
+          const context = resolve(dirname(configPath), container.image_build_context ?? dirname(container.image));
+          for (const [path, kind] of [[dockerfile, "Dockerfile"], [context, "build context"]]) {
+            const rel = relative(root, path);
+            invariant(rel !== "" || kind === "build context", `${kind} must be within working-directory`);
+            invariant(!rel.startsWith("..") && !rel.includes("/../"), `${kind} must be within working-directory`);
+            invariant(!lstatSync(path).isSymbolicLink(), `${kind} cannot be a symlink`);
+          }
+          invariant(lstatSync(dockerfile).isFile(), "Container image must be a Dockerfile");
+          invariant(lstatSync(context).isDirectory(), "Container build context must be a directory");
+          const buildArgs = [];
+          for (const [name, value] of Object.entries(container.image_vars ?? {}).sort(([left], [right]) => left.localeCompare(right))) {
+            invariant(/^[A-Z][A-Z0-9_]{0,63}$/.test(name) && typeof value === "string" && value.length <= 4096, "Container image build arguments are invalid");
+            buildArgs.push("--build-arg", `${name}=${value}`);
+          }
+          const repository = `docker.io/tempoxyz/${container.name}`;
+          const tag = `${process.env.GITHUB_SHA}-${process.env.GITHUB_RUN_ATTEMPT}`;
+          const metadata = resolve(process.env.RUNNER_TEMP, "container-build-metadata.json");
+          const build = spawnSync("docker", [
+            "buildx", "build",
+            "--file", dockerfile,
+            "--platform", "linux/amd64",
+            "--provenance=false",
+            "--sbom=false",
+            "--push",
+            "--metadata-file", metadata,
+            "--tag", `${repository}:${tag}`,
+            ...buildArgs,
+            context,
+          ], { stdio: "inherit" });
+          if (build.error) throw build.error;
+          if (build.status !== 0) throw new Error(`docker buildx build failed with status ${build.status}`);
+          const result = JSON.parse(readFileSync(metadata, "utf8"));
+          const digest = result["containerimage.digest"];
+          invariant(typeof digest === "string" && /^sha256:[0-9a-f]{64}$/.test(digest), "Docker did not return a valid image digest");
+          writeFileSync(process.env.GITHUB_OUTPUT, `image-reference=${repository}@${digest}\nimage-digest=${digest}\n`, { flag: "a" });
+          NODE
+
+      - name: Build Worker module
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
+          WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
+          DISPATCH_NAMESPACE: ${{ inputs.dispatch-namespace }}
+        run: |
+          set -euo pipefail
+          outdir="${RUNNER_TEMP}/cloudflare-worker-build"
+          install -d "${outdir}"
+          args=(deploy --dry-run --containers-rollout=none --config "${WRANGLER_CONFIG}" --outdir "${outdir}")
+          if [[ -n "${WRANGLER_ENVIRONMENT}" ]]; then
+            args+=(--env "${WRANGLER_ENVIRONMENT}")
+          fi
+          if [[ -n "${DISPATCH_NAMESPACE}" ]]; then
+            args+=(--dispatch-namespace "${DISPATCH_NAMESPACE}")
+          fi
+          cd "${WORKING_DIRECTORY}"
+          pnpm exec wrangler "${args[@]}"
+
+      - name: Stage and hash Worker module
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="${RUNNER_TEMP}/cloudflare-worker-build"
+          mapfile -d '' modules < <(find "${build}" -maxdepth 1 -type f -name '*.js' -print0)
+          test "${#modules[@]}" -eq 1
+          test ! -L "${modules[0]}"
+          # The broker uploads only this module. Wrangler writes Text, Data and
+          # Wasm imports as separate files, which would be missing at startup.
+          mapfile -d '' additional < <(find "${build}" -mindepth 1 ! -type d ! -path "${modules[0]}" ! -path "${modules[0]}.map" ! -path "${build}/README.md" -print0)
+          if (( ${#additional[@]} > 0 )); then
+            echo "::error::Wrangler emitted additional modules that the broker cannot deploy: ${additional[*]#"${build}/"}. Inline them into the Worker bundle instead of importing them as separate modules."
+            exit 1
+          fi
+          install -d "${RUNNER_TEMP}/cloudflare-worker-artifact"
+          install -m 0644 "${modules[0]}" "${RUNNER_TEMP}/cloudflare-worker-artifact/index.js"
+          digest="$(sha256sum "${RUNNER_TEMP}/cloudflare-worker-artifact/index.js" | cut -d ' ' -f 1)"
+          echo "module-digest=${digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Attest Worker module
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: index.js
+          subject-digest: sha256:${{ steps.prepare.outputs.module-digest }}
+          show-summary: false
+
+      - name: Stage and hash static assets
+        id: prepare-assets
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
+          WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
+        run: |
+          set -euo pipefail
+          cd "${WORKING_DIRECTORY}"
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import {
+            copyFileSync,
+            existsSync,
+            lstatSync,
+            mkdirSync,
+            readFileSync,
+            readdirSync,
+            writeFileSync,
+          } from "node:fs";
+          import { dirname, extname, join, posix, relative, resolve } from "node:path";
+          import { unstable_readConfig } from "wrangler";
+
+          const output = process.env.GITHUB_OUTPUT;
+          const configPath = resolve(process.env.WRANGLER_CONFIG);
+          const environment = process.env.WRANGLER_ENVIRONMENT ?? "";
+          const config = unstable_readConfig(
+            { config: configPath, ...(environment === "" ? {} : { env: environment }) },
+            { hideWarnings: true },
+          );
+          if (config.assets === undefined) {
+            writeFileSync(output, "assets-enabled=false\n", { flag: "a" });
+            process.exit(0);
+          }
+          if (typeof config.assets.directory !== "string" || typeof config.assets.binding !== "string") {
+            throw new Error("static assets require explicit directory and binding values");
+          }
+          const root = resolve(dirname(configPath), config.assets.directory);
+          if (!lstatSync(root).isDirectory()) throw new Error("static asset directory is not a directory");
+          if (existsSync(join(root, ".assetsignore"))) {
+            throw new Error(".assetsignore is not supported by the deploy broker");
+          }
+          const artifactRoot = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-artifact");
+          const stagedRoot = resolve(artifactRoot, "static-assets");
+          const mediaTypes = new Map(Object.entries({
+            ".css": "text/css; charset=utf-8",
+            ".csv": "text/csv; charset=utf-8",
+            ".gif": "image/gif",
+            ".htm": "text/html; charset=utf-8",
+            ".html": "text/html; charset=utf-8",
+            ".ico": "image/x-icon",
+            ".jpeg": "image/jpeg",
+            ".jpg": "image/jpeg",
+            ".js": "text/javascript; charset=utf-8",
+            ".json": "application/json",
+            ".map": "application/json",
+            ".mjs": "text/javascript; charset=utf-8",
+            ".png": "image/png",
+            ".svg": "image/svg+xml",
+            ".txt": "text/plain; charset=utf-8",
+            ".wasm": "application/wasm",
+            ".webp": "image/webp",
+            ".woff": "font/woff",
+            ".woff2": "font/woff2",
+            ".xml": "application/xml",
+          }));
+          const files = [];
+          function walk(directory) {
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+              const path = join(directory, entry.name);
+              const stat = lstatSync(path);
+              const name = relative(root, path).split("/").join(posix.sep);
+              if (stat.isSymbolicLink()) throw new Error(`static asset path is a symlink: ${name}`);
+              if (stat.isDirectory()) {
+                walk(path);
+                continue;
+              }
+              if (!stat.isFile() || ["_headers", "_redirects"].includes(name)) continue;
+              if (name === "_worker.js" || name.startsWith("_worker.js/")) {
+                throw new Error("static assets cannot expose a Pages _worker.js file");
+              }
+              const segments = name.split("/");
+              if (!/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(name) || segments.some((segment) => segment === "." || segment === ".." || segment.length > 128) || name.length > 511) {
+                throw new Error(`static asset has an unsafe name: ${name}`);
+              }
+              const bytes = readFileSync(path);
+              if (bytes.byteLength > 4 * 1024 * 1024) {
+                throw new Error(`static asset has an invalid size: ${name}`);
+              }
+              const staged = resolve(stagedRoot, name);
+              mkdirSync(dirname(staged), { recursive: true });
+              copyFileSync(path, staged);
+              files.push({
+                path: `/${name}`,
+                sha256: createHash("sha256").update(bytes).digest("hex"),
+                size: bytes.byteLength,
+                mediaType: mediaTypes.get(extname(name).toLowerCase()) ?? null,
+              });
+            }
+          }
+          walk(root);
+          // The broker requires code-unit order; localeCompare sorts by locale
+          // collation, which orders "index-a.css" before "Pilat.woff2".
+          files.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+          const totalBytes = files.reduce((total, file) => total + file.size, 0);
+          if (files.length === 0 || files.length > 1000 || totalBytes > 8 * 1024 * 1024) {
+            throw new Error("static asset directory exceeds broker limits");
+          }
+          function optionalUtf8(name) {
+            const path = join(root, name);
+            if (!existsSync(path)) return null;
+            const bytes = readFileSync(path);
+            if (bytes.byteLength > 128 * 1024) throw new Error(`${name} exceeds 128 KiB`);
+            return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+          }
+          const manifest = `${JSON.stringify({
+            schemaVersion: 1,
+            files,
+            headers: optionalUtf8("_headers"),
+            redirects: optionalUtf8("_redirects"),
+          })}\n`;
+          if (Buffer.byteLength(manifest) > 256 * 1024) {
+            throw new Error("static asset manifest exceeds 256 KiB");
+          }
+          writeFileSync(resolve(artifactRoot, "static-assets.json"), manifest, { mode: 0o644 });
+          const digest = createHash("sha256").update(manifest).digest("hex");
+          writeFileSync(output, `assets-enabled=true\nassets-digest=${digest}\n`, { flag: "a" });
+          NODE
+
+      - name: Attest static asset manifest
+        if: ${{ steps.prepare-assets.outputs.assets-enabled == 'true' }}
+        id: attest-assets
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: static-assets.json
+          subject-digest: sha256:${{ steps.prepare-assets.outputs.assets-digest }}
+          show-summary: false
+
+      - name: Stage and hash Worker configuration
+        id: prepare-configuration
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          D1_MIGRATIONS_DIRECTORY: ${{ inputs.d1-migrations-directory }}
+          WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
+          WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
+          DISPATCH_NAMESPACE: ${{ inputs.dispatch-namespace }}
+          CONTAINER_IMAGE_REFERENCE: ${{ steps.publish-container.outputs.image-reference }}
+        run: |
+          set -euo pipefail
+          cd "${WORKING_DIRECTORY}"
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { writeFileSync } from "node:fs";
+          import { resolve } from "node:path";
+          import { unstable_readConfig } from "wrangler";
+
+          function invariant(condition, message) {
+            if (!condition) throw new Error(message);
+          }
+          function isRecord(value) {
+            return value !== null && typeof value === "object" && !Array.isArray(value);
+          }
+          function requireEmpty(value, name) {
+            if (Array.isArray(value)) {
+              invariant(value.length === 0, `${name} are not authorized by the deploy broker`);
+            } else if (isRecord(value)) {
+              invariant(Object.keys(value).length === 0, `${name} are not authorized by the deploy broker`);
+            } else {
+              invariant(value === undefined || value === null, `${name} are not authorized by the deploy broker`);
+            }
+          }
+          function sortedRecord(value) {
+            return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+          }
+
+          const configPath = resolve(process.env.WRANGLER_CONFIG);
+          const environment = process.env.WRANGLER_ENVIRONMENT ?? "";
+          const config = unstable_readConfig(
+            { config: configPath, ...(environment === "" ? {} : { env: environment }) },
+            { hideWarnings: true },
+          );
+          const bindingName = /^[A-Z][A-Z0-9_]{0,63}$/;
+          const workerName = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+          const accountId = /^[0-9a-f]{32}$/;
+          const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const hostname = /^[a-z0-9.-]+$/;
+          const bucketName = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+          const queueName = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
+
+          invariant(typeof config.name === "string" && workerName.test(config.name), "Wrangler name must be an explicit valid Worker name");
+          invariant(typeof config.account_id === "string" && accountId.test(config.account_id), "Wrangler account_id must be explicit");
+          invariant(typeof config.workers_dev === "boolean", "Wrangler workers_dev must be explicit");
+          invariant(typeof config.preview_urls === "boolean", "Wrangler preview_urls must be explicit");
+          invariant(typeof config.compatibility_date === "string", "Wrangler compatibility_date must be explicit");
+          invariant(config.keep_vars !== true, "Wrangler keep_vars is incompatible with exact policy bindings");
+
+          for (const [name, value] of Object.entries({
+            "mTLS bindings": config.mtls_certificates,
+            "Secrets Store bindings": config.secrets_store_secrets,
+            "artifact bindings": config.artifacts,
+            "connect bindings": config.connect,
+            "tail consumers": config.tail_consumers,
+            "unsafe configuration": config.unsafe,
+          })) requireEmpty(value, name);
+          for (const [name, value] of Object.entries({
+            "Workers Site": config.site,
+          })) invariant(value === undefined || value === null, `${name} is not authorized by the deploy broker`);
+
+          const kv = (config.kv_namespaces ?? []).map((binding) => {
+            invariant(Object.keys(binding).every((key) => key === "binding"), "KV provisioning accepts only a binding name; existing IDs, preview IDs, jurisdiction, remote, and unknown options are not supported");
+            invariant(typeof binding.binding === "string" && bindingName.test(binding.binding), "KV binding name is invalid");
+            return { binding: binding.binding, provisioning: "new" };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+          invariant(kv.length <= 10 && new Set(kv.map((binding) => binding.binding)).size === kv.length, "KV bindings must be unique and limited to ten");
+
+          let browser = [];
+          if (config.browser !== undefined && config.browser !== null) {
+            invariant(isRecord(config.browser), "Browser binding must be an object");
+            invariant(Object.keys(config.browser).every((key) => key === "binding"), "Browser binding uses unsupported options");
+            invariant(bindingName.test(config.browser.binding), "Browser binding name is invalid");
+            browser = [{ binding: config.browser.binding }];
+          }
+
+          // Restrict every provider option before mapping it into the attested
+          // manifest. Local connection strings and remote/raw overrides never
+          // become deployment inputs.
+          function mapBindings(values, keys, map) {
+            invariant(Array.isArray(values), "bindings must be an array");
+            invariant(values.length <= 10, "at most ten bindings of each type are supported");
+            return values.map((value) => {
+              invariant(isRecord(value) && Object.keys(value).every((key) => keys.includes(key)), `binding uses unsupported options; accepts only ${keys.join(", ")}`);
+              const result = map(value);
+              invariant(typeof result.binding === "string" && bindingName.test(result.binding), "invalid binding name");
+              return result;
+            }).sort((a,b) => a.binding.localeCompare(b.binding));
+          }
+          const resourceName = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+          const hyperdrive = mapBindings(config.hyperdrive ?? [], ["binding", "id"], (value) => {
+            invariant(typeof value.id === "string" && accountId.test(value.id), "Hyperdrive requires an explicit ID");
+            return { binding: value.binding, id: value.id };
+          });
+          const vectorize = mapBindings(config.vectorize ?? [], ["binding", "index_name"], (value) => {
+            invariant(typeof value.index_name === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value.index_name), "Vectorize requires an explicit index_name");
+            return { binding: value.binding, indexName: value.index_name };
+          });
+          const aiSearch = [
+            ...mapBindings(config.ai_search_namespaces ?? [], ["binding", "namespace"], (value) => {
+              invariant(typeof value.namespace === "string" && resourceName.test(value.namespace), "AI Search requires an explicit namespace");
+              return { binding: value.binding, namespace: value.namespace };
+            }),
+            ...mapBindings(config.ai_search ?? [], ["binding", "instance_name"], (value) => {
+              invariant(typeof value.instance_name === "string" && resourceName.test(value.instance_name), "AI Search requires an explicit instance_name");
+              return { binding: value.binding, instanceName: value.instance_name };
+            }),
+          ].sort((a,b) => a.binding.localeCompare(b.binding));
+          invariant(aiSearch.length <= 10, "at most ten AI Search bindings are supported");
+          const ai = mapBindings(config.ai == null ? [] : [config.ai], ["binding"], (value) => ({ binding: value.binding }));
+          const workerLoaders = mapBindings(config.worker_loaders ?? [], ["binding"], (value) => ({ binding: value.binding }));
+          const analyticsEngine = mapBindings(config.analytics_engine_datasets ?? [], ["binding", "dataset"], (value) => {
+            invariant(typeof value.dataset === "string" && /^[A-Za-z0-9_]{1,64}$/.test(value.dataset), "Analytics Engine requires an explicit dataset");
+            return { binding: value.binding, dataset: value.dataset };
+          });
+          const rateLimits = mapBindings(config.ratelimits ?? [], ["name", "namespace_id", "simple"], (value) => {
+            invariant(typeof value.namespace_id === "string" && /^[0-9]{1,20}$/.test(value.namespace_id), "rate limit requires an explicit numeric namespace_id string");
+            invariant(isRecord(value.simple) && Object.keys(value.simple).every((key) => ["limit", "period"].includes(key)), "rate limit requires simple limit and period");
+            invariant(Number.isInteger(value.simple.limit) && value.simple.limit > 0 && value.simple.limit <= 2147483647 && [10, 60].includes(value.simple.period), "invalid rate limit limit or period");
+            return { binding: value.name, namespaceId: value.namespace_id, simple: { limit: value.simple.limit, period: value.simple.period } };
+          });
+
+          const resourceDeclaration = config.vars?.CLOUDFLARE_DEPLOY_BROKER_NEW_RESOURCES;
+          let resources;
+          if (resourceDeclaration !== undefined) {
+            invariant(typeof resourceDeclaration === "string", "Resource declaration must be JSON text");
+            const plan = JSON.parse(resourceDeclaration);
+            invariant(isRecord(plan) && Object.keys(plan).every(key => ["buckets", "pipelines", "queues"].includes(key)) && Array.isArray(plan.buckets) && Array.isArray(plan.pipelines) && (plan.queues === undefined || Array.isArray(plan.queues)), "Invalid resource plan");
+            resources = {
+              buckets: plan.buckets.map(b => {
+                invariant(isRecord(b) && Object.keys(b).every(key => ["binding", "name"].includes(key)), "Invalid bucket declaration");
+                return { binding: b.binding, name: b.name };
+              }),
+              pipelines: plan.pipelines.map(p => {
+                invariant(isRecord(p) && Object.keys(p).every(key => ["name", "stream", "sink", "bucketBinding", "path", "compression", "intervalSeconds", "fileSizeBytes"].includes(key)), "Invalid Pipeline declaration");
+                return { name: p.name, stream: p.stream, sink: p.sink, bucketBinding: p.bucketBinding,
+                  path: p.path, compression: p.compression, intervalSeconds: p.intervalSeconds, fileSizeBytes: p.fileSizeBytes };
+              }),
+              // Emitted only when declared, so earlier plans keep their attested bytes.
+              ...(plan.queues === undefined ? {} : {
+                queues: plan.queues.map(q => {
+                  invariant(isRecord(q) && Object.keys(q).every(key => ["name"].includes(key)), "Invalid Queue declaration; Queues accept only a name");
+                  return { name: q.name };
+                }),
+              }),
+            };
+          }
+          const plainText = {};
+          for (const [name, value] of Object.entries(config.vars ?? {})) {
+            if (name === "CLOUDFLARE_DEPLOY_BROKER_NEW_RESOURCES") continue;
+            invariant(bindingName.test(name), `invalid plaintext binding name: ${name}`);
+            invariant(typeof value === "string", `plaintext binding ${name} must be a string`);
+            invariant(value.length <= 4096, `plaintext binding ${name} exceeds 4096 characters`);
+            plainText[name] = value;
+          }
+
+          const sqliteIdentifier = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+          const d1 = (config.d1_databases ?? []).map((binding) => {
+            invariant(isRecord(binding) && bindingName.test(binding.binding), "invalid D1 binding name");
+            if (binding.database_id === undefined) {
+              // ID-free form: the broker provisions and records the database. Only the
+              // binding and its optional migration target may be declared.
+              invariant(Object.keys(binding).every((key) => ["binding", "migrations_dir", "migrations_table"].includes(key)), `ID-free D1 binding ${binding.binding} accepts only binding, migrations_dir, and migrations_table; database names, existing IDs, preview IDs, remote, and unknown options are not supported`);
+              if (binding.migrations_dir === undefined) {
+                invariant(binding.migrations_table === undefined, `D1 binding ${binding.binding} migrations_table requires migrations_dir`);
+                return { binding: binding.binding, provisioning: "new" };
+              }
+              invariant(typeof binding.migrations_dir === "string" && binding.migrations_dir !== "", `D1 binding ${binding.binding} migrations_dir must be a directory`);
+              const table = binding.migrations_table ?? "d1_migrations";
+              invariant(sqliteIdentifier.test(table), `D1 binding ${binding.binding} migrations_table is invalid`);
+              return { binding: binding.binding, provisioning: "new", migrations: { table } };
+            }
+            invariant(typeof binding.database_id === "string" && uuid.test(binding.database_id), `D1 binding ${binding.binding} must have an explicit database_id`);
+            return { binding: binding.binding, databaseId: binding.database_id };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+          invariant(d1.length <= 10, "D1 bindings are limited to ten");
+
+          // Explicit R2 bindings reference existing account buckets, so every entry
+          // must match an authorized deployment policy exactly.
+          const r2 = (config.r2_buckets ?? []).map((binding) => {
+            invariant(isRecord(binding) && bindingName.test(binding.binding), "invalid R2 binding name");
+            invariant(Object.keys(binding).every((key) => ["binding", "bucket_name"].includes(key)), `R2 binding ${binding.binding} accepts only binding and bucket_name; preview buckets, jurisdiction, remote, and unknown options are not supported`);
+            invariant(typeof binding.bucket_name === "string" && bucketName.test(binding.bucket_name), `R2 binding ${binding.binding} must name an explicit existing bucket`);
+            return { binding: binding.binding, bucketName: binding.bucket_name };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+          invariant(r2.length <= 10, "R2 bindings are limited to ten");
+
+          const pipelines = (config.pipelines ?? []).map((binding) => {
+            invariant(isRecord(binding) && bindingName.test(binding.binding), "invalid Pipeline binding name");
+            invariant(Object.keys(binding).every((key) => ["binding", "stream"].includes(key)), `Pipeline binding ${binding.binding} accepts only binding and stream; legacy pipeline names, remote mode, and unknown options are not supported`);
+            invariant(typeof binding.stream === "string" && /^[0-9a-f]{32}$/.test(binding.stream), `Pipeline binding ${binding.binding} must name an explicit stream ID`);
+            return { binding: binding.binding, streamId: binding.stream };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+          invariant(pipelines.length <= 10 && new Set(pipelines.map((binding) => binding.binding)).size === pipelines.length, "Pipeline bindings must be unique and limited to ten");
+
+          const queues = (config.queues?.producers ?? []).map((binding) => {
+            invariant(isRecord(binding), "Queue producer binding must be an object");
+            invariant(Object.keys(binding).every((key) => ["binding", "queue"].includes(key)), `Queue producer binding ${binding.binding ?? "<unknown>"} accepts only binding and queue; implicit queues, delivery delays, remote mode, and unknown options are not supported`);
+            invariant(typeof binding.binding === "string" && bindingName.test(binding.binding), "invalid Queue producer binding name");
+            invariant(typeof binding.queue === "string" && queueName.test(binding.queue), `Queue producer binding ${binding.binding} must name an explicit existing Queue`);
+            return { binding: binding.binding, queueName: binding.queue };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+          invariant(queues.length <= 10 && new Set(queues.map((binding) => binding.binding)).size === queues.length, "Queue producer bindings must be unique and limited to ten");
+
+          const queueConsumers = (config.queues?.consumers ?? []).map((consumer) => {
+            invariant(isRecord(consumer), "Queue consumer must be an object");
+            invariant(Object.keys(consumer).every((key) => ["queue", "type", "max_batch_size", "max_batch_timeout", "max_retries", "dead_letter_queue", "max_concurrency", "retry_delay"].includes(key)), `Queue consumer ${consumer.queue ?? "<unknown>"} uses unsupported options`);
+            invariant(typeof consumer.queue === "string" && queueName.test(consumer.queue), "Queue consumer must name an explicit existing Queue");
+            invariant(consumer.type === undefined || consumer.type === "worker", `Queue consumer ${consumer.queue} must have type worker`);
+            const maxBatchSize = consumer.max_batch_size ?? 10;
+            const maxBatchTimeout = consumer.max_batch_timeout ?? 5;
+            const maxRetries = consumer.max_retries ?? 3;
+            const deadLetterQueue = consumer.dead_letter_queue ?? null;
+            const maxConcurrency = consumer.max_concurrency ?? null;
+            const retryDelay = consumer.retry_delay ?? 0;
+            invariant(Number.isInteger(maxBatchSize) && maxBatchSize >= 1 && maxBatchSize <= 100, `Queue consumer ${consumer.queue} max_batch_size must be an integer from 1 to 100`);
+            invariant(Number.isInteger(maxBatchTimeout) && maxBatchTimeout >= 0 && maxBatchTimeout <= 60, `Queue consumer ${consumer.queue} max_batch_timeout must be an integer from 0 to 60`);
+            invariant(Number.isInteger(maxRetries) && maxRetries >= 0 && maxRetries <= 100, `Queue consumer ${consumer.queue} max_retries must be an integer from 0 to 100`);
+            invariant(deadLetterQueue === null || (typeof deadLetterQueue === "string" && queueName.test(deadLetterQueue)), `Queue consumer ${consumer.queue} dead_letter_queue is invalid`);
+            invariant(maxConcurrency === null || (Number.isInteger(maxConcurrency) && maxConcurrency >= 1 && maxConcurrency <= 250), `Queue consumer ${consumer.queue} max_concurrency must be null or an integer from 1 to 250`);
+            invariant(Number.isInteger(retryDelay) && retryDelay >= 0 && retryDelay <= 43_200, `Queue consumer ${consumer.queue} retry_delay must be an integer from 0 to 43200`);
+            return { queueName: consumer.queue, maxBatchSize, maxBatchTimeout, maxRetries, deadLetterQueue, maxConcurrency, retryDelay };
+          }).sort((left, right) => left.queueName.localeCompare(right.queueName));
+          invariant(queueConsumers.length <= 10 && new Set(queueConsumers.map((consumer) => consumer.queueName)).size === queueConsumers.length, "Queue consumers must target unique Queues and are limited to ten");
+
+          const migratingD1 = d1.filter((binding) => binding.migrations !== undefined);
+          invariant(migratingD1.length <= 1, "only one ID-free D1 binding can declare migrations_dir");
+          if (d1.some((binding) => binding.provisioning === "new")) {
+            const migrationsDirectory = process.env.D1_MIGRATIONS_DIRECTORY ?? "";
+            invariant((migratingD1.length === 1) === (migrationsDirectory !== ""), "ID-free D1 migrations require both the d1-migrations-directory input and exactly one binding with migrations_dir");
+          }
+
+          const entrypointName = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
+          const services = (config.services ?? []).map((binding) => {
+            invariant(isRecord(binding), "service binding must be an object");
+            invariant(Object.keys(binding).every((key) => ["binding", "service", "entrypoint"].includes(key)), `service binding ${binding.binding ?? "<unknown>"} accepts only binding, service, and entrypoint; environment, props, and unknown options are not supported`);
+            invariant(bindingName.test(binding.binding), "invalid service binding name");
+            invariant(typeof binding.service === "string" && workerName.test(binding.service), `service binding ${binding.binding} must target an explicit Worker`);
+            invariant(binding.entrypoint === undefined || (typeof binding.entrypoint === "string" && entrypointName.test(binding.entrypoint)), `service binding ${binding.binding} must name a valid WorkerEntrypoint export`);
+            return { binding: binding.binding, service: binding.service, ...(binding.entrypoint === undefined ? {} : { entrypoint: binding.entrypoint }) };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+
+          const sendEmail = (config.send_email ?? []).map((binding) => {
+            invariant(isRecord(binding), "email binding must be an object");
+            invariant(Object.keys(binding).every((key) => key === "name"), "email bindings accept only name; address restrictions and unknown options are not supported");
+            invariant(typeof binding.name === "string" && bindingName.test(binding.name), "invalid email binding name");
+            return { binding: binding.name };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+          invariant(sendEmail.length <= 10, "at most ten email bindings are supported");
+
+          const className = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
+          const sqliteClasses = new Set();
+          const deletedClasses = [];
+          const migrations = config.migrations ?? [];
+          const exports = config.exports ?? {};
+          invariant(Array.isArray(migrations), "Durable Object migrations must be an array");
+          invariant(isRecord(exports), "Worker exports must be an object");
+          invariant(migrations.length === 0, 'Legacy Durable Object migrations are not supported: codify each live class in Wrangler exports, e.g. [exports.MyClass] with type = "durable-object" and storage = "sqlite", and remove [[migrations]]. Destructive lifecycle changes require separate authorization. D1 migrations are unaffected.');
+          for (const [name, value] of Object.entries(exports)) {
+            invariant(className.test(name), `Worker export ${name} has an invalid class name`);
+            invariant(isRecord(value), `Worker export ${name} must be an object`);
+            if (value.state === "deleted") {
+              // Attested deletion intent only; the deployment policy must also
+              // name the class and authorize durableObjectDestructiveMigration.
+              invariant(value.type === "durable-object" && Object.keys(value).every((key) => key === "type" || key === "state"), `Worker export ${name} deletion accepts only type = "durable-object" and state = "deleted"`);
+              invariant(process.env.DISPATCH_NAMESPACE === "", `Worker export ${name} deletion is only supported for service Workers`);
+              deletedClasses.push(name);
+              continue;
+            }
+            invariant(Object.keys(value).every((key) => ["type", "state", "storage"].includes(key)), `Worker export ${name} uses unsupported options`);
+            invariant(value.type === "durable-object" && (value.state === undefined || value.state === "created") && value.storage === "sqlite", `Worker export ${name} must be a live SQLite Durable Object`);
+            sqliteClasses.add(name);
+          }
+          const durableObjects = (config.durable_objects?.bindings ?? []).map((binding) => {
+            invariant(isRecord(binding), "Durable Object binding must be an object");
+            invariant(Object.keys(binding).every((key) => key === "name" || key === "class_name"), `Durable Object binding ${binding.name ?? "<unknown>"} uses unsupported external or environment options`);
+            invariant(bindingName.test(binding.name), "invalid Durable Object binding name");
+            invariant(typeof binding.class_name === "string" && className.test(binding.class_name), `Durable Object binding ${binding.name} has an invalid class`);
+            invariant(sqliteClasses.has(binding.class_name), `Durable Object binding ${binding.name} must reference an explicit live SQLite class in Wrangler exports`);
+            return {
+              binding: binding.name,
+              className: binding.class_name,
+              storage: "sqlite",
+            };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+          const boundClasses = new Set(durableObjects.map((binding) => binding.className));
+          invariant(process.env.DISPATCH_NAMESPACE === "" || boundClasses.size === durableObjects.length, "dispatch namespace Durable Object classes must be uniquely bound");
+          invariant(sqliteClasses.size === boundClasses.size, "every Durable Object export class must have an exact binding");
+
+          // Workflows implemented by this Worker. External script_name bindings,
+          // limits, schedules and unknown options fail closed until supported.
+          const workflowName = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+          const workflows = (config.workflows ?? []).map((binding) => {
+            invariant(isRecord(binding), "Workflow binding must be an object");
+            invariant(Object.keys(binding).every((key) => ["binding", "name", "class_name"].includes(key)), `Workflow binding ${binding.binding ?? "<unknown>"} accepts only binding, name, and class_name; external script_name, limits, schedules, remote, and unknown options are not supported`);
+            invariant(typeof binding.binding === "string" && bindingName.test(binding.binding), "invalid Workflow binding name");
+            invariant(typeof binding.name === "string" && workflowName.test(binding.name), `Workflow binding ${binding.binding} must name a valid Workflow`);
+            invariant(typeof binding.class_name === "string" && className.test(binding.class_name), `Workflow binding ${binding.binding} has an invalid class`);
+            invariant(process.env.DISPATCH_NAMESPACE === "", `Workflow binding ${binding.binding} is only supported for service Workers`);
+            return { binding: binding.binding, name: binding.name, className: binding.class_name };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+          invariant(workflows.length <= 10 && new Set(workflows.map((binding) => binding.name)).size === workflows.length, "Workflows must be unique and limited to ten");
+
+          const containers = (config.containers ?? []).map((container) => {
+            invariant(isRecord(container), "Container configuration must be an object");
+            invariant(typeof container.name === "string" && workerName.test(container.name), "Container configuration must have an explicit valid name");
+            invariant(typeof container.class_name === "string" && className.test(container.class_name), `Container ${container.name} has an invalid class`);
+            invariant(sqliteClasses.has(container.class_name), `Container ${container.name} must reference an additive SQLite Durable Object class`);
+            return { name: container.name, className: container.class_name };
+          }).sort((left, right) => left.name.localeCompare(right.name));
+          invariant(new Set(containers.map((container) => container.name)).size === containers.length, "Container application names must be unique");
+          invariant(new Set(containers.map((container) => container.className)).size === containers.length, "Container classes must be uniquely associated");
+          let containerImage;
+          if ((process.env.CONTAINER_IMAGE_REFERENCE ?? "") !== "") {
+            invariant(containers.length === 1, "Container image publishing requires exactly one Container application");
+            const match = process.env.CONTAINER_IMAGE_REFERENCE.match(/^(docker\.io\/tempoxyz\/[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?)@(sha256:[0-9a-f]{64})$/);
+            invariant(match !== null, "published Container image reference is invalid");
+            const configured = config.containers[0];
+            invariant(configured.instance_type === "lite", "brokered Container publishing currently requires instance_type=lite");
+            invariant(configured.max_instances === 1, "brokered Container publishing currently requires max_instances=1");
+            invariant(match[1] === `docker.io/tempoxyz/${containers[0].name}`, "published Container repository does not match the Tempo Docker Hub namespace and application");
+            containerImage = {
+              name: containers[0].name,
+              className: containers[0].className,
+              repository: match[1],
+              digest: match[2],
+              instanceType: "lite",
+              maxInstances: 1,
+            };
+          }
+
+          const dispatchNamespaces = (config.dispatch_namespaces ?? []).map((binding) => {
+            invariant(bindingName.test(binding.binding), "invalid dispatch namespace binding name");
+            invariant(typeof binding.namespace === "string" && workerName.test(binding.namespace), `dispatch binding ${binding.binding} must have an explicit namespace`);
+            invariant(isRecord(binding.outbound), `dispatch binding ${binding.binding} must have an outbound Worker`);
+            invariant(typeof binding.outbound.service === "string" && workerName.test(binding.outbound.service), `dispatch binding ${binding.binding} has an invalid outbound Worker`);
+            const parameters = [...(binding.outbound.parameters ?? [])].sort();
+            invariant(parameters.every((name) => typeof name === "string" && bindingName.test(name)), `dispatch binding ${binding.binding} has invalid outbound parameters`);
+            return {
+              binding: binding.binding,
+              namespace: binding.namespace,
+              outbound: { service: binding.outbound.service, parameters },
+            };
+          }).sort((left, right) => left.binding.localeCompare(right.binding));
+
+          const routes = [];
+          const patternRoutes = [];
+          for (const route of config.routes ?? []) {
+            invariant(isRecord(route), "every Wrangler route must be an object");
+            if (route.custom_domain === true) {
+              invariant(Object.keys(route).every((key) => ["pattern", "custom_domain"].includes(key)), "custom domains accept only pattern and custom_domain");
+              invariant(typeof route.pattern === "string" && hostname.test(route.pattern), "Wrangler custom-domain route has an invalid hostname");
+              routes.push(route.pattern);
+            } else {
+              invariant(Object.keys(route).every((key) => ["pattern", "zone_id", "custom_domain"].includes(key)), "pattern routes require an explicit zone_id; zone_name and unknown options are unsupported");
+              invariant(route.custom_domain === undefined || route.custom_domain === false, "invalid custom_domain value");
+              invariant(typeof route.zone_id === "string" && accountId.test(route.zone_id), "pattern route requires an explicit zone_id");
+              invariant(typeof route.pattern === "string" && route.pattern.length <= 512 && /^(?:https?:\/\/)?(?:\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/.test(route.pattern), "invalid route pattern");
+              patternRoutes.push({ zoneId: route.zone_id, pattern: route.pattern });
+            }
+          }
+          routes.sort();
+          patternRoutes.sort((a,b) => a.zoneId.localeCompare(b.zoneId) || a.pattern.localeCompare(b.pattern));
+          invariant(routes.length <= 20 && patternRoutes.length <= 20, "at most twenty routes of each type are supported");
+          invariant(new Set(patternRoutes.map((route) => `${route.zoneId}:${route.pattern}`)).size === patternRoutes.length, "pattern routes must be unique");
+          const schedules = [...(config.triggers?.crons ?? [])].sort();
+
+          const observabilityEnabled = config.observability?.enabled === true;
+          const manifest = {
+            schemaVersion: 1,
+            target: {
+              accountId: config.account_id,
+              worker: process.env.DISPATCH_NAMESPACE === ""
+                ? { kind: "service", name: config.name }
+                : {
+                    kind: "dispatch-namespace-script",
+                    name: config.name,
+                    dispatchNamespace: process.env.DISPATCH_NAMESPACE,
+                  },
+            },
+            ...(resources === undefined ? {} : { resources }),
+            ...(containerImage === undefined ? {} : { containerImage }),
+            workerConfiguration: {
+              workersDev: config.workers_dev,
+              previewUrls: config.preview_urls,
+              compatibilityDate: { exact: config.compatibility_date },
+              compatibilityFlags: { exact: [...(config.compatibility_flags ?? [])].sort() },
+              observability: {
+                enabled: observabilityEnabled,
+                logsEnabled: config.observability?.logs?.enabled ?? observabilityEnabled,
+                invocationLogs: config.observability?.logs?.invocation_logs ?? true,
+                headSamplingRate: config.observability?.head_sampling_rate ?? 1,
+                ...(config.observability?.logs?.head_sampling_rate === undefined ? {} : { logsHeadSamplingRate: config.observability.logs.head_sampling_rate }),
+                ...(config.observability?.logs?.persist === undefined ? {} : { logsPersist: config.observability.logs.persist }),
+                ...(config.observability?.logs?.destinations === undefined ? {} : { logsDestinations: [...config.observability.logs.destinations].sort() }),
+                ...(config.observability?.traces?.enabled === undefined ? {} : { tracesEnabled: config.observability.traces.enabled }),
+                ...(config.observability?.traces?.head_sampling_rate === undefined ? {} : { tracesHeadSamplingRate: config.observability.traces.head_sampling_rate }),
+                ...(config.observability?.traces?.persist === undefined ? {} : { tracesPersist: config.observability.traces.persist }),
+                ...(config.observability?.traces?.destinations === undefined ? {} : { tracesDestinations: [...config.observability.traces.destinations].sort() }),
+              },
+              logpush: config.logpush === true,
+              tailConsumers: { exact: [] },
+              tags: { exact: [] },
+              routes: { mode: "verify-only", exact: routes, ...(patternRoutes.length === 0 ? {} : { patterns: patternRoutes }) },
+              schedules: { exact: schedules },
+              ...(queueConsumers.length === 0 ? {} : { queueConsumers: { exact: queueConsumers } }),
+              ...(deletedClasses.length === 0
+                ? {}
+                : {
+                    durableObjectDeletions: deletedClasses
+                      .sort((left, right) => left.localeCompare(right))
+                      .map((name) => ({ className: name })),
+                  }),
+              ...(config.assets === undefined
+                ? {}
+                : {
+                    assets: {
+                      binding: config.assets.binding,
+                      htmlHandling: config.assets.html_handling ?? null,
+                      notFoundHandling: config.assets.not_found_handling ?? null,
+                      runWorkerFirst: config.assets.run_worker_first ?? false,
+                    },
+                  }),
+              bindings: {
+                plainText: { mode: "exact", values: sortedRecord(plainText) },
+                versionMetadata: config.version_metadata === undefined
+                  ? null
+                  : { binding: config.version_metadata.binding },
+                kv,
+                d1,
+                r2,
+                ...(pipelines.length === 0 ? {} : { pipelines }),
+                queues,
+                services,
+                dispatchNamespaces,
+                durableObjects,
+                hyperdrive,
+                vectorize,
+                aiSearch,
+                ai,
+                ...(analyticsEngine.length === 0 ? {} : { analyticsEngine }),
+                ...(sendEmail.length === 0 ? {} : { sendEmail }),
+                ...(workflows.length === 0 ? {} : { workflows }),
+                browser,
+                containers,
+                workerLoaders,
+                rateLimits,
+                secrets: [],
+              },
+            },
+          };
+          const names = [
+            ...Object.keys(plainText),
+            ...(config.version_metadata === undefined ? [] : [config.version_metadata.binding]),
+            ...(config.assets === undefined ? [] : [config.assets.binding]),
+            ...[kv, d1, r2, pipelines, queues, services, dispatchNamespaces, durableObjects, sendEmail, workflows, browser, hyperdrive, vectorize, aiSearch, ai, workerLoaders, analyticsEngine, rateLimits].flatMap((values) => values.map((binding) => binding.binding)),
+          ];
+          invariant(new Set(names).size === names.length, "Worker binding names must be unique across binding types");
+          const serialized = `${JSON.stringify(manifest)}\n`;
+          invariant(Buffer.byteLength(serialized) <= 131_072, "Worker configuration manifest exceeds 128 KiB");
+          const output = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-artifact/worker-configuration.json");
+          writeFileSync(output, serialized, { mode: 0o644 });
+          const digest = createHash("sha256").update(serialized).digest("hex");
+          writeFileSync(process.env.GITHUB_OUTPUT, `configuration-digest=${digest}\n`, { flag: "a" });
+          NODE
+
+      - name: Attest Worker configuration
+        id: attest-configuration
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: worker-configuration.json
+          subject-digest: sha256:${{ steps.prepare-configuration.outputs.configuration-digest }}
+          show-summary: false
+
+      - name: Stage and hash D1 migrations
+        if: ${{ inputs.d1-migrations-directory != '' }}
+        id: prepare-migrations
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          D1_MIGRATIONS_DIRECTORY: ${{ inputs.d1-migrations-directory }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import {
+            lstatSync,
+            readFileSync,
+            readdirSync,
+            writeFileSync,
+          } from "node:fs";
+          import { join, posix, resolve } from "node:path";
+
+          const root = resolve(
+            process.env.WORKING_DIRECTORY,
+            process.env.D1_MIGRATIONS_DIRECTORY,
+          );
+          const migrations = [];
+          function walk(directory, relative = "") {
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+              const path = join(directory, entry.name);
+              const name = relative === "" ? entry.name : posix.join(relative, entry.name);
+              const stat = lstatSync(path);
+              if (stat.isSymbolicLink()) throw new Error(`migration path is a symlink: ${name}`);
+              if (stat.isDirectory()) {
+                walk(path, name);
+              } else if (stat.isFile() && name.endsWith(".sql")) {
+                if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,127})*\.sql$/.test(name) || name.length > 512) {
+                  throw new Error(`migration has an unsafe name: ${name}`);
+                }
+                const bytes = readFileSync(path);
+                if (bytes.byteLength === 0 || bytes.byteLength > 1024 * 1024) {
+                  throw new Error(`migration has an invalid size: ${name}`);
+                }
+                const sql = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+                if (sql.includes("\0")) throw new Error(`migration contains NUL: ${name}`);
+                migrations.push({ name, sql });
+              }
+            }
+          }
+          function leadingNumber(segment) {
+            return Number.parseInt(segment.split("_", 1)[0], 10);
+          }
+          function compareSegment(left, right) {
+            const leftNumber = leadingNumber(left);
+            const rightNumber = leadingNumber(right);
+            if (leftNumber !== rightNumber) {
+              if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+              if (Number.isFinite(leftNumber)) return -1;
+              if (Number.isFinite(rightNumber)) return 1;
+            }
+            return left < right ? -1 : left > right ? 1 : 0;
+          }
+          function compareName(left, right) {
+            const leftSegments = left.split("/");
+            const rightSegments = right.split("/");
+            for (let index = 0; index < Math.min(leftSegments.length, rightSegments.length); index++) {
+              const compared = compareSegment(leftSegments[index], rightSegments[index]);
+              if (compared !== 0) return compared;
+            }
+            return leftSegments.length - rightSegments.length;
+          }
+          walk(root);
+          migrations.sort((left, right) => compareName(left.name, right.name));
+          if (migrations.length === 0 || migrations.length > 100) {
+            throw new Error("D1 migration directory must contain between 1 and 100 .sql files");
+          }
+          const manifest = `${JSON.stringify({ schemaVersion: 1, migrations })}\n`;
+          if (Buffer.byteLength(manifest) > 2 * 1024 * 1024) {
+            throw new Error("D1 migration manifest exceeds 2 MiB");
+          }
+          const output = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-artifact/d1-migrations.json");
+          writeFileSync(output, manifest, { mode: 0o644 });
+          const digest = createHash("sha256").update(manifest).digest("hex");
+          writeFileSync(process.env.GITHUB_OUTPUT, `migration-digest=${digest}\n`, { flag: "a" });
+          NODE
+
+      - name: Attest D1 migration manifest
+        if: ${{ inputs.d1-migrations-directory != '' }}
+        id: attest-migrations
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: d1-migrations.json
+          subject-digest: sha256:${{ steps.prepare-migrations.outputs.migration-digest }}
+          show-summary: false
+
+      - name: Summarize attestations
+        shell: bash
+        env:
+          MODULE_ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          MODULE_ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+          MODULE_DIGEST: ${{ steps.prepare.outputs.module-digest }}
+          CONFIGURATION_ATTESTATION_ID: ${{ steps.attest-configuration.outputs.attestation-id }}
+          CONFIGURATION_ATTESTATION_URL: ${{ steps.attest-configuration.outputs.attestation-url }}
+          CONFIGURATION_DIGEST: ${{ steps.prepare-configuration.outputs.configuration-digest }}
+          MIGRATION_ATTESTATION_ID: ${{ steps.attest-migrations.outputs.attestation-id }}
+          MIGRATION_ATTESTATION_URL: ${{ steps.attest-migrations.outputs.attestation-url }}
+          MIGRATION_DIGEST: ${{ steps.prepare-migrations.outputs.migration-digest }}
+          ASSET_ATTESTATION_ID: ${{ steps.attest-assets.outputs.attestation-id }}
+          ASSET_ATTESTATION_URL: ${{ steps.attest-assets.outputs.attestation-url }}
+          ASSET_DIGEST: ${{ steps.prepare-assets.outputs.assets-digest }}
+        run: |
+          set -euo pipefail
+          append_attestation() {
+            local id="$1"
+            local url="$2"
+            local subject="$3"
+            local digest="$4"
+            test -n "${id}"
+            test -n "${url}"
+            [[ "${digest}" =~ ^[0-9a-f]{64}$ ]]
+            printf '| [Attestation %s](%s) | <ul><li><code>%s</code> — <code>sha256:%s</code></li></ul> |\n' \
+              "${id}" "${url}" "${subject}" "${digest}"
+          }
+          {
+            echo "## Attestations"
+            echo
+            echo "| Attestation | Subject(s) |"
+            echo "| --- | --- |"
+            append_attestation \
+              "${MODULE_ATTESTATION_ID}" \
+              "${MODULE_ATTESTATION_URL}" \
+              "index.js" \
+              "${MODULE_DIGEST}"
+            append_attestation \
+              "${CONFIGURATION_ATTESTATION_ID}" \
+              "${CONFIGURATION_ATTESTATION_URL}" \
+              "worker-configuration.json" \
+              "${CONFIGURATION_DIGEST}"
+            if [[ -n "${MIGRATION_DIGEST}" ]]; then
+              append_attestation \
+                "${MIGRATION_ATTESTATION_ID}" \
+                "${MIGRATION_ATTESTATION_URL}" \
+                "d1-migrations.json" \
+                "${MIGRATION_DIGEST}"
+            fi
+            if [[ -n "${ASSET_DIGEST}" ]]; then
+              append_attestation \
+                "${ASSET_ATTESTATION_ID}" \
+                "${ASSET_ATTESTATION_URL}" \
+                "static-assets.json" \
+                "${ASSET_DIGEST}"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Stage Sigstore bundle
+        shell: bash
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -f "${BUNDLE_PATH}"
+          test ! -L "${BUNDLE_PATH}"
+          install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/provenance.sigstore.json"
+
+      - name: Stage D1 migration Sigstore bundle
+        if: ${{ inputs.d1-migrations-directory != '' }}
+        shell: bash
+        env:
+          BUNDLE_PATH: ${{ steps.attest-migrations.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -f "${BUNDLE_PATH}"
+          test ! -L "${BUNDLE_PATH}"
+          install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/d1-migrations.sigstore.json"
+
+      - name: Stage Worker configuration Sigstore bundle
+        shell: bash
+        env:
+          BUNDLE_PATH: ${{ steps.attest-configuration.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -f "${BUNDLE_PATH}"
+          test ! -L "${BUNDLE_PATH}"
+          install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/worker-configuration.sigstore.json"
+
+      - name: Stage static asset Sigstore bundle
+        if: ${{ steps.prepare-assets.outputs.assets-enabled == 'true' }}
+        shell: bash
+        env:
+          BUNDLE_PATH: ${{ steps.attest-assets.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -f "${BUNDLE_PATH}"
+          test ! -L "${BUNDLE_PATH}"
+          install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/static-assets.sigstore.json"
+
+      - name: Upload attested Worker artifact
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/cloudflare-worker-artifact/index.js
+            ${{ runner.temp }}/cloudflare-worker-artifact/provenance.sigstore.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/worker-configuration.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/worker-configuration.sigstore.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/d1-migrations.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/d1-migrations.sigstore.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/static-assets.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/static-assets.sigstore.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/static-assets
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          # Asset paths were already validated before staging. Preserve hidden
+          # assets such as .well-known files and an attested .gitkeep exactly.
+          include-hidden-files: true

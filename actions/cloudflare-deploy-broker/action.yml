@@ -1,0 +1,69 @@
+name: "Cloudflare Deploy Broker"
+description: "Deploy an attested GitHub Actions Worker artifact through the OIDC-authenticated broker"
+
+inputs:
+  deployment-id:
+    description: "Logical deployment ID; unpublished IDs can create new apps"
+    required: true
+  artifact-id:
+    description: "Immutable GitHub Actions artifact ID"
+    required: true
+  archive-digest:
+    description: "SHA-256 digest emitted by actions/upload-artifact"
+    required: true
+  module-digest:
+    description: "SHA-256 digest of the attested Worker module"
+    required: true
+  host:
+    description: "Broker hostname without a scheme, port, or path"
+    required: false
+    default: "cf-deployer.tempoxyz.net"
+outputs:
+  managed-resources:
+    description: "JSON array of owned R2, stream, sink, Pipeline and Queue IDs (no credentials)"
+    value: ${{ steps.deploy.outputs.managed-resources }}
+  kv-namespace-ids:
+    description: "JSON map of broker-owned KV binding names to immutable namespace IDs"
+    value: ${{ steps.deploy.outputs.kv-namespace-ids }}
+  d1-database-ids:
+    description: "JSON map of broker-owned D1 binding names to immutable database IDs"
+    value: ${{ steps.deploy.outputs.d1-database-ids }}
+  operation-id:
+    description: "Broker operation UUID"
+    value: ${{ steps.deploy.outputs.operation-id }}
+  version-id:
+    description: "Uploaded Cloudflare Worker version UUID"
+    value: ${{ steps.deploy.outputs.version-id }}
+  deployment-id:
+    description: "Cloudflare deployment UUID"
+    value: ${{ steps.deploy.outputs.cloudflare-deployment-id }}
+  worker-name:
+    description: "Deployed Worker name"
+    value: ${{ steps.deploy.outputs.worker-name }}
+  worker-tag:
+    description: "Policy-verified immutable Worker tag"
+    value: ${{ steps.deploy.outputs.worker-tag }}
+  artifact-digest:
+    description: "Normalized module SHA-256"
+    value: ${{ steps.deploy.outputs.artifact-digest }}
+  verification-url:
+    description: "Verified deployment URL"
+    value: ${{ steps.deploy.outputs.verification-url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24.22.1
+    - name: Authenticate and request deployment
+      id: deploy
+      shell: bash
+      env:
+        INPUT_DEPLOYMENT_ID: ${{ inputs.deployment-id }}
+        INPUT_ARTIFACT_ID: ${{ inputs.artifact-id }}
+        INPUT_ARCHIVE_DIGEST: ${{ inputs.archive-digest }}
+        INPUT_MODULE_DIGEST: ${{ inputs.module-digest }}
+        INPUT_HOST: ${{ inputs.host }}
+      run: node "$GITHUB_ACTION_PATH/main.cjs"
