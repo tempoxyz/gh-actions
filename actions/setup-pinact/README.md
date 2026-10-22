@@ -8,7 +8,7 @@ binary through aqua from inside a 6 MB Node bundle.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `version` | Immutable pinact release tag (e.g., `v5.0.0`). Mutable `latest` is rejected. | No | `v5.0.0` |
+| `version` | Immutable pinact release tag (e.g., `v5.0.1`). Mutable `latest` is rejected. | No | `v5.0.1` |
 
 ## Usage
 
