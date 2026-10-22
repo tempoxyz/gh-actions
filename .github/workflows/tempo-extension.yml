@@ -181,6 +181,9 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node-version }}
+          # Resolve the newest matching release instead of the runner image's cached Node.js,
+          # which can lag security releases (for example the eMudhra CA distrust in 22.23.4).
+          check-latest: true
           package-manager-cache: false
 
       - name: Enable corepack

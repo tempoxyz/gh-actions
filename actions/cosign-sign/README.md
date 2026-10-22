@@ -7,7 +7,7 @@ Install cosign and sign container images.
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
 | `images` | Newline-separated list of image references to sign | Yes | |
-| `cosign-version` | Cosign version to install (leave empty for default) | No | `""` |
+| `cosign-version` | Cosign version to install (e.g., `v3.1.4`) | No | `v3.1.4` |
 
 ## Usage
 

@@ -6,9 +6,9 @@ inputs:
     description: "Newline-separated list of image references to sign"
     required: true
   cosign-version:
-    description: "Cosign version to install (leave empty for default)"
+    description: "Cosign version to install (e.g., v3.1.4)"
     required: false
-    default: ""
+    default: "v3.1.4"
 
 runs:
   using: "composite"
