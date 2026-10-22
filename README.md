@@ -647,8 +647,9 @@ This verifies build artifacts, not a deployed enclave or the EIF in a release im
 The caller owns the build recipes and supplies an immutable toolchain image
 containing Nitro CLI, the guest kernel, NSM module, and bootstrap utilities. Both
 builds and the comparison use that exact image digest. Toolchain reproducibility
-itself is outside this comparison. An extra build input (for example, genesis
-JSON) is downloaded independently in each build and must match a supplied SHA-256.
+itself is outside this comparison. An optional extra build input (for example,
+genesis JSON) is downloaded independently in each build and must match a supplied
+SHA-256; omit both `build-input-url` and `build-input-sha256` for builds without one.
 
 ```yaml
 jobs:
@@ -687,7 +688,7 @@ The executable build script receives these environment variables:
 | `DEPOT_PROJECT` | Caller-supplied Depot project |
 | `GIT_SHA`, `SOURCE_DATE_EPOCH` | Resolved source commit and its commit timestamp |
 | `EIF_BUILDER_IMAGE` | Toolchain pinned by registry digest |
-| `BUILD_INPUT_FILE` | Absolute path to the verified downloaded input |
+| `BUILD_INPUT_FILE` | Absolute path to the verified downloaded input, or empty without one |
 | `OUT_DIR` | Absolute output directory; write `enclave.eif` here |
 
 Optional inputs are `candidate-runner` (default `depot-ubuntu-latest-16`),
