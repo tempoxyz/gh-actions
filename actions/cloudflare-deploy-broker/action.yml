@@ -1,0 +1,45 @@
+name: "Cloudflare Deploy Broker"
+description: "Deploy an attested GitHub Actions Worker artifact through the OIDC-authenticated broker"
+
+inputs:
+  deployment-id:
+    description: "Logical deployment ID; unpublished IDs can create new apps"
+    required: true
+  artifact-id:
+    description: "Immutable GitHub Actions artifact ID"
+    required: true
+  archive-digest:
+    description: "SHA-256 digest emitted by actions/upload-artifact"
+    required: true
+  module-digest:
+    description: "SHA-256 digest of the attested Worker module"
+    required: true
+  host:
+    description: "Broker hostname without a scheme, port, or path"
+    required: false
+    default: "cf-deployer.tempoxyz.net"
+outputs:
+  managed-resources:
+    description: "JSON array of owned R2, stream, sink, Pipeline and Queue IDs (no credentials)"
+  kv-namespace-ids:
+    description: "JSON map of broker-owned KV binding names to immutable namespace IDs"
+  d1-database-ids:
+    description: "JSON map of broker-owned D1 binding names to immutable database IDs"
+  operation-id:
+    description: "Broker operation UUID"
+  version-id:
+    description: "Uploaded Cloudflare Worker version UUID"
+  deployment-id:
+    description: "Cloudflare deployment UUID"
+  worker-name:
+    description: "Deployed Worker name"
+  worker-tag:
+    description: "Policy-verified immutable Worker tag"
+  artifact-digest:
+    description: "Normalized module SHA-256"
+  verification-url:
+    description: "Verified deployment URL"
+
+runs:
+  using: node24
+  main: main.cjs

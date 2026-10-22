@@ -32,6 +32,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`cargo-dependency-changes`](actions/cargo-dependency-changes) | Detect selected Cargo dependency version/source changes without running repository code |
 | [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
 | [`codex-repair`](actions/codex-repair) | Repair Rust dependency migrations on the runner with bounded independent checks |
+| [`cloudflare-deploy-broker`](actions/cloudflare-deploy-broker) | Deploy an attested Cloudflare Worker through the deploy broker |
 
 ### Installer verification
 
@@ -201,6 +202,7 @@ The SHA is the immutable reference; the timestamp comment records the reviewed, 
 | [`tempo-extension`](#tempo-extension) | Build, sign, and publish a `tempo` CLI extension to cli.tempo.xyz | api, wallet-cli |
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
+| [`cloudflare-deploy-broker-build`](actions/cloudflare-deploy-broker/README.md) | Build and attest a Cloudflare Worker for the deploy broker | Worker repos |
 
 Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main` (pin to a commit SHA in production — see [Versioning](#versioning)).
 
