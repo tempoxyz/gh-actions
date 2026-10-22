@@ -564,7 +564,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { createHash } from "node:crypto";
           import { writeFileSync } from "node:fs";
-          import { resolve } from "node:path";
+          import { dirname, resolve } from "node:path";
           import { unstable_readConfig } from "wrangler";
 
           function invariant(condition, message) {
@@ -632,13 +632,14 @@ jobs:
             "version_metadata", "worker_loaders", "workers_dev", "workflows",
           ]);
           // Bundling, local development and Wrangler metadata. Their effect is in the
-          // attested module; the broker never uploads source maps.
+          // attested module; the broker never uploads source maps. secrets only lists
+          // required names, and the broker keeps every secret of the live Worker.
           const buildOnlyFields = new Set([
             "alias", "base_dir", "build", "configPath", "define", "definedEnvironments", "dev",
             "find_additional_modules", "jsx_factory", "jsx_fragment", "keep_names", "legacy_env",
             "minify", "no_bundle", "node_compat", "preserve_file_names", "python_modules", "rules",
-            "send_metrics", "targetEnvironment", "topLevelName", "tsconfig", "upload_source_maps",
-            "userConfigPath",
+            "secrets", "send_metrics", "targetEnvironment", "topLevelName", "tsconfig",
+            "upload_source_maps", "userConfigPath",
           ]);
           function isUnset(value) {
             if (value === undefined || value === null) return true;
@@ -817,11 +818,20 @@ jobs:
           }).sort((left, right) => left.queueName.localeCompare(right.queueName));
           invariant(queueConsumers.length <= 10 && new Set(queueConsumers.map((consumer) => consumer.queueName)).size === queueConsumers.length, "Queue consumers must target unique Queues and are limited to ten");
 
-          const migratingD1 = d1.filter((binding) => binding.migrations !== undefined);
-          invariant(migratingD1.length <= 1, "only one ID-free D1 binding can declare migrations_dir");
-          if (d1.some((binding) => binding.provisioning === "new")) {
-            const migrationsDirectory = process.env.D1_MIGRATIONS_DIRECTORY ?? "";
-            invariant((migratingD1.length === 1) === (migrationsDirectory !== ""), "ID-free D1 migrations require both the d1-migrations-directory input and exactly one binding with migrations_dir");
+          // The broker applies one migration set to one database: an ID-free binding's
+          // own, or the existing database the deployment policy names. Either way the
+          // attested migrations must come from that binding's migrations_dir.
+          const migrationsDirectory = process.env.D1_MIGRATIONS_DIRECTORY ?? "";
+          if (migrationsDirectory === "") {
+            // Another Worker's deployment may migrate a shared existing database, but
+            // only this one can migrate the database it owns.
+            invariant(!d1.some((binding) => binding.migrations !== undefined), "ID-free D1 migrations require the d1-migrations-directory input");
+          } else {
+            const migratingD1 = (config.d1_databases ?? []).filter((binding) => binding.migrations_dir !== undefined);
+            invariant(migratingD1.length === 1, "d1-migrations-directory requires exactly one D1 binding with migrations_dir");
+            const [migrating] = migratingD1;
+            invariant(typeof migrating.migrations_dir === "string" && migrating.migrations_dir !== "", `D1 binding ${migrating.binding} migrations_dir must be a directory`);
+            invariant(resolve(dirname(configPath), migrating.migrations_dir) === resolve(migrationsDirectory), `d1-migrations-directory must be the migrations_dir of D1 binding ${migrating.binding}`);
           }
 
           const entrypointName = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
