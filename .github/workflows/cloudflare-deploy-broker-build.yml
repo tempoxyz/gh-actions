@@ -619,6 +619,37 @@ jobs:
             "Workers Site": config.site,
           })) invariant(value === undefined || value === null, `${name} is not authorized by the deploy broker`);
 
+          // Every other Wrangler field must be unset, so an unsupported binding or
+          // setting fails the build instead of silently missing from the manifest.
+          const handledFields = new Set([
+            "account_id", "ai", "ai_search", "ai_search_namespaces", "analytics_engine_datasets",
+            "artifacts", "assets", "browser", "compatibility_date", "compatibility_flags", "connect",
+            "containers", "d1_databases", "dispatch_namespaces", "durable_objects", "exports",
+            "hyperdrive", "keep_vars", "kv_namespaces", "logpush", "main", "migrations",
+            "mtls_certificates", "name", "observability", "pipelines", "preview_urls", "queues",
+            "r2_buckets", "ratelimits", "route", "routes", "secrets_store_secrets", "send_email",
+            "services", "site", "tail_consumers", "triggers", "unsafe", "vars", "vectorize",
+            "version_metadata", "worker_loaders", "workers_dev", "workflows",
+          ]);
+          // Bundling, local development and Wrangler metadata. Their effect is in the
+          // attested module; the broker never uploads source maps.
+          const buildOnlyFields = new Set([
+            "alias", "base_dir", "build", "configPath", "define", "definedEnvironments", "dev",
+            "find_additional_modules", "jsx_factory", "jsx_fragment", "keep_names", "legacy_env",
+            "minify", "no_bundle", "node_compat", "preserve_file_names", "python_modules", "rules",
+            "send_metrics", "targetEnvironment", "topLevelName", "tsconfig", "upload_source_maps",
+            "userConfigPath",
+          ]);
+          function isUnset(value) {
+            if (value === undefined || value === null) return true;
+            if (Array.isArray(value)) return value.length === 0;
+            return isRecord(value) && Object.values(value).every(isUnset);
+          }
+          for (const [field, value] of Object.entries(config)) {
+            if (handledFields.has(field) || buildOnlyFields.has(field)) continue;
+            invariant(isUnset(value), `Wrangler ${field} is not authorized by the deploy broker`);
+          }
+
           const kv = (config.kv_namespaces ?? []).map((binding) => {
             invariant(Object.keys(binding).every((key) => key === "binding"), "KV provisioning accepts only a binding name; existing IDs, preview IDs, jurisdiction, remote, and unknown options are not supported");
             invariant(typeof binding.binding === "string" && bindingName.test(binding.binding), "KV binding name is invalid");
@@ -730,6 +761,9 @@ jobs:
               invariant(sqliteIdentifier.test(table), `D1 binding ${binding.binding} migrations_table is invalid`);
               return { binding: binding.binding, provisioning: "new", migrations: { table } };
             }
+            // Migrations for an existing database are applied to the binding the
+            // deployment policy names, so migrations_dir is allowed here.
+            invariant(Object.keys(binding).every((key) => ["binding", "database_id", "database_name", "migrations_dir", "migrations_table"].includes(key)), `D1 binding ${binding.binding} accepts only binding, database_id, database_name, migrations_dir, and migrations_table; preview IDs, remote, jurisdiction, and unknown options are not supported`);
             invariant(typeof binding.database_id === "string" && uuid.test(binding.database_id), `D1 binding ${binding.binding} must have an explicit database_id`);
             return { binding: binding.binding, databaseId: binding.database_id };
           }).sort((left, right) => left.binding.localeCompare(right.binding));
@@ -905,7 +939,7 @@ jobs:
 
           const routes = [];
           const patternRoutes = [];
-          for (const route of config.routes ?? []) {
+          for (const route of [...(config.routes ?? []), ...(config.route == null ? [] : [config.route])]) {
             invariant(isRecord(route), "every Wrangler route must be an object");
             if (route.custom_domain === true) {
               invariant(Object.keys(route).every((key) => ["pattern", "custom_domain"].includes(key)), "custom domains accept only pattern and custom_domain");

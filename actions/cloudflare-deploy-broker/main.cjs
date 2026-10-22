@@ -14,10 +14,26 @@ function output(name, value) {
   fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
-function required(name, pattern) {
-  const value = process.env[name] || "";
+function input(name) {
+  const key = name.toUpperCase();
+  return (
+    process.env[`INPUT_${key}`] ||
+    process.env[`INPUT_${key.replaceAll("-", "_")}`] ||
+    ""
+  );
+}
+
+function valid(name, value, pattern) {
   if (!pattern.test(value)) throw new Error(`${name} is missing or invalid`);
   return value;
+}
+
+function required(name, pattern) {
+  return valid(name, process.env[name] || "", pattern);
+}
+
+function requiredInput(name, pattern) {
+  return valid(name, input(name), pattern);
 }
 
 async function oidc(audience) {
@@ -43,13 +59,10 @@ async function oidc(audience) {
 }
 
 async function main() {
-  const deploymentId = required(
-    "INPUT_DEPLOYMENT_ID",
-    /^[a-z][a-z0-9-]{0,62}$/,
-  );
-  const artifactId = required("INPUT_ARTIFACT_ID", /^[1-9][0-9]{0,19}$/);
-  const archiveSha256 = required("INPUT_ARCHIVE_DIGEST", /^[0-9a-f]{64}$/);
-  const moduleSha256 = required("INPUT_MODULE_DIGEST", /^[0-9a-f]{64}$/);
+  const deploymentId = requiredInput("deployment-id", /^[a-z][a-z0-9-]{0,62}$/);
+  const artifactId = requiredInput("artifact-id", /^[1-9][0-9]{0,19}$/);
+  const archiveSha256 = requiredInput("archive-digest", /^[0-9a-f]{64}$/);
+  const moduleSha256 = requiredInput("module-digest", /^[0-9a-f]{64}$/);
   const runId = required("GITHUB_RUN_ID", /^[1-9][0-9]{0,19}$/);
   const runAttempt = required("GITHUB_RUN_ATTEMPT", /^[1-9][0-9]{0,9}$/);
   const commitSha = required("GITHUB_SHA", /^[0-9a-f]{40}$/);
@@ -57,7 +70,7 @@ async function main() {
     "GITHUB_REPOSITORY",
     /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/,
   );
-  const host = process.env.INPUT_HOST || "";
+  const host = input("host");
   const endpoint = brokerEndpoint(host);
   const audience = brokerAudience(host);
   const idempotencyKey = crypto
@@ -115,7 +128,7 @@ async function main() {
     "d1-database-ids": databaseIds(result.d1Databases),
     "operation-id": result.operationId,
     "version-id": result.versionId,
-    "cloudflare-deployment-id": result.deploymentId,
+    "deployment-id": result.deploymentId,
     "worker-name": result.workerName,
     "worker-tag": result.workerTag,
     "artifact-digest": result.normalizedArtifactDigest,

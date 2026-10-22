@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -39,7 +40,7 @@ test("exposes only a hostname override with the production default", () => {
   const main = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
   assert.ok(action.includes("  host:"));
   assert.ok(action.includes('default: "cf-deployer.tempoxyz.net"'));
-  assert.ok(action.includes("INPUT_HOST: ${{ inputs.host }}"));
+  assert.ok(main.includes('input("host")'));
   for (const removed of [
     "  dev:",
     "INPUT_DEV",
@@ -52,6 +53,49 @@ test("exposes only a hostname override with the production default", () => {
   assert.ok(main.includes('new URL("/v1/deploy", endpoint)'));
   assert.ok(main.includes("oidc(audience)"));
   assert.ok(!main.includes("oidc(endpoint.hostname)"));
+});
+
+test("runs on the runner's Node.js without changing the job's PATH", () => {
+  const action = readFileSync(path.join(__dirname, "action.yml"), "utf8");
+  assert.match(action, /\nruns:\n  using: node24\n  main: main\.cjs\n$/);
+  assert.ok(!action.includes("setup-node"));
+  assert.ok(!action.includes("value: ${{"));
+});
+
+function runMain(env) {
+  return spawnSync(process.execPath, [path.join(__dirname, "main.cjs")], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH, ...env },
+  });
+}
+
+const validInputs = {
+  "INPUT_DEPLOYMENT-ID": "example-worker",
+  "INPUT_ARTIFACT-ID": "123",
+  "INPUT_ARCHIVE-DIGEST": "a".repeat(64),
+  "INPUT_MODULE-DIGEST": "b".repeat(64),
+  INPUT_HOST: "",
+  GITHUB_RUN_ID: "1",
+  GITHUB_RUN_ATTEMPT: "1",
+  GITHUB_SHA: "c".repeat(40),
+};
+
+test("reads the runner's hyphenated input names", () => {
+  // Inputs are read first, so a missing repository is the first failure only
+  // when every input was found. It also fails before any network request.
+  const result = runMain(validInputs);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /GITHUB_REPOSITORY is missing or invalid/);
+});
+
+test("names the invalid input", () => {
+  const result = runMain({
+    ...validInputs,
+    "INPUT_DEPLOYMENT-ID": "Not Valid",
+    GITHUB_REPOSITORY: "tempoxyz/example",
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /deployment-id is missing or invalid/);
 });
 
 test("identifies every broker failure by operation, status, code, and safe message", () => {

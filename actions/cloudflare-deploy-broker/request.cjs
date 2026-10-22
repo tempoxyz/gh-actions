@@ -1,6 +1,9 @@
 const https = require("node:https");
 
 const CONNECTION_TIMEOUT_MS = 5_000;
+// The broker holds a deployment request while it runs and treats one still
+// processing after ten minutes as abandoned, so no response takes longer.
+const RESPONSE_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESPONSE_BYTES = 128 * 1024;
 
 function firstHeader(value) {
@@ -13,8 +16,10 @@ function request(url, options = {}, body = undefined, dependencies = {}) {
   const stopTimer = dependencies.clearTimeout ?? clearTimeout;
   const connectionTimeoutMs =
     dependencies.connectionTimeoutMs ?? CONNECTION_TIMEOUT_MS;
+  const responseTimeoutMs =
+    dependencies.responseTimeoutMs ?? RESPONSE_TIMEOUT_MS;
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolvePromise, rejectPromise) => {
     let connectionTimer;
     const clearConnectionTimer = () => {
       if (connectionTimer !== undefined) {
@@ -22,6 +27,22 @@ function request(url, options = {}, body = undefined, dependencies = {}) {
         connectionTimer = undefined;
       }
     };
+    // Bounds the whole exchange, including a server that accepts the
+    // connection and then stalls before or while sending the response.
+    const responseTimer = startTimer(() => {
+      call.destroy(
+        new Error(
+          `HTTPS request to ${url.hostname} did not complete within ${responseTimeoutMs / 1_000} seconds`,
+        ),
+      );
+    }, responseTimeoutMs);
+    const settle = (callback) => (value) => {
+      stopTimer(responseTimer);
+      clearConnectionTimer();
+      callback(value);
+    };
+    const resolve = settle(resolvePromise);
+    const reject = settle(rejectPromise);
     const call = makeRequest(url, options, (response) => {
       clearConnectionTimer();
       let responseBody = "";
