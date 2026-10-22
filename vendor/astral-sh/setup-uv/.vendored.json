@@ -1,13 +1,13 @@
 {
   "upstream": "https://github.com/astral-sh/setup-uv",
-  "ref": "main",
-  "ref_type": "branch",
-  "sha": "0e3884b860e20d3f4d5daa2347130beb51ccde47",
-  "upstream_commit_date": "2026-10-01T19:16:46+02:00",
-  "readme_url": "https://github.com/astral-sh/setup-uv/blob/0e3884b860e20d3f4d5daa2347130beb51ccde47/README.md",
+  "ref": "v10.3.2",
+  "ref_type": "tag",
+  "sha": "07a047e608db84b3d8c06cd9a7c7dcc9c355c18e",
+  "upstream_commit_date": "2026-10-22T10:18:56+02:00",
+  "readme_url": "https://github.com/astral-sh/setup-uv/blob/07a047e608db84b3d8c06cd9a7c7dcc9c355c18e/README.md",
   "description": "Set up your GitHub Actions workflow with a specific version of uv.",
   "consume_as": "tempoxyz/gh-actions/vendor/astral-sh/setup-uv@<gh-actions-sha>",
-  "files_removed": 112,
+  "files_removed": 115,
   "nested_rewrites": [],
   "transforms": [
     "vendor/patches/setup-uv-undici-tls.patch"

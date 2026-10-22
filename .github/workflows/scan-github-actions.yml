@@ -120,7 +120,7 @@ jobs:
       - name: Install pinact
         if: ${{ inputs.pinact }}
         env:
-          PINACT_VERSION: v5.0.0
+          PINACT_VERSION: v5.0.1
           GH_TOKEN: ${{ github.token }}
         run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
           set -euo pipefail

@@ -537,7 +537,7 @@ jobs:
       - name: Install pinact
         uses: tempoxyz/gh-actions/actions/setup-pinact@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
         with:
-          version: v5.0.0
+          version: v5.0.1
       - name: Verify timestamp tag comment
         env:
           GITHUB_TOKEN: ${{ github.token }}

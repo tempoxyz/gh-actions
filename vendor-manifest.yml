@@ -258,7 +258,7 @@ actions:
   - name: aquasecurity/trivy-action
     ref: master
     ref_type: branch
-    sha: c03d123cb480c08c69b054af418ea5e69fe6e57e
+    sha: 8f28faec26515256b6d22074d1d2a8986f4cbd87
     exclude: []
     notes: >-
       whole repository kept (apart from repo-wide defaults): action.yaml uses the action directory
@@ -267,9 +267,9 @@ actions:
       actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9: 3edfce9056124e459a23f683a21433670d47daca
 
   - name: astral-sh/setup-uv
-    ref: main
-    ref_type: branch
-    sha: 0e3884b860e20d3f4d5daa2347130beb51ccde47
+    ref: v10.3.2
+    ref_type: tag
+    sha: 07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
     security_patches:
       - vendor/patches/setup-uv-undici-tls.patch
     exclude:
