@@ -200,7 +200,7 @@ The SHA is the immutable reference; the timestamp comment records the reviewed, 
 | [`rust-clippy`](#rust-fmt-and-rust-clippy) | Clippy-only wrapper around rust-lint | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
 | [`tempo-extension`](#tempo-extension) | Build, sign, and publish a `tempo` CLI extension to cli.tempo.xyz | api, wallet-cli |
-| [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
+| [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR with a cooldown | tempo, reth |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 | [`cloudflare-deploy-broker-build`](actions/cloudflare-deploy-broker/README.md) | Build and attest a Cloudflare Worker for the deploy broker | Worker repos |
 
@@ -938,7 +938,18 @@ Publishing needs a `cloudflare-sts-policy` and one secret, `RELEASE_SIGNING_KEY`
 
 ### `cargo-update-pr`
 
-Runs `cargo update` and opens or updates a pull request for `Cargo.lock`. The
+Runs `cargo update` and opens or updates a pull request for `Cargo.lock`. By
+default it applies a seven-day cooldown: Cargo resolves only crates.io releases
+published at least `min-publish-age` ago, so the update does not pick versions
+that the package firewall would still block. Two kinds of packages are held at
+their locked version while everything else (including git dependencies) is
+updated: locked versions newer than the cooldown that are not yanked (such as a
+security fix added with an exception), and packages whose requirement only a
+release newer than the cooldown can meet (for example, when every older
+compatible version was yanked). The PR body lists held packages and why. The
+cooldown needs Cargo 1.100 or newer, or nightly; the job fails on an older
+toolchain instead of updating without it, so callers that pin an older stable
+`rust-toolchain` must set `min-publish-age: ""`. The
 branch push and PR use a short-lived GitHub App token minted via
 [`github-sts`](actions/github-sts) — the built-in `GITHUB_TOKEN` is not
 allowed to create pull requests.
@@ -967,6 +978,7 @@ Optional inputs:
 
 - `rust-toolchain` (default: `nightly`)
 - `title` (default: `chore(deps): weekly cargo update`)
+- `min-publish-age` (default: `7 days`; empty disables the cooldown)
 
 ### `auto-assign-pr`
 

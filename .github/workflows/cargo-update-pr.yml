@@ -13,6 +13,11 @@ on:
         default: "chore(deps): weekly `cargo update`"
         required: false
         type: "string"
+      min-publish-age:
+        description: "Cooldown: resolve only registry releases at least this old, e.g. `7 days` (Cargo's registry.global-min-publish-age); empty disables it"
+        default: "7 days"
+        required: false
+        type: "string"
 permissions:
   id-token: write
 
@@ -55,9 +60,112 @@ jobs:
         with:
           toolchain: ${{ inputs.rust-toolchain }}
 
+      # Cargo resolves only releases older than min-publish-age. Locked versions newer than that
+      # (often a fix added with a policy exception) and packages no release within the cooldown
+      # can satisfy are held at their locked version; everything else is updated.
       - name: cargo update
-        # Remove first line that always just says "Updating crates.io index"
-        run: cargo update --color never --verbose 2>&1 | sed '/crates.io index/d' | tee -a cargo_update.log
+        env:
+          MIN_PUBLISH_AGE: ${{ inputs.min-publish-age }}
+        run: |
+          set -euo pipefail
+          if [ -n "$MIN_PUBLISH_AGE" ]; then
+            # min-publish-age is stable since Cargo 1.100 (nightly needs no -Z flag); older Cargo
+            # silently ignores the setting, so refuse to run without the cooldown.
+            minor="$(cargo --version | sed -nE 's/^cargo 1\.([0-9]+).*/\1/p')"
+            if [ -z "$minor" ] || [ "$minor" -lt 100 ]; then
+              echo "::error::min-publish-age needs Cargo 1.100 or newer (or nightly); got $(cargo --version). Set min-publish-age: \"\" to update without a cooldown."
+              exit 1
+            fi
+            export CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE="$MIN_PUBLISH_AGE"
+          fi
+
+          # Prints "yes" if name@version is yanked on crates.io, "no" if not, "unknown" otherwise.
+          yanked() {
+            local name="${1,,}" path
+            case "${#name}" in
+              1) path="1/$name" ;;
+              2) path="2/$name" ;;
+              3) path="3/${name:0:1}/$name" ;;
+              *) path="${name:0:2}/${name:2:2}/$name" ;;
+            esac
+            local out
+            if out="$(curl --proto '=https' --fail --silent --show-error --retry 3 "https://index.crates.io/$path" \
+                | jq -r --arg v "$2" 'select(.vers == $v) | if .yanked then "yes" else "no" end')" && [ -n "$out" ]; then
+              echo "$out"
+            else
+              echo unknown
+            fi
+          }
+
+          # Packages kept at their locked version, by name, with the reason.
+          declare -A held=()
+          cp Cargo.lock Cargo.lock.orig
+          for attempt in $(seq 1 10); do
+            cp Cargo.lock.orig Cargo.lock
+            args=()
+            if [ "${#held[@]}" -gt 0 ]; then
+              # Unlock every locked package with a source (registry, sparse or git) except the held
+            # ones, by fully qualified package ID so duplicate names stay unambiguous. Read Cargo.lock
+            # rather than `cargo metadata`, which leaves out dependencies of non-default features,
+            # and write a file first so a failure stops the step instead of running a full update.
+            python3 - "${!held[@]}" > update.specs <<'PY'
+          import sys, tomllib
+          held = set(sys.argv[1:])
+          with open("Cargo.lock", "rb") as f:
+              lock = tomllib.load(f)
+          for pkg in lock.get("package", []):
+              source = pkg.get("source")
+              if source and pkg["name"] not in held:
+                  print(source.split("#", 1)[0] + "#" + pkg["name"] + "@" + pkg["version"])
+          PY
+            while read -r id; do args+=(-p "$id"); done < update.specs
+            if [ "${#args[@]}" = 0 ]; then
+              echo "::error::no unheld packages to update"
+              exit 1
+            fi
+          fi
+            if ! cargo update --color never --verbose "${args[@]}" > update.out 2>&1; then
+              # A requirement only releases newer than the cooldown can meet (for example, every older
+              # compatible version was yanked) fails the whole update: hold that package instead.
+              pkg="$(sed -nE 's/^error: failed to select a version for the requirement .([^ ]+) = .*/\1/p' update.out | head -n1)"
+              if [ -z "$pkg" ] || [ -n "${held[$pkg]:-}" ] || [ "$attempt" = 10 ]; then
+                cat update.out
+                exit 1
+              fi
+              held[$pkg]="no release satisfies its requirement within the cooldown"
+              continue
+            fi
+            # The cooldown also downgrades locked versions younger than it. Those were reviewed when
+            # they went in (often a fix added with a policy exception), so hold them, unless the locked
+            # version was yanked, in which case Cargo is right to move off it.
+            added=0
+            while read -r name old; do
+              if [ -n "${held[$name]:-}" ]; then continue; fi
+              case "$(yanked "$name" "$old")" in
+                no) held[$name]="locked v$old is newer than the cooldown"; added=1 ;;
+                yes) ;;
+                *) echo "::warning::could not check whether $name v$old is yanked; letting Cargo downgrade it" ;;
+              esac
+            done < <(sed -nE 's/^ *Downgrading ([^ ]+) v([^ ]+) -> .*/\1 \2/p' update.out)
+            if [ "$added" = 0 ]; then break; fi
+            if [ "$attempt" = 10 ]; then
+              echo "::error::cargo update did not settle after $attempt attempts"
+              exit 1
+            fi
+          done
+          rm -f Cargo.lock.orig
+
+          # Remove the line that always just says "Updating crates.io index"
+          sed '/crates.io index/d' update.out > cargo_update.log
+          rm -f update.out update.specs
+          if [ "${#held[@]}" -gt 0 ]; then
+            {
+              echo
+              echo "Held at their locked versions:"
+              for name in "${!held[@]}"; do echo "  $name: ${held[$name]}"; done | sort
+            } >> cargo_update.log
+          fi
+          cat cargo_update.log
 
       # The first-party PR action below fails when there is nothing to commit, so skip the
       # remaining steps when `cargo update` left Cargo.lock untouched.
