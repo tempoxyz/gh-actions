@@ -941,14 +941,15 @@ Publishing needs a `cloudflare-sts-policy` and one secret, `RELEASE_SIGNING_KEY`
 Runs `cargo update` and opens or updates a pull request for `Cargo.lock`. By
 default it applies a seven-day cooldown: Cargo resolves only crates.io releases
 published at least `min-publish-age` ago, so the update does not pick versions
-that the package firewall would still block. Versions already in `Cargo.lock`
-that are newer than the cooldown (such as a security fix added with an
-exception) are kept rather than downgraded. When a requirement can only be met
-by a release newer than the cooldown (for example, every older compatible
-version was yanked), that package is held at its locked version and everything
-else is updated; the PR body lists held and kept packages. The cooldown needs Cargo 1.100 or
-newer, or nightly; the job fails on an older toolchain instead of updating
-without it. The
+that the package firewall would still block. Two kinds of packages are held at
+their locked version while everything else (including git dependencies) is
+updated: locked versions newer than the cooldown that are not yanked (such as a
+security fix added with an exception), and packages whose requirement only a
+release newer than the cooldown can meet (for example, when every older
+compatible version was yanked). The PR body lists held packages and why. The
+cooldown needs Cargo 1.100 or newer, or nightly; the job fails on an older
+toolchain instead of updating without it, so callers that pin an older stable
+`rust-toolchain` must set `min-publish-age: ""`. The
 branch push and PR use a short-lived GitHub App token minted via
 [`github-sts`](actions/github-sts) — the built-in `GITHUB_TOKEN` is not
 allowed to create pull requests.
