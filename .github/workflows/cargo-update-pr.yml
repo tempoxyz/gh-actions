@@ -105,12 +105,25 @@ jobs:
             args=()
             if [ "${#held[@]}" -gt 0 ]; then
               # Unlock every locked package with a source (registry, sparse or git) except the held
-              # ones, by its fully qualified package ID so that duplicate names stay unambiguous.
-              while read -r id; do args+=(-p "$id"); done < <(
-                cargo metadata --format-version 1 --locked \
-                  | jq -r --arg held " ${!held[*]} " \
-                    '.packages[] | select(.source != null) | .name as $n | select($held | contains(" " + $n + " ") | not) | .id')
+            # ones, by fully qualified package ID so duplicate names stay unambiguous. Read Cargo.lock
+            # rather than `cargo metadata`, which leaves out dependencies of non-default features,
+            # and write a file first so a failure stops the step instead of running a full update.
+            python3 - "${!held[@]}" > update.specs <<'PY'
+          import sys, tomllib
+          held = set(sys.argv[1:])
+          with open("Cargo.lock", "rb") as f:
+              lock = tomllib.load(f)
+          for pkg in lock.get("package", []):
+              source = pkg.get("source")
+              if source and pkg["name"] not in held:
+                  print(source.split("#", 1)[0] + "#" + pkg["name"] + "@" + pkg["version"])
+          PY
+            while read -r id; do args+=(-p "$id"); done < update.specs
+            if [ "${#args[@]}" = 0 ]; then
+              echo "::error::no unheld packages to update"
+              exit 1
             fi
+          fi
             if ! cargo update --color never --verbose "${args[@]}" > update.out 2>&1; then
               # A requirement only releases newer than the cooldown can meet (for example, every older
               # compatible version was yanked) fails the whole update: hold that package instead.
@@ -144,7 +157,7 @@ jobs:
 
           # Remove the line that always just says "Updating crates.io index"
           sed '/crates.io index/d' update.out > cargo_update.log
-          rm -f update.out
+          rm -f update.out update.specs
           if [ "${#held[@]}" -gt 0 ]; then
             {
               echo
