@@ -200,7 +200,7 @@ The SHA is the immutable reference; the timestamp comment records the reviewed, 
 | [`rust-clippy`](#rust-fmt-and-rust-clippy) | Clippy-only wrapper around rust-lint | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
 | [`tempo-extension`](#tempo-extension) | Build, sign, and publish a `tempo` CLI extension to cli.tempo.xyz | api, wallet-cli |
-| [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR | tempo |
+| [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR with a cooldown | tempo, reth |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 | [`cloudflare-deploy-broker-build`](actions/cloudflare-deploy-broker/README.md) | Build and attest a Cloudflare Worker for the deploy broker | Worker repos |
 
@@ -938,7 +938,17 @@ Publishing needs a `cloudflare-sts-policy` and one secret, `RELEASE_SIGNING_KEY`
 
 ### `cargo-update-pr`
 
-Runs `cargo update` and opens or updates a pull request for `Cargo.lock`. The
+Runs `cargo update` and opens or updates a pull request for `Cargo.lock`. By
+default it applies a seven-day cooldown: Cargo resolves only crates.io releases
+published at least `min-publish-age` ago, so the update does not pick versions
+that the package firewall would still block. Versions already in `Cargo.lock`
+that are newer than the cooldown (such as a security fix added with an
+exception) are kept rather than downgraded. When a requirement can only be met
+by a release newer than the cooldown (for example, every older compatible
+version was yanked), that package is held at its locked version and everything
+else is updated; the PR body lists held and kept packages. The cooldown needs Cargo 1.100 or
+newer, or nightly; the job fails on an older toolchain instead of updating
+without it. The
 branch push and PR use a short-lived GitHub App token minted via
 [`github-sts`](actions/github-sts) — the built-in `GITHUB_TOKEN` is not
 allowed to create pull requests.
@@ -967,6 +977,7 @@ Optional inputs:
 
 - `rust-toolchain` (default: `nightly`)
 - `title` (default: `chore(deps): weekly cargo update`)
+- `min-publish-age` (default: `7 days`; empty disables the cooldown)
 
 ### `auto-assign-pr`
 
