@@ -128,7 +128,7 @@ jobs:
               # A requirement only releases newer than the cooldown can meet (for example, every older
               # compatible version was yanked) fails the whole update: hold that package instead.
               pkg="$(sed -nE 's/^error: failed to select a version for the requirement .([^ ]+) = .*/\1/p' update.out | head -n1)"
-              if [ -z "$pkg" ] || [ -n "${held[$pkg]:-}" ]; then
+              if [ -z "$pkg" ] || [ -n "${held[$pkg]:-}" ] || [ "$attempt" = 10 ]; then
                 cat update.out
                 exit 1
               fi
