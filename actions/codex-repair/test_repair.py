@@ -92,6 +92,18 @@ sdk-build = {{ git = "{URL}", rev = "{SHA}" }}
         with self.assertRaises(ValueError):
             self.policy.validate(self.work)
 
+    def test_abbreviated_pin_matching_upstream_spelling_is_accepted(self):
+        (self.work / "Cargo.toml").write_text(manifest(SHA[:7]))
+        (self.work / "Cargo.lock").write_text(lockfile().replace(f"?rev={SHA}#", f"?rev={SHA[:7]}#"))
+        self.policy.freeze(self.work)
+        self.policy.validate(self.work)
+
+    def test_abbreviation_of_another_commit_or_too_short_is_rejected(self):
+        for revision in ("3" * 7, SHA[:6], "A" * 7):
+            (self.work / "Cargo.toml").write_text(manifest(revision))
+            with self.assertRaisesRegex(ValueError, "revision/source changed"):
+                self.policy.freeze(self.work)
+
     def test_lockfile_full_commit_must_match(self):
         (self.work / "Cargo.lock").write_text(lockfile("3" * 40))
         with self.assertRaisesRegex(ValueError, "another commit"):
