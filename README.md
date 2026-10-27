@@ -331,7 +331,7 @@ jobs:
 The comment surface supports:
 
 - comments: `cyclops audit`, `cyclops private audit`, `@decofe cyclops audit`, `derek audit`
-- arguments: `private`, `fast`, `perf`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `env=staging|prod|ab`, `note="..."`
+- arguments: `private`, `fast`, `perf`, `iterations=N`, `hours=N`, `config=PATH`, `models=...`, `run-label=LABEL`, `dry-run`, `env=staging|prod|ab`, `note="..."` (alias: `notes="..."`)
 
 `default-env` (default `prod`) sets the environment for comments without `env=`; an explicit `env=` overrides it.
 
