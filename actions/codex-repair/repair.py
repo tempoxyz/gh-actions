@@ -41,13 +41,114 @@ def progress(phase):
         print(f"{phase}: finished after {time.monotonic() - started:.0f}s", flush=True)
 
 
+# Coordinator failure reasons that are fixed text, safe to publish as an Actions
+# annotation. Anything else (subprocess errors, library messages, command output)
+# is reported only as "failed" or "timed out".
+PUBLIC_REASONS = frozenset((
+    "CI deadline exceeded; update PR retained",
+    "CI repair attempts exhausted; PR retained",
+    "CI repair failed local validation; PR retained for next run",
+    "CODEX_API_KEY is required when a repair is needed",
+    "STS returned an invalid publishing token",
+    "a nonempty credential environment is required",
+    "a selected dependency source is missing",
+    "adapter must be a tracked regular file on the trusted base branch",
+    "adapter must return update-plan schema version 1",
+    "agent made no changes while CI failed",
+    "agent made no changes while CI failed; PR retained",
+    "allowed-paths must not be empty",
+    "base branch advanced after trusted checkout; retry required",
+    "candidate changed between verification commands",
+    "candidate changed during lockfile resolution",
+    "candidate contains a runner credential",
+    "cannot export complete candidate Git tree",
+    "cannot inspect update branch",
+    "changes inside frozen gitlinks or symlinks are unsupported",
+    "closed_pr_policy must be skip or new-pr",
+    "commit tree differs from verified candidate",
+    "configured-workflows requires a nonempty workflow list",
+    "dependency repair budget exhausted",
+    "dependency updates must run from the caller base-branch schedule/manual workflow",
+    "empty check command",
+    "expected a normalized relative path",
+    "failed checks have no Actions diagnostics; human intervention required",
+    "frozen dependency identity or Cargo override changed",
+    "frozen gitlinks or symlinks changed",
+    "gitlinks and symlinks require a trusted baseline",
+    "incomplete Git blob response",
+    "invalid Git blob response",
+    "invalid STS policy name",
+    "invalid automation branch",
+    "invalid base branch",
+    "invalid caller repository",
+    "invalid integer repair limit",
+    "invalid repair limits",
+    "local repair attempts exhausted; best-effort PR retained",
+    "local repairs exhausted before Cargo.lock resolved the selected revisions; nothing published",
+    "local repairs exhausted; candidate source retained for inspection",
+    "local-checks must not be empty",
+    "lockfile is missing selected dependency revisions",
+    "lockfile resolution changed source outside Cargo.lock",
+    "lockfile resolves a selected source to another commit",
+    "only dedicated dependency fetch may populate the download cache",
+    "only dedicated lockfile resolution may write verification source",
+    "output must be a single line",
+    "pins must map selected Git URLs to full commit SHAs",
+    "plan must freeze selected dependency revisions",
+    "repair budget exhausted; refusing publication",
+    "required-workflows must not be empty",
+    "selected dependency revision/source changed",
+    "selected sources must be GitHub HTTPS repositories",
+    "special Git tree entries are unsupported",
+    "unknown progress phase",
+    "update PR was closed or changed by another actor; retry required",
+    "update branch advanced during fetch; retry required",
+    "update branch changed while preparing plan",
+    "verification command changed candidate source",
+    "worker command timed out",
+))
+# Fixed prefixes of formatted reasons. Only the prefix is published: the path that
+# follows can be a file name Codex chose, which could otherwise carry a secret.
+PUBLIC_REASON_PREFIXES = (
+    "change outside repair scope: ",
+    "file mode changed: ",
+    "invalid plan field: ",
+    "new build scripts are not allowed: ",
+    "path dependency escapes the repository: ",
+    "special file is not supported: ",
+    "symlink is not supported: ",
+)
+
+
+def public_reason(error):
+    """Return a known fixed coordinator reason for the error, else None.
+
+    Formatted reasons are reduced to their fixed prefix; nothing from the
+    candidate, the agent, subprocesses or libraries is ever returned.
+    """
+    if not isinstance(error, (ValueError, RuntimeError, TimeoutError)) or \
+            isinstance(error, subprocess.SubprocessError):
+        return None
+    message = str(error).split("\n", 1)[0]
+    if message in PUBLIC_REASONS:
+        return message
+    for prefix in PUBLIC_REASON_PREFIXES:
+        if message.startswith(prefix):
+            return prefix.removesuffix(": ")
+    return None
+
+
 def safe_main(entrypoint):
     try:
         entrypoint()
     except (Exception, KeyboardInterrupt) as error:
         # Tracebacks/CalledProcessError/TimeoutExpired can include full commands,
-        # repair prompts and captured output. Do not serialize them to Actions.
+        # repair prompts and captured output. Do not serialize them to Actions;
+        # only known fixed coordinator reasons are published, as an annotation.
         reason = "timed out" if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)) else "failed"
+        known = public_reason(error)
+        detail = known if known else "private diagnostic details withheld"
+        print(f"::error title=Dependency update {reason}::{detail}", flush=True)
         print(f"Dependency update {reason}; private diagnostic details withheld.", file=sys.stderr, flush=True)
         raise SystemExit(1) from None
 
