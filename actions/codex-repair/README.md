@@ -71,7 +71,9 @@ requires a separate execution design. Store a standard OpenAI API key as
 ## Inputs and outputs
 
 Required inputs: `source`, `baseline` (absolute paths to source exports without
-`.git`), `pins` (JSON map of selected GitHub HTTPS source URL to full commit SHA),
+`.git`), `pins` (JSON map of selected GitHub HTTPS source URL to full commit SHA;
+manifests may spell `rev` as that SHA or an abbreviation of it, such as the
+spelling an upstream dependency uses, while `Cargo.lock` must resolve the full SHA),
 `local-checks`, `allowed-paths`, and `codex-api-key`.
 Optional inputs: `repair-instructions`, `max-repairs` (3), `budget-minutes` (60),
 `codex-model` and `codex-effort` (empty uses CLI/model defaults).

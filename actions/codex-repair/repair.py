@@ -174,6 +174,17 @@ def dependencies(document, table=()):
             yield from dependencies(value, table + (key,))
 
 
+def pinned_revision(revision, sha):
+    """Accept the full pin or an abbreviation of it (at least 7 hex digits).
+
+    Cargo treats rev = "abc1234" and the full SHA as different sources, so a
+    caller must spell the revision exactly as its upstream does to share one copy.
+    The lockfile check still requires the full pinned commit.
+    """
+    return (isinstance(revision, str) and re.fullmatch(r"[0-9a-f]{7,40}", revision) is not None
+            and sha.startswith(revision))
+
+
 def canonical_url(url):
     return url.removesuffix(".git").rstrip("/")
 
@@ -249,7 +260,7 @@ class Policy:
                 url = spec.get("git", "")
                 if url and canonical_url(url) in self.pins:
                     canonical = canonical_url(url)
-                    if spec.get("rev") != self.pins[canonical] or any(
+                    if not pinned_revision(spec.get("rev"), self.pins[canonical]) or any(
                             key in spec for key in ("branch", "tag", "path", "registry", "workspace")):
                         raise ValueError("selected dependency revision/source changed")
                     identities[(path, table)] = {key: spec[key] for key in SOURCE_KEYS if key in spec}
