@@ -107,7 +107,8 @@ PUBLIC_REASONS = frozenset((
     "verification command changed candidate source",
     "worker command timed out",
 ))
-# Fixed prefixes followed by a repository-relative path or plan key.
+# Fixed prefixes of formatted reasons. Only the prefix is published: the path that
+# follows can be a file name Codex chose, which could otherwise carry a secret.
 PUBLIC_REASON_PREFIXES = (
     "change outside repair scope: ",
     "file mode changed: ",
@@ -117,11 +118,14 @@ PUBLIC_REASON_PREFIXES = (
     "special file is not supported: ",
     "symlink is not supported: ",
 )
-PUBLIC_DETAIL = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./-]{0,199}")
 
 
 def public_reason(error):
-    """Return the error's first line when it is a known coordinator reason, else None."""
+    """Return a known fixed coordinator reason for the error, else None.
+
+    Formatted reasons are reduced to their fixed prefix; nothing from the
+    candidate, the agent, subprocesses or libraries is ever returned.
+    """
     if not isinstance(error, (ValueError, RuntimeError, TimeoutError)) or \
             isinstance(error, subprocess.SubprocessError):
         return None
@@ -129,9 +133,8 @@ def public_reason(error):
     if message in PUBLIC_REASONS:
         return message
     for prefix in PUBLIC_REASON_PREFIXES:
-        detail = message.removeprefix(prefix)
-        if detail != message and PUBLIC_DETAIL.fullmatch(detail) and ".." not in detail:
-            return message
+        if message.startswith(prefix):
+            return prefix.removesuffix(": ")
     return None
 
 

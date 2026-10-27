@@ -480,7 +480,7 @@ class DiagnosticTests(unittest.TestCase):
                  (TimeoutError("CI deadline exceeded; update PR retained"),
                   "timed out", "CI deadline exceeded; update PR retained"),
                  (ValueError("change outside repair scope: src/lib.rs"),
-                  "failed", "change outside repair scope: src/lib.rs"),
+                  "failed", "change outside repair scope"),
                  (RuntimeError("local repairs exhausted before Cargo.lock resolved the selected "
                                "revisions; nothing published\nerror: private compiler output"),
                   "failed", "local repairs exhausted before Cargo.lock resolved the selected "
@@ -491,9 +491,19 @@ class DiagnosticTests(unittest.TestCase):
                 repair.safe_main(Mock(side_effect=error))
             self.assertEqual(stdout.getvalue(), f"::error title=Dependency update {reason}::{detail}\n")
 
+    def test_agent_chosen_paths_are_never_annotated(self):
+        secret = "sk-proj-synthetic0credential"
+        for message in (f"change outside repair scope: src/{secret}.rs", f"file mode changed: {secret}",
+                        f"symlink is not supported: {secret}", f"new build scripts are not allowed: {secret}/build.rs"):
+            with self.subTest(message=message), contextlib.redirect_stdout(io.StringIO()) as stdout, \
+                    contextlib.redirect_stderr(io.StringIO()) as stderr, self.assertRaises(SystemExit):
+                repair.safe_main(Mock(side_effect=ValueError(message)))
+            self.assertNotIn(secret, stdout.getvalue() + stderr.getvalue())
+            self.assertEqual(stdout.getvalue(),
+                             f"::error title=Dependency update failed::{message.split(': ', 1)[0]}\n")
+
     def test_unknown_or_payload_bearing_messages_are_not_annotated(self):
-        for message in ("change outside repair scope: ::error::secret", "change outside repair scope: ../x",
-                        "change outside repair scope: a b", "update branch changed while preparing plan secret",
+        for message in ("update branch changed while preparing plan secret", "secret",
                         "Expecting value: line 1 column 1 (char 0)"):
             with self.subTest(message=message), contextlib.redirect_stdout(io.StringIO()) as stdout, \
                     contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
