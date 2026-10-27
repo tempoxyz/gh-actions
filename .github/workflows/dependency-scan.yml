@@ -39,6 +39,10 @@ on:
         description: Report artifact name; use a unique name for each matrix invocation
         type: string
         default: dependency-scan
+      skip:
+        description: Skip the scan; the job reports as skipped, which satisfies a required status check
+        type: boolean
+        default: false
     outputs:
       vulnerabilities-found:
         description: Whether the comparison found newly introduced vulnerabilities
@@ -49,6 +53,7 @@ permissions: {}
 jobs:
   scan:
     name: Dependency Scan
+    if: ${{ !inputs.skip }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:

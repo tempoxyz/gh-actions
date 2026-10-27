@@ -58,6 +58,11 @@ on:
         required: false
         type: number
         default: 7
+      skip:
+        description: "Skip the scan. The job reports as skipped, which satisfies a required status check."
+        required: false
+        type: boolean
+        default: false
 permissions:
   id-token: write
 
@@ -68,6 +73,7 @@ jobs:
   # (see actions/scan-github-actions), which runs in a job you control.
   scan-github-actions:
     name: Scan GitHub Actions
+    if: ${{ !inputs.skip }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
