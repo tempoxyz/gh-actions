@@ -536,13 +536,16 @@ jobs:
   dependency-scan:
     uses: tempoxyz/gh-actions/.github/workflows/dependency-scan.yml@<sha> # <tag>
     with:
-      skip: ${{ github.event.pull_request.user.login == 'my-deploy-bot' && github.event.sender.login == 'my-deploy-bot' }}
+      skip: ${{ github.event.pull_request.user.login == 'my-deploy-bot' && github.event.sender.login == 'my-deploy-bot' && github.event.pull_request.commits == 1 }}
 ```
 
-Check `github.event.sender` as well as the pull request's author: the author stays
-the bot for the pull request's whole life, so checking it alone would also skip
-the scans after someone else pushes to the bot's branch. `sender` is whoever
-triggered this run, so any push by someone else runs both scans.
+Don't key the skip on the pull request's author alone: it stays the bot for the
+pull request's whole life, so the scans would also skip after someone else pushes
+to the bot's branch. `sender` (who triggered this run) runs the scans on anyone
+else's push, and `commits == 1` keeps them running on a later bot push that sits
+on top of someone else's commit. This fits bots that open each pull request with
+one fresh commit. Skipping still trusts the bot's own changes, so use it only for
+a bot whose token and output you trust.
 
 Migration from `dependency-review.yml`: change the workflow path and required
 status check names, remove old inputs/secrets, and remove `pull-requests: write`.
