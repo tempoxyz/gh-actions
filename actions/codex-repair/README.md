@@ -38,6 +38,13 @@ non-interactively with full runner access, matching the existing runner model.
 The API key is excluded from Codex shell-tool environments; this does not
 prevent the agent from reading it through other means. Checks compare source
 snapshots before and after every command, so a check that changes source fails.
+
+A failed or timed-out run prints only progress lines and a withheld-details
+notice, never exception payloads or command output. When the failure is one of
+the coordinator's own fixed reasons (such as `local repair attempts exhausted`
+or `change outside repair scope: <path>`), that reason is also published as an
+`::error::` annotation, so it shows on the run summary and in the checks API;
+any other failure is annotated only as failed or timed out.
 These checks detect changes; the source is not mounted read-only. Commands use
 new process groups, which are killed on completion, timeout and cancellation.
 Each command is limited to 45 minutes and the remaining total repair budget.

@@ -469,9 +469,37 @@ class DiagnosticTests(unittest.TestCase):
                     repair.safe_main(Mock(side_effect=error))
             self.assertEqual(exit.exception.code, 1)
             reason = "timed out" if isinstance(error, subprocess.TimeoutExpired) else "failed"
-            self.assertEqual(stdout.getvalue(), "")
+            self.assertEqual(stdout.getvalue(),
+                             f"::error title=Dependency update {reason}::private diagnostic details withheld\n")
             self.assertEqual(stderr.getvalue(),
                              f"Dependency update {reason}; private diagnostic details withheld.\n")
+
+    def test_known_coordinator_reasons_are_annotated(self):
+        cases = [(RuntimeError("local repair attempts exhausted; best-effort PR retained"),
+                  "failed", "local repair attempts exhausted; best-effort PR retained"),
+                 (TimeoutError("CI deadline exceeded; update PR retained"),
+                  "timed out", "CI deadline exceeded; update PR retained"),
+                 (ValueError("change outside repair scope: src/lib.rs"),
+                  "failed", "change outside repair scope: src/lib.rs"),
+                 (RuntimeError("local repairs exhausted before Cargo.lock resolved the selected "
+                               "revisions; nothing published\nerror: private compiler output"),
+                  "failed", "local repairs exhausted before Cargo.lock resolved the selected "
+                            "revisions; nothing published")]
+        for error, reason, detail in cases:
+            with self.subTest(detail=detail), contextlib.redirect_stdout(io.StringIO()) as stdout, \
+                    contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                repair.safe_main(Mock(side_effect=error))
+            self.assertEqual(stdout.getvalue(), f"::error title=Dependency update {reason}::{detail}\n")
+
+    def test_unknown_or_payload_bearing_messages_are_not_annotated(self):
+        for message in ("change outside repair scope: ::error::secret", "change outside repair scope: ../x",
+                        "change outside repair scope: a b", "update branch changed while preparing plan secret",
+                        "Expecting value: line 1 column 1 (char 0)"):
+            with self.subTest(message=message), contextlib.redirect_stdout(io.StringIO()) as stdout, \
+                    contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                repair.safe_main(Mock(side_effect=ValueError(message)))
+            self.assertEqual(stdout.getvalue(),
+                             "::error title=Dependency update failed::private diagnostic details withheld\n")
 
     def test_progress_rejects_untrusted_labels_without_printing_them(self):
         with contextlib.redirect_stdout(io.StringIO()) as output:
