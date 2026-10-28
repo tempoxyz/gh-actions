@@ -451,6 +451,7 @@ Optional inputs:
 - `verify-pin-comments` (default: `true`) — require a tag comment and verify that it resolves to the pinned SHA; set `false` for a repository-specific exception
 - `verify-pin-min-age` (default: `true`) — verify current pins against configured minimum-age rules
 - `pin-min-age` (default: `7`) — default minimum age in days for pinned action commits; caller-local Pinact configuration can override it
+- `skip` (default: `false`) — skip the scan; see [Skipping a required scan](#skipping-a-required-scan)
 
 ### `dependency-scan`
 
@@ -513,10 +514,38 @@ and no `security-events: write` or `pull-requests: write` permission is required
 | `runs-on` | `ubuntu-latest` | Linux, macOS, or Windows runner with Node.js 20+ |
 | `timeout-minutes` | `20` | Job timeout |
 | `artifact-name` | `dependency-scan` | Set a unique name for each matrix invocation |
+| `skip` | `false` | Skip the scan; see [Skipping a required scan](#skipping-a-required-scan) |
 
 The `vulnerabilities-found` workflow output is `true` or `false` after a completed
 comparison. Configure OSV exclusions with `osv-scanner.toml` or `scan-args`; each
 revision's scanner configuration applies to its scan.
+
+#### Skipping a required scan
+
+Set `skip` to skip `scan-github-actions` or `dependency-scan` for pull requests
+that cannot change what they scan, such as image tag bumps a deploy bot opens.
+The job then reports as skipped under its usual check name
+(`<caller job> / Scan GitHub Actions`, `<caller job> / Dependency Scan`), which
+GitHub counts as passing for a required status check. A job-level `if:` on the
+caller job does not work for required checks: GitHub then reports the check
+under the caller job's name alone, so the required check never arrives. While
+skipped, `vulnerabilities-found` is empty.
+
+```yaml
+jobs:
+  dependency-scan:
+    uses: tempoxyz/gh-actions/.github/workflows/dependency-scan.yml@<sha> # <tag>
+    with:
+      skip: ${{ github.event.pull_request.user.login == 'my-deploy-bot' && github.event.sender.login == 'my-deploy-bot' && github.event.pull_request.commits == 1 }}
+```
+
+Don't key the skip on the pull request's author alone: it stays the bot for the
+pull request's whole life, so the scans would also skip after someone else pushes
+to the bot's branch. `sender` (who triggered this run) runs the scans on anyone
+else's push, and `commits == 1` keeps them running on a later bot push that sits
+on top of someone else's commit. This fits bots that open each pull request with
+one fresh commit. Skipping still trusts the bot's own changes, so use it only for
+a bot whose token and output you trust.
 
 Migration from `dependency-review.yml`: change the workflow path and required
 status check names, remove old inputs/secrets, and remove `pull-requests: write`.
