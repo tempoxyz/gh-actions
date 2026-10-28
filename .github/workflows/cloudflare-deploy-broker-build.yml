@@ -515,7 +515,7 @@ jobs:
           // collation, which orders "index-a.css" before "Pilat.woff2".
           files.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
           const totalBytes = files.reduce((total, file) => total + file.size, 0);
-          if (files.length === 0 || files.length > 1000 || totalBytes > 8 * 1024 * 1024) {
+          if (files.length === 0 || files.length > 1000 || totalBytes > 32 * 1024 * 1024) {
             throw new Error("static asset directory exceeds broker limits");
           }
           function optionalUtf8(name) {
