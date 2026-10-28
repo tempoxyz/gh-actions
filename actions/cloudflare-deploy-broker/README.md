@@ -58,3 +58,6 @@ jobs:
           archive-digest: ${{ needs.build.outputs.archive-digest }}
           module-digest: ${{ needs.build.outputs.module-digest }}
 ```
+
+Static assets are limited to 1,000 files, 4 MiB per file, and 32 MiB total.
+This requires a broker release supporting the 32 MiB asset budget.
