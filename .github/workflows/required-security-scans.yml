@@ -1,5 +1,6 @@
 # Org-required security scans. An organization ruleset lists this file as a required workflow,
 # so it runs on pull requests in every tempoxyz repository, including ones without their own CI.
+# gh-actions runs these scans with its own settings (vendor/ excluded), so the jobs skip here.
 name: Required Security Scans
 
 on:
@@ -10,6 +11,7 @@ permissions: {}
 
 jobs:
   dependency-scan:
+    if: github.repository != 'tempoxyz/gh-actions'
     name: Dependency Scan
     uses: tempoxyz/gh-actions/.github/workflows/dependency-scan.yml@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
     permissions:
@@ -17,6 +19,7 @@ jobs:
       id-token: write
 
   scan-github-actions:
+    if: github.repository != 'tempoxyz/gh-actions'
     name: Scan GitHub Actions
     uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
     permissions:
