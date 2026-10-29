@@ -163,6 +163,8 @@ jobs:
           echo "$INSTALL_DIR" >> "$GITHUB_PATH"
 
       - name: Validate scanner API access
+        id: audit-access
+        if: ${{ !cancelled() }}
         env:
           API_SCOPE: ${{ inputs.github-api-scope }}
           API_POLICY: ${{ inputs.github-api-policy }}
@@ -183,13 +185,18 @@ jobs:
           elif [[ "$EVENT_NAME" == push ]]; then
             default_branch=$(jq -er '.repository.default_branch' "$GITHUB_EVENT_PATH")
             [[ "$REF" == "refs/heads/$default_branch" ]]
+          elif [[ "$EVENT_NAME" == merge_group ]]; then
+            jq -e '.repository.default_branch as $branch |
+              ($branch | type == "string" and length > 0) and
+              .merge_group.base_ref == ("refs/heads/" + $branch)' \
+              "$GITHUB_EVENT_PATH" > /dev/null
           else
-            echo '::error::Private scanner access requires an upstream PR or default-branch push'
+            echo '::error::Private scanner access requires an upstream PR, default-branch push or merge group'
             exit 1
           fi
 
       - name: Mint read-only scanner token
-        if: ${{ inputs.github-api-scope != '' }}
+        if: ${{ !cancelled() && inputs.github-api-scope != '' && steps.audit-access.outcome == 'success' }}
         id: audit-token
         uses: tempoxyz/gh-actions/actions/github-sts@4d6450786baf26a56b2cdb02907a3a70a830f90a # 2026-10-28T00-13-55Z-4d645078
         with:

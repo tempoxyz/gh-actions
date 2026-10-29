@@ -44,3 +44,17 @@ test('keeps scanner credentials scoped and audits enabled', () => {
   assert.match(source, /GH_TOKEN: \$\{\{ github.token \}\}/);
   assert.doesNotMatch(source, /continue-on-error/);
 });
+
+test('allows only merge groups targeting the default branch', () => {
+  const group = { repository: { default_branch: 'main' }, merge_group: { base_ref: 'refs/heads/main' } };
+  assert.equal(accepts('merge_group', group), true);
+  assert.equal(accepts('merge_group', { ...group, merge_group: { base_ref: 'refs/heads/other' } }), false);
+  assert.equal(accepts('merge_group', { repository: group.repository }), false);
+  assert.equal(accepts('merge_group', { merge_group: group.merge_group }), false);
+});
+test('unrelated failures do not skip access validation or authenticated audits', () => {
+  assert.match(section, /id: audit-access/);
+  assert.match(section, /if: \$\{\{ !cancelled\(\) \}\}/);
+  const mint = source.split('      - name: Mint read-only scanner token\n')[1].split('      # Flags mirror')[0];
+  assert.match(mint, /!cancelled\(\) && inputs.github-api-scope != '' && steps.audit-access.outcome == 'success'/);
+});

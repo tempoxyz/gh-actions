@@ -422,7 +422,12 @@ only for pinact and zizmor API audits; checkout and tool installation retain the
 normal job token. Configured exchanges fail closed, including fork PRs and
 non-default-branch pushes. No stored App key is passed to the scanner. Omit both
 inputs to preserve existing authentication. This does not waive pin age, tag
-comments or any online security audit.
+comments or any online security audit. Merge queues targeting the default branch
+are supported when the target policy also permits the caller's merge-group identity.
+The scoped token replaces the job token for these audits: all private references
+being audited must be readable within that one target repository. References to
+other private repositories, including caller self-references, need a separate
+authentication design; this option does not grant organization-wide access.
 
 
 To skip the secure-runner presence check entirely, including its annotations and summary, set:
