@@ -11,6 +11,7 @@ const {
   output,
   required,
   requiredInput,
+  valid,
 } = require("../cloudflare-deploy-broker/github.cjs");
 const { request } = require("../cloudflare-deploy-broker/request.cjs");
 const { requestDeployment } = require("../cloudflare-deploy-broker/retry.cjs");
@@ -22,15 +23,19 @@ async function main() {
     "worker-name",
     /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/,
   );
+  const previewName = input("preview-name");
+  if (previewName !== "") valid("preview-name", previewName, /^pr-[1-9][0-9]{0,9}$/);
   const runId = required("GITHUB_RUN_ID", /^[1-9][0-9]{0,19}$/);
   const commitSha = required("GITHUB_SHA", /^[0-9a-f]{40}$/);
   const host = input("host");
   const endpoint = brokerEndpoint(host);
   const audience = brokerAudience(host);
-  // The broker derives the preview from the run's pull request, so no name is
-  // sent: a pull request can only delete its own preview.
+  // GitHub runs a merged pull request's closing workflow on main, whose
+  // identity has no pull request number, so that run names the preview. An
+  // unmerged pull request may delete only its own preview, whatever it names.
   const payload = JSON.stringify({
     operation: "delete-preview",
+    ...(previewName === "" ? {} : { previewName }),
     deploymentId,
     accountId,
     workerName,

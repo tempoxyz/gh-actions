@@ -28,9 +28,7 @@ test("runs on the runner's Node.js with the deploy action's broker client", () =
   assert.ok(main.includes('operation: "delete-preview"'));
   assert.ok(main.includes('new URL("/v1/deploy", endpoint)'));
   assert.ok(main.includes("oidc(audience)"));
-  // The broker derives the preview from the pull request; none is requested.
-  assert.ok(!action.includes("preview-name:\n    description: \"Name"));
-  assert.ok(!main.includes("previewName,"));
+  assert.ok(main.includes("...(previewName === \"\" ? {} : { previewName })"));
 });
 
 test("reads the runner's hyphenated input names before any request", () => {
@@ -47,6 +45,7 @@ test("names the invalid input", () => {
     ["INPUT_DEPLOYMENT-ID", "Not Valid"],
     ["INPUT_ACCOUNT-ID", "not-an-account"],
     ["INPUT_WORKER-NAME", "-worker"],
+    ["INPUT_PREVIEW-NAME", "main"],
   ]) {
     const result = runMain({ ...validInputs, [name]: value });
     assert.equal(result.status, 1);
