@@ -414,6 +414,17 @@ jobs:
 
 For required-check setup and recovery from missing scans, see [Required status checks](actions/scan-github-actions/README.md#required-status-checks). Callers grant `id-token: write` for secure-runner OIDC authentication; no STS URL secret is needed.
 
+For private action dependencies, set both `github-api-scope` (one target repository)
+and `github-api-policy` (its GitHub STS policy). The target must grant only
+`contents: read`, restrict the caller's numeric repository identity and exact
+`job_workflow_ref`, and cap the token at 15 minutes. The scanner uses this token
+only for pinact and zizmor API audits; checkout and tool installation retain the
+normal job token. Configured exchanges fail closed, including fork PRs and
+non-default-branch pushes. No stored App key is passed to the scanner. Omit both
+inputs to preserve existing authentication. This does not waive pin age, tag
+comments or any online security audit.
+
+
 To skip the secure-runner presence check entirely, including its annotations and summary, set:
 
 ```yaml
