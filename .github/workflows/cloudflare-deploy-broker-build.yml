@@ -626,7 +626,7 @@ jobs:
             "artifacts", "assets", "browser", "compatibility_date", "compatibility_flags", "connect",
             "containers", "d1_databases", "dispatch_namespaces", "durable_objects", "exports",
             "hyperdrive", "keep_vars", "kv_namespaces", "logpush", "main", "migrations",
-            "mtls_certificates", "name", "observability", "pipelines", "preview_urls", "queues",
+            "mtls_certificates", "name", "observability", "pipelines", "placement", "preview_urls", "queues",
             "r2_buckets", "ratelimits", "route", "routes", "secrets_store_secrets", "send_email",
             "services", "site", "tail_consumers", "triggers", "unsafe", "vars", "vectorize",
             "version_metadata", "worker_loaders", "workers_dev", "workflows",
@@ -969,6 +969,27 @@ jobs:
           invariant(new Set(patternRoutes.map((route) => `${route.zoneId}:${route.pattern}`)).size === patternRoutes.length, "pattern routes must be unique");
           const schedules = [...(config.triggers?.crons ?? [])].sort();
 
+          // Placement only chooses where the Worker runs. Smart Placement and a
+          // targeted cloud region are attested; hint, host and hostname targets
+          // fail closed rather than deploying without the configured placement.
+          let placement;
+          if (config.placement !== undefined && config.placement !== null) {
+            const configured = config.placement;
+            invariant(isRecord(configured), "placement must be a table");
+            invariant(Object.keys(configured).every((key) => ["mode", "region"].includes(key)), "placement accepts only mode = \"smart\" or a targeted region; hint, host, hostname, and unknown options are not supported by the deploy broker");
+            // The broker cannot verify that placement was removed, so off fails
+            // closed instead of leaving the earlier placement live unreported.
+            invariant(configured.mode !== "off", "placement mode = \"off\" is not supported by the deploy broker; remove placement in the Cloudflare dashboard, then remove the [placement] table");
+            if (configured.region !== undefined) {
+              invariant(configured.mode === undefined || configured.mode === "targeted", "placement region requires mode = \"targeted\" or no mode");
+              invariant(typeof configured.region === "string" && /^[a-z0-9-]{1,32}:[a-z0-9-]{1,64}$/.test(configured.region), "placement region must be provider:region, such as aws:us-east-1");
+              placement = { mode: "targeted", region: configured.region };
+            } else {
+              invariant(configured.mode === "smart", "placement mode must be smart, or targeted with a region");
+              placement = { mode: "smart" };
+            }
+          }
+
           const observabilityEnabled = config.observability?.enabled === true;
           const manifest = {
             schemaVersion: 1,
@@ -1025,6 +1046,7 @@ jobs:
                       runWorkerFirst: config.assets.run_worker_first ?? false,
                     },
                   }),
+              ...(placement === undefined ? {} : { placement }),
               bindings: {
                 plainText: { mode: "exact", values: sortedRecord(plainText) },
                 versionMetadata: config.version_metadata === undefined
