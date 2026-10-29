@@ -11,6 +11,10 @@ inputs:
   worker-name:
     description: "Name of the app's Worker"
     required: true
+  preview-name:
+    description: "pr-<number> to delete; required for a merged pull request, whose closing run is on main"
+    required: false
+    default: ""
   host:
     description: "Broker hostname without a scheme, port, or path"
     required: false
@@ -19,7 +23,7 @@ outputs:
   operation-id:
     description: "Broker operation UUID"
   preview-name:
-    description: "Deleted preview, pr-<number> of the run's pull request"
+    description: "Deleted preview"
   deleted:
     description: "true if the preview was deleted, false if it no longer existed"
 

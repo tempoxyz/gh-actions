@@ -6,10 +6,9 @@ policy-free app deploy isolated previews named `pr-<number>` with the
 [`cloudflare-deploy-broker`](../cloudflare-deploy-broker) action. Cloudflare
 keeps each preview until it is deleted.
 
-The broker deletes only the preview of the run's own pull request, and only from
-a Worker that the repository and deployment ID own. A preview that no longer
-exists is reported as `deleted: false`, so reruns succeed. The job must grant
-`id-token: write`.
+The broker deletes only from a Worker that the repository and deployment ID
+own. A preview that no longer exists is reported as `deleted: false`, so reruns
+succeed. The job must grant `id-token: write`.
 
 ## Inputs
 
@@ -18,6 +17,7 @@ exists is reported as `deleted: false`, so reruns succeed. The job must grant
 | `deployment-id` | Logical deployment ID of the policy-free app | Yes | |
 | `account-id` | Cloudflare account ID of the app's Worker | Yes | |
 | `worker-name` | Name of the app's Worker | Yes | |
+| `preview-name` | `pr-<number>` to delete; required for merged pull requests | No | |
 | `host` | Broker hostname, without a scheme, port, or path | No | `cf-deployer.tempoxyz.net` |
 
 See [`action.yml`](action.yml) for outputs.
@@ -56,4 +56,10 @@ jobs:
           deployment-id: example-worker
           account-id: 0123456789abcdef0123456789abcdef
           worker-name: example-worker
+          preview-name: pr-${{ github.event.pull_request.number }}
 ```
+
+GitHub runs a merged pull request's closing workflow on the branch it was
+merged into, so that run's identity is `main` and carries no pull request
+number: pass `preview-name`. An unmerged pull request's run may delete only its
+own preview, whatever it names.
