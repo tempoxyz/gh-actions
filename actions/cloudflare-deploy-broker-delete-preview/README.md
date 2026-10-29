@@ -32,12 +32,13 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
-# One run per pull request at a time. A newer push cancels an older preview
-# deploy, but closing waits for it: the broker completes a deploy it accepted
-# even after its job is cancelled, which would recreate a deleted preview.
+# One run per pull request and workflow at a time, never cancelled: the broker
+# completes work a cancelled job started, so an overlapping deploy could
+# recreate a deleted preview, or a cleanup delete a reopened one. A newer
+# pending run still replaces an older pending one, so pushes collapse.
 concurrency:
-  group: preview-${{ github.event.pull_request.number }}
-  cancel-in-progress: ${{ github.event.action != 'closed' }}
+  group: preview-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   # Gate the build and deploy jobs with:
