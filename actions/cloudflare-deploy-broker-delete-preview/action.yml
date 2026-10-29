@@ -1,0 +1,28 @@
+name: "Cloudflare Deploy Broker: delete preview"
+description: "Delete a closed pull request's Cloudflare Preview through the OIDC-authenticated broker"
+
+inputs:
+  deployment-id:
+    description: "Logical deployment ID of the policy-free app"
+    required: true
+  account-id:
+    description: "Cloudflare account ID of the app's Worker"
+    required: true
+  worker-name:
+    description: "Name of the app's Worker"
+    required: true
+  host:
+    description: "Broker hostname without a scheme, port, or path"
+    required: false
+    default: "cf-deployer.tempoxyz.net"
+outputs:
+  operation-id:
+    description: "Broker operation UUID"
+  preview-name:
+    description: "Deleted preview, pr-<number> of the run's pull request"
+  deleted:
+    description: "true if the preview was deleted, false if it no longer existed"
+
+runs:
+  using: node24
+  main: main.cjs
