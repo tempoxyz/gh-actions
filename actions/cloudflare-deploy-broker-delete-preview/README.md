@@ -32,6 +32,13 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
+# One run per pull request at a time. A newer push cancels an older preview
+# deploy, but closing waits for it: the broker completes a deploy it accepted
+# even after its job is cancelled, which would recreate a deleted preview.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: ${{ github.event.action != 'closed' }}
+
 jobs:
   # Gate the build and deploy jobs with:
   #   if: github.event.action != 'closed'
