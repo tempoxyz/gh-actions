@@ -10,5 +10,8 @@
   "files_removed": 2,
   "nested_rewrites": [
     "actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c -> actions/setup-go@90ad2b35f69faf97585ad74d28fa006d2739b7af"
+  ],
+  "transforms": [
+    "vendor/patches/tailscale-gitops-go.patch"
   ]
 }
