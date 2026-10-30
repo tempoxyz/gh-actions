@@ -950,6 +950,8 @@ actions:
     ref: main
     ref_type: branch
     sha: 59910dc44801a4d984ba473b7c2f20b850f9a584
+    security_patches:
+      - vendor/patches/create-pull-request-undici.patch
     exclude:
       - src/
       - __test__/
@@ -969,6 +971,10 @@ actions:
       jest.config.*, .eslintrc*, .eslintignore, .prettierrc*, .prettierignore, package-lock.json,
       **/*.test.* Manual: Keep the upstream package-lock.json so dependency scanners resolve the
       pinned release's dependency versions instead of current versions from manifest ranges.
+      Manual: security_patches bumps @actions/core to ^2.0.3 (and the dev undici to ^6.29.1) so
+      @actions/http-client 3.0.2 bundles undici 6.29.1 instead of 5.29.0 and @fastify/busboy 2.1.1;
+      the patch is package.json, package-lock.json and dist/index.js after npm install
+      --ignore-scripts and npm run build at the pinned commit. Drop it once upstream ships the bump.
 
   - name: planetscale/setup-pscale-action
     ref: main
