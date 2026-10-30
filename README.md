@@ -1034,7 +1034,7 @@ Caller workflows must grant `issues: write` and `pull-requests: write`.
 
 ### `stale`
 
-Marks pull requests (including drafts) with the `stale` label after 7 days of inactivity and closes them after another 3 days without activity, matching `tempoxyz/tempo`. Posts comments when marking and closing PRs, and processes up to 120 API operations per run. Issues are excluded.
+Marks pull requests (including drafts) with the `stale` label after 7 days of inactivity and closes them after another 3 days without activity by default, matching `tempoxyz/tempo`. Posts comments when marking and closing PRs, and processes up to 120 API operations per run. Issues are excluded.
 
 The caller owns the schedule and repository guard:
 
@@ -1053,9 +1053,16 @@ jobs:
     if: ${{ github.event_name != 'schedule' || github.repository == 'tempoxyz/tempo' }}
     uses: tempoxyz/gh-actions/.github/workflows/stale.yml@main
     permissions:
+      actions: write
       id-token: write
       issues: write
       pull-requests: write
 ```
 
-Replace `tempoxyz/tempo` with your repository. Caller jobs must grant `id-token: write` for the secure runner, plus `issues: write` and `pull-requests: write` for labeling, commenting, and closing PRs. Pin the reusable workflow to a full commit SHA in production (see [Versioning](#versioning)).
+Replace `tempoxyz/tempo` with your repository. Caller jobs must grant `id-token: write` for the secure runner, `actions: write` so `actions/stale` can replace its `_state` cache when a run hits the operation cap, plus `issues: write` and `pull-requests: write` for labeling, commenting, and closing PRs. Pin the reusable workflow to a full commit SHA in production (see [Versioning](#versioning)).
+
+Optional inputs:
+
+- `days-before-pr-stale` (default: `7`) — days of inactivity before a PR is labeled stale; also used in the stale comment
+- `days-before-pr-close` (default: `3`) — days after being labeled stale before a PR is closed
+- `exempt-pr-labels` (default: none) — comma-separated labels that exempt a PR from being marked stale or closed, e.g. `dependencies` to leave Dependabot PRs alone (closing a single-dependency Dependabot PR makes Dependabot ignore that version)
