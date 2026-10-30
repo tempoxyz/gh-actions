@@ -3,6 +3,14 @@ name: Scan GitHub Actions
 on:
   workflow_call:
     inputs:
+      github-api-scope:
+        description: "Optional private repository for read-only scanner API access via GitHub STS. Requires github-api-policy."
+        type: string
+        default: ""
+      github-api-policy:
+        description: "STS policy in github-api-scope; must restrict this reusable workflow revision and caller. Fork PRs fail closed."
+        type: string
+        default: ""
       paths:
         description: "Whitespace-separated paths for zizmor to scan. Defaults to `.` (the whole repo), so first-party workflows and actions anywhere (e.g. across a monorepo) are covered. Narrow it (e.g. to `.github/`) to exclude vendored or third-party trees."
         required: false
@@ -154,12 +162,54 @@ jobs:
           chmod +x "$INSTALL_DIR/pinact"
           echo "$INSTALL_DIR" >> "$GITHUB_PATH"
 
+      - name: Validate scanner API access
+        id: audit-access
+        if: ${{ !cancelled() }}
+        env:
+          API_SCOPE: ${{ inputs.github-api-scope }}
+          API_POLICY: ${{ inputs.github-api-policy }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$API_SCOPE" && -z "$API_POLICY" ]]; then exit 0; fi
+          if [[ -z "$API_SCOPE" || -z "$API_POLICY" ]]; then
+            echo '::error::github-api-scope and github-api-policy must be configured together'
+            exit 1
+          fi
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            jq -e --arg id "$REPOSITORY_ID" \
+              '.pull_request.head.repo.id != null and (.pull_request.head.repo.id | tostring) == $id and .pull_request.head.repo.fork == false' \
+              "$GITHUB_EVENT_PATH" > /dev/null
+          elif [[ "$EVENT_NAME" == push ]]; then
+            default_branch=$(jq -er '.repository.default_branch' "$GITHUB_EVENT_PATH")
+            [[ "$REF" == "refs/heads/$default_branch" ]]
+          elif [[ "$EVENT_NAME" == merge_group ]]; then
+            jq -e '.repository.default_branch as $branch |
+              ($branch | type == "string" and length > 0) and
+              .merge_group.base_ref == ("refs/heads/" + $branch)' \
+              "$GITHUB_EVENT_PATH" > /dev/null
+          else
+            echo '::error::Private scanner access requires an upstream PR, default-branch push or merge group'
+            exit 1
+          fi
+
+      - name: Mint read-only scanner token
+        if: ${{ !cancelled() && inputs.github-api-scope != '' && steps.audit-access.outcome == 'success' }}
+        id: audit-token
+        uses: tempoxyz/gh-actions/actions/github-sts@4d6450786baf26a56b2cdb02907a3a70a830f90a # 2026-10-28T00-13-55Z-4d645078
+        with:
+          scope: ${{ inputs.github-api-scope }}
+          policy: ${{ inputs.github-api-policy }}
+          ttl: 15m
+
       # Flags mirror the former pinact-action inputs: fix=false, no_api, verify, verify_min_age,
       # config. GITHUB_TOKEN drives the API-based comment and minimum-age verification.
       - name: Check action pin policy
         if: ${{ inputs.pinact }}
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ inputs.github-api-scope == '' && github.token || steps.audit-token.outputs.token }}
           PINACT_GLOBAL_CONFIG: ${{ steps.pinact-config.outputs.global-config }}
           CONFIG: ${{ steps.pinact-config.outputs.config }}
           NO_API: ${{ inputs.pin-no-api }}
@@ -175,7 +225,7 @@ jobs:
           pinact run "${args[@]}"
 
       - name: Scan GitHub Actions
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && (inputs.github-api-scope == '' || steps.audit-token.outcome == 'success') }}
         uses: tempoxyz/gh-actions/vendor/zizmorcore/zizmor-action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
         with:
           inputs: ${{ inputs.paths }}
@@ -184,7 +234,7 @@ jobs:
           advanced-security: false
           annotations: true
           config: ${{ inputs.config }}
-          token: ${{ github.token }}
+          token: ${{ inputs.github-api-scope == '' && github.token || steps.audit-token.outputs.token }}
 
       - name: Install actionlint
         if: ${{ !cancelled() && inputs.actionlint }}
