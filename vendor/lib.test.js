@@ -44,7 +44,7 @@ test("security patches apply deterministically and fail when upstream no longer 
     const entry = { security_patches: ["vendor/patches/fix.patch"] };
     assert.deepEqual(applySecurityPatches(dest, entry, dir), entry.security_patches);
     assert.equal(readFileSync(join(dest, "index.js"), "utf8"), "fixed\n");
-    assert.throws(() => applySecurityPatches(dest, entry, dir), /failed/);
+    assert.throws(() => applySecurityPatches(dest, entry, dir), /no longer applies[\s\S]*failed/);
     assert.deepEqual(applySecurityPatches(dest, {}, dir), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });

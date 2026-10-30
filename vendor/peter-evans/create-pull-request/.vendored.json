@@ -8,5 +8,8 @@
   "description": "Creates a pull request for changes to your repository in the actions workspace",
   "consume_as": "tempoxyz/gh-actions/vendor/peter-evans/create-pull-request@<gh-actions-sha>",
   "files_removed": 39,
-  "nested_rewrites": []
+  "nested_rewrites": [],
+  "transforms": [
+    "vendor/patches/create-pull-request-undici.patch"
+  ]
 }

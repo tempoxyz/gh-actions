@@ -32,7 +32,7 @@
   },
   "homepage": "https://github.com/peter-evans/create-pull-request",
   "dependencies": {
-    "@actions/core": "^1.11.1",
+    "@actions/core": "^2.0.3",
     "@actions/exec": "^1.1.1",
     "@octokit/core": "^6.1.6",
     "@octokit/plugin-paginate-rest": "^11.6.0",
@@ -61,6 +61,6 @@
     "prettier": "^3.9.9",
     "ts-jest": "^29.4.14",
     "typescript": "^5.9.3",
-    "undici": "^6.29.0"
+    "undici": "^6.29.1"
   }
 }

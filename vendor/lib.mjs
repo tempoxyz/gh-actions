@@ -207,7 +207,13 @@ export function applyPackageTransforms(dest, entry) {
 
 export function applySecurityPatches(dest, entry, base = ROOT) {
   return (entry.security_patches ?? []).map((path) => {
-    sh("patch", ["--batch", "--forward", "--fuzz=0", "-p1", "-i", resolve(base, path)], { cwd: dest });
+    try {
+      sh("patch", ["--batch", "--forward", "--fuzz=0", "-p1", "-i", resolve(base, path)], { cwd: dest });
+    } catch (e) {
+      // Upstream moved under the patch (a new commit on a tracked branch or tag). A human has to
+      // regenerate the patch against the new commit, or drop it once upstream ships the fix.
+      throw new VendorError(`${entry.name ?? "entry"}: security patch ${path} no longer applies at ${entry.sha ?? "this commit"}; regenerate it against that commit, or remove it from security_patches if upstream now ships the fix. ${e.message}`);
+    }
     return path;
   });
 }
