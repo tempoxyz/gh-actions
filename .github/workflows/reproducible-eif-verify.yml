@@ -16,7 +16,7 @@ on:
         type: string
         required: true
       build-script:
-        description: "Executable accepting BUILD_BACKEND, NO_CACHE, SOURCE_DATE_EPOCH, GIT_SHA, EIF_BUILDER_IMAGE, BUILD_INPUT_FILE and OUT_DIR; writes OUT_DIR/enclave.eif."
+        description: "Executable accepting BUILD_BACKEND, NO_CACHE, SOURCE_DATE_EPOCH, GIT_SHA, EIF_BUILDER_IMAGE, BUILD_INPUT_FILE (empty without a build input) and OUT_DIR; writes OUT_DIR/enclave.eif."
         type: string
         required: true
       eif-builder-image:
@@ -24,13 +24,13 @@ on:
         type: string
         required: true
       build-input-url:
-        description: "HTTPS URL of a required build input, such as an enclave genesis file."
+        description: "HTTPS URL of a build input, such as an enclave genesis file. Omit with build-input-sha256 for builds without one."
         type: string
-        required: true
+        default: ""
       build-input-sha256:
-        description: "Expected SHA-256 of the downloaded build input."
+        description: "Expected SHA-256 of the downloaded build input; required with build-input-url."
         type: string
-        required: true
+        default: ""
       depot-project:
         description: "Depot project authorized for the caller's GitHub OIDC identity."
         type: string
@@ -101,8 +101,10 @@ jobs:
           set -euo pipefail
           [[ "$RECIPE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EIF_BUILDER_IMAGE" =~ ^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$ ]]
-          [[ "$BUILD_INPUT_URL" == https://* ]]
-          [[ "$BUILD_INPUT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          if [[ -n "$BUILD_INPUT_URL" || -n "$BUILD_INPUT_SHA256" ]]; then
+            [[ "$BUILD_INPUT_URL" == https://* ]]
+            [[ "$BUILD_INPUT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          fi
           for path in .dockerignore "$BUILD_SCRIPT"; do
             grep -Fxq -- "$path" <<< "$RECIPE_PATHS" || {
               echo "Missing trusted build definition: $path" >&2
@@ -187,6 +189,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download and verify build input
+        if: inputs.build-input-url != ''
         env:
           BUILD_INPUT_URL: ${{ inputs.build-input-url }}
           BUILD_INPUT_SHA256: ${{ inputs.build-input-sha256 }}
@@ -204,7 +207,7 @@ jobs:
           NO_CACHE: ${{ matrix.backend == 'docker' && '1' || '0' }}
           DEPOT_PROJECT: ${{ inputs.depot-project }}
           EIF_BUILDER_IMAGE: ${{ inputs.eif-builder-image }}
-          BUILD_INPUT_FILE: ${{ runner.temp }}/build-input
+          BUILD_INPUT_FILE: ${{ inputs.build-input-url != '' && format('{0}/build-input', runner.temp) || '' }}
           OUT_DIR: ${{ runner.temp }}/eif-output
           SOURCE_DATE_EPOCH: ${{ needs.resolve.outputs.source_date_epoch }}
           GIT_SHA: ${{ needs.resolve.outputs.source_sha }}
@@ -301,7 +304,10 @@ jobs:
               "verification_workflow_sha": json.loads(env["JOB_CONTEXT"])["workflow_sha"],
               "source_date_epoch": int(env["SOURCE_DATE_EPOCH"]),
               "eif_builder_image": env["EIF_BUILDER_IMAGE"],
-              "build_input": {"url": env["BUILD_INPUT_URL"], "sha256": env["BUILD_INPUT_SHA256"]},
+              "build_input": (
+                  {"url": env["BUILD_INPUT_URL"], "sha256": env["BUILD_INPUT_SHA256"]}
+                  if env["BUILD_INPUT_URL"] else None
+              ),
               "verification_scope": "unsigned EIF PCR0/PCR1/PCR2",
               "build_result": env["BUILD_RESULT"],
               "builds": {},
