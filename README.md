@@ -1065,3 +1065,4 @@ Optional inputs:
 
 - `days-before-pr-stale` (default: `7`) — days of inactivity before a PR is labeled stale; also used in the stale comment
 - `days-before-pr-close` (default: `3`) — days after being labeled stale before a PR is closed
+- `exempt-pr-labels` (default: none) — comma-separated labels that exempt a PR from being marked stale or closed, e.g. `dependencies` to leave Dependabot PRs alone (closing a single-dependency Dependabot PR makes Dependabot ignore that version)

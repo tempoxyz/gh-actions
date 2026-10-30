@@ -13,6 +13,11 @@ on:
         required: false
         default: 3
         type: number
+      exempt-pr-labels:
+        description: Comma-separated labels that exempt a PR from being marked stale or closed
+        required: false
+        default: ""
+        type: string
 
 permissions: {}
 
@@ -36,6 +41,7 @@ jobs:
           stale-pr-message: "This PR has been marked stale due to ${{ inputs.days-before-pr-stale }} days of inactivity."
           close-pr-message: "Closed due to inactivity. Reopen if still needed."
           stale-pr-label: stale
+          exempt-pr-labels: ${{ inputs.exempt-pr-labels }}
           exempt-draft-pr: false
           operations-per-run: 120
           days-before-issue-stale: -1

@@ -18,3 +18,6 @@ jobs:
       pull-requests: write
     with:
       days-before-pr-stale: 14
+      # Dependabot treats a closed single-dependency PR as "ignore this version", so leave
+      # its PRs to Dependabot, which supersedes them itself.
+      exempt-pr-labels: dependencies
