@@ -625,7 +625,7 @@ jobs:
             "account_id", "ai", "ai_search", "ai_search_namespaces", "analytics_engine_datasets",
             "artifacts", "assets", "browser", "compatibility_date", "compatibility_flags", "connect",
             "containers", "d1_databases", "dispatch_namespaces", "durable_objects", "exports",
-            "hyperdrive", "keep_vars", "kv_namespaces", "logpush", "main", "migrations",
+            "hyperdrive", "keep_vars", "kv_namespaces", "limits", "logpush", "main", "migrations",
             "mtls_certificates", "name", "observability", "pipelines", "placement", "preview_urls", "queues",
             "r2_buckets", "ratelimits", "route", "routes", "secrets_store_secrets", "send_email",
             "services", "site", "tail_consumers", "triggers", "unsafe", "vars", "vectorize",
@@ -990,6 +990,20 @@ jobs:
             }
           }
 
+          // A CPU time limit bounds only the Worker's own invocations, up to
+          // Cloudflare's 5-minute maximum. subrequests and unknown options fail
+          // closed rather than deploying without the configured limit.
+          let limits;
+          if (config.limits !== undefined && config.limits !== null) {
+            const configured = config.limits;
+            invariant(isRecord(configured), "limits must be a table");
+            invariant(Object.entries(configured).every(([key, value]) => key === "cpu_ms" || value === undefined), "limits accepts only cpu_ms; subrequests and unknown options are not supported by the deploy broker");
+            if (configured.cpu_ms !== undefined) {
+              invariant(Number.isInteger(configured.cpu_ms) && configured.cpu_ms >= 1 && configured.cpu_ms <= 300000, "limits cpu_ms must be an integer from 1 to 300000");
+              limits = { cpuMs: configured.cpu_ms };
+            }
+          }
+
           const observabilityEnabled = config.observability?.enabled === true;
           const manifest = {
             schemaVersion: 1,
@@ -1047,6 +1061,7 @@ jobs:
                     },
                   }),
               ...(placement === undefined ? {} : { placement }),
+              ...(limits === undefined ? {} : { limits }),
               bindings: {
                 plainText: { mode: "exact", values: sortedRecord(plainText) },
                 versionMetadata: config.version_metadata === undefined
