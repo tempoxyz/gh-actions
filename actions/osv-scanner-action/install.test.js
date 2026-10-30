@@ -109,3 +109,23 @@ test('native children receive platform necessities without tokens or injection v
     LD_PRELOAD: 'evil', DYLD_INSERT_LIBRARIES: 'evil', GIT_CONFIG_COUNT: '1' }),
   { Path: 'C:\\tools', SystemRoot: 'C:\\Windows', TEMP: 'C:\\temp', HOME: '/home/user' });
 });
+
+test('runtime install fetches only the checksum-pinned scanner and runs no verifier', async t => {
+  const { install, assetNames, releases } = await import('./install.mjs');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'osv-install-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const requested = [];
+  await assert.rejects(
+    install({ RUNNER_TEMP: temp }, {
+      fetch: async url => { requested.push(url); return { ok: true, arrayBuffer: async () => Buffer.from('tampered') }; },
+      sleep: async () => {},
+    }),
+    /Checksum mismatch/,
+  );
+  const name = assetNames().scanner;
+  assert.ok(requested.length > 0);
+  for (const url of requested) {
+    assert.equal(url, `https://github.com/${releases.scanner.repository}/releases/download/${releases.scanner.version}/${name}`);
+  }
+  assert.deepEqual(fs.readdirSync(path.join(temp, fs.readdirSync(temp)[0])), [], 'nothing unverified is kept');
+});

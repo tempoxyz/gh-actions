@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 export const releases = JSON.parse(readFileSync(new URL('./releases.json', import.meta.url)));
@@ -91,32 +90,17 @@ export function childEnvironment(env) {
   return Object.fromEntries(Object.entries(env).filter(([key]) => allowed.has(key.toLowerCase())));
 }
 
-export async function install(env = process.env, execute = spawnSync) {
+// Runtime installs trust only the SHA-256 digests pinned in releases.json, which ship
+// in the same reviewed commit as this code. SLSA provenance of every pinned asset is
+// verified in this repository's CI (provenance.mjs) whenever releases.json changes,
+// so scans never depend on Sigstore's transparency log being reachable.
+export async function install(env = process.env, options = {}) {
   if (!env.RUNNER_TEMP) throw new Error('RUNNER_TEMP is required');
   const names = assetNames();
-  const directory = join(env.RUNNER_TEMP, `tempo-osv-${releases.scanner.version}-${releases.verifier.version}-${process.platform}-${process.arch}`);
+  const directory = join(env.RUNNER_TEMP, `tempo-osv-${releases.scanner.version}-${process.platform}-${process.arch}`);
   mkdirSync(directory, { recursive: true });
-  const [scanner, verifier, scannerProvenance, verifierProvenance] = await Promise.all([
-    download(releases.scanner, names.scanner, directory),
-    download(releases.verifier, names.verifier, directory),
-    download(releases.scanner, 'multiple.intoto.jsonl', directory),
-    download(releases.verifier, `${names.verifier}.intoto.jsonl`, directory),
-  ]);
-  if (process.platform !== 'win32') { chmodSync(scanner, 0o700); chmodSync(verifier, 0o700); }
-  // The verifier is bootstrapped from a pinned digest and verifies its own SLSA
-  // provenance before verifying the scanner's publisher and exact release tag.
-  for (const [binary, provenance, release] of [
-    [verifier, verifierProvenance, releases.verifier],
-    [scanner, scannerProvenance, releases.scanner],
-  ]) {
-    const result = execute(verifier, ['verify-artifact', binary, '--provenance-path', provenance,
-      '--source-uri', `github.com/${release.repository}`, '--source-tag', release.version],
-    { cwd: directory, env: childEnvironment(env), stdio: 'inherit' });
-    if (result.error || result.status !== 0) {
-      rmSync(scanner, { force: true });
-      throw result.error || new Error(`SLSA verification failed for ${release.repository} (exit ${result.status})`);
-    }
-  }
+  const scanner = await download(releases.scanner, names.scanner, directory, options);
+  if (process.platform !== 'win32') chmodSync(scanner, 0o700);
   return scanner;
 }
 

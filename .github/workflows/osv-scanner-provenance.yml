@@ -1,0 +1,37 @@
+name: OSV Provenance
+
+# SLSA-verifies every binary pinned in actions/osv-scanner-action/releases.json.
+# Consumers' scans only check the pinned SHA-256 digests, so this is the gate
+# that proves those digests belong to the upstream releases.
+on:
+  pull_request:
+    paths:
+      - actions/osv-scanner-action/**
+      - .github/workflows/osv-scanner-provenance.yml
+  push:
+    branches: [main]
+    paths:
+      - actions/osv-scanner-action/**
+      - .github/workflows/osv-scanner-provenance.yml
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  provenance:
+    name: SLSA provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+      - name: Checkout
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+      - name: Verify SLSA provenance of all pinned binaries
+        shell: bash
+        run: node actions/osv-scanner-action/provenance.mjs

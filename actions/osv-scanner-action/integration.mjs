@@ -1,10 +1,10 @@
 // End-to-end native binary tests. Runs on Linux, macOS, and Windows in CI.
 import assert from 'node:assert/strict';
 import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { install, assetNames, releases, childEnvironment } from './install.mjs';
+import { install } from './install.mjs';
 import { run } from './run.mjs';
 
 const root = mkdtempSync(join(process.env.RUNNER_TEMP || tmpdir(), 'osv native test '));
@@ -15,14 +15,6 @@ const env = { ...process.env, RUNNER_TEMP: root, GITHUB_WORKSPACE: source, OSV_R
   GITHUB_OUTPUT: join(root, 'output.txt'), GITHUB_STEP_SUMMARY: join(root, 'summary.md') };
 const binary = await install(env);
 assert.equal(spawnSync(binary, ['--version'], { encoding: 'utf8' }).status, 0);
-// A different repository must not be accepted even for a correctly signed artifact.
-const names = assetNames();
-const rejected = spawnSync(join(dirname(binary), names.verifier), ['verify-artifact', binary,
-  '--provenance-path', join(dirname(binary), 'multiple.intoto.jsonl'),
-  '--source-uri', 'github.com/tempoxyz/gh-actions', '--source-tag', releases.scanner.version],
-{ env: childEnvironment(env), encoding: 'utf8' });
-assert.equal(rejected.error, undefined);
-assert.notEqual(rejected.status, 0, 'wrong provenance identity must fail');
 
 const lockfile = join(source, 'package-lock.json');
 function dependency(vulnerable) {
