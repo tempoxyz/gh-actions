@@ -1,0 +1,20 @@
+name: Close Stale PRs
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # daily at midnight UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  stale:
+    if: ${{ github.event_name != 'schedule' || github.repository == 'tempoxyz/gh-actions' }}
+    uses: ./.github/workflows/stale.yml # zizmor: ignore[self-repository] actionlint does not support $/ references yet.
+    permissions:
+      actions: write
+      id-token: write
+      issues: write
+      pull-requests: write
+    with:
+      days-before-pr-stale: 14
