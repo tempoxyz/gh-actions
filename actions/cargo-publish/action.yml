@@ -19,7 +19,7 @@ inputs:
     required: false
     default: "false"
   skip-published:
-    description: "Skip packages whose current version is already on crates.io, so a rerun after a partial release resumes where it stopped"
+    description: "Skip packages whose current version is already on crates.io, so a rerun after a partial release resumes where it stopped; dry runs ignore it and check every package"
     required: false
     default: "true"
   locked:
@@ -68,12 +68,19 @@ runs:
         INPUT_PACKAGES: ${{ inputs.packages }}
         INPUT_EXCLUDE: ${{ inputs.exclude }}
         INPUT_SKIP_PUBLISHED: ${{ inputs.skip-published }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
       run: node "$ACTION_PATH/publish.cjs" plan
 
     - name: Authenticate with crates.io
       id: auth
       if: inputs.dry-run != 'true' && steps.plan.outputs.packages != ''
       uses: tempoxyz/gh-actions/vendor/rust-lang/crates-io-auth-action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+    - name: Record token issue time
+      id: issued
+      if: steps.auth.outcome == 'success'
+      shell: bash
+      run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
     - name: Publish
       id: publish
@@ -87,4 +94,5 @@ runs:
         INPUT_DELAY_SECONDS: ${{ inputs.delay-seconds }}
         INPUT_RATE_LIMIT_RETRIES: ${{ inputs.rate-limit-retries }}
         CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        TOKEN_ISSUED_AT: ${{ steps.issued.outputs.at }}
       run: node "$ACTION_PATH/publish.cjs" publish

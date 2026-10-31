@@ -17,7 +17,16 @@ OIDC token for a crates.io token that lasts 30 minutes and is revoked when the j
    runs one `cargo publish --dry-run -p … -p …` for the whole plan, so cargo checks every crate
    against the others' unpublished versions.
 
-Requires Node.js and a Rust toolchain on the runner (GitHub-hosted and Depot runners have Node).
+The plan orders a crate after a workspace crate it dev-depends on with a `version`, because
+cargo keeps such dev-dependencies in the uploaded manifest and crates.io rejects them until that
+crate exists; the edge is dropped only when it would form a cycle.
+
+The token lasts 30 minutes. The action never starts an upload, delay or rate-limit wait past its
+first 25 minutes; it stops with the list of what it published, and rerunning the job (with
+`skip-published`) gets a fresh token and continues from there.
+
+Requires Node.js and Rust 1.90 or newer (`cargo publish` with several `-p`, used by dry runs)
+on the runner. GitHub-hosted and Depot runners have Node.
 
 ## Inputs
 

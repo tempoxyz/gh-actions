@@ -12,6 +12,8 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 
 const INDEX_URL = "https://index.crates.io";
+// Upload only within the first 25 of the token's 30 minutes.
+const TOKEN_BUDGET_MS = 25 * 60 * 1000;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 function splitList(value) {
@@ -49,8 +51,10 @@ function publishesToCratesIo(pkg) {
 }
 
 // Returns workspace packages to publish, ordered so every package comes after the workspace
-// packages it depends on (normal and build dependencies; dev-dependencies are stripped of
-// path-only entries by cargo publish and do not constrain the order).
+// packages it depends on. Normal and build dependencies are hard edges. cargo publish strips a
+// path dev-dependency without a version, but keeps a versioned one in the uploaded manifest, and
+// crates.io rejects it until that crate exists; those are soft edges, dropped only to break a
+// cycle (then the dev-dependency must already be on crates.io at a matching version).
 function planPackages(metadata, { packages = [], exclude = [] } = {}) {
   const members = new Set(metadata.workspace_members);
   const byName = new Map();
@@ -76,13 +80,18 @@ function planPackages(metadata, { packages = [], exclude = [] } = {}) {
   const selectedNames = new Set(selected.map((pkg) => pkg.name));
 
   const deps = new Map();
+  const soft = new Map();
   const problems = [];
   for (const pkg of selected) {
     const internal = new Set();
+    const devEdges = new Set();
     for (const dep of pkg.dependencies) {
-      if (dep.kind === "dev") continue;
       const target = byName.get(dep.name);
-      if (!target || !dep.path) continue;
+      if (!target || !dep.path || dep.name === pkg.name) continue;
+      if (dep.kind === "dev") {
+        if (dep.req && dep.req !== "*" && selectedNames.has(dep.name)) devEdges.add(dep.name);
+        continue;
+      }
       if (selectedNames.has(dep.name)) {
         internal.add(dep.name);
       } else if (!publishesToCratesIo(target)) {
@@ -92,19 +101,28 @@ function planPackages(metadata, { packages = [], exclude = [] } = {}) {
       // matching the requirement; cargo publish's own verification reports it if it is not.
     }
     deps.set(pkg.name, internal);
+    soft.set(pkg.name, devEdges);
   }
   if (problems.length) throw new Error(problems.join("\n"));
 
   // Kahn's algorithm, ties broken by name so the order is stable.
   const order = [];
   const remaining = new Map([...deps].map(([name, d]) => [name, new Set(d)]));
+  const remainingSoft = new Map([...soft].map(([name, d]) => [name, new Set(d)]));
   while (remaining.size) {
-    const ready = [...remaining].filter(([, d]) => d.size === 0).map(([name]) => name).sort();
-    if (!ready.length) throw new Error("dependency cycle between: " + [...remaining.keys()].sort().join(", "));
-    for (const name of ready) {
+    let ready = [...remaining].filter(([name, d]) => d.size === 0 && remainingSoft.get(name).size === 0).map(([name]) => name);
+    if (!ready.length) {
+      // Only dev-dependency edges (or a real cycle) block progress: fall back to hard edges.
+      ready = [...remaining].filter(([, d]) => d.size === 0).map(([name]) => name);
+      if (!ready.length) throw new Error("dependency cycle between: " + [...remaining.keys()].sort().join(", "));
+      ready = [ready.sort()[0]];
+    }
+    for (const name of ready.sort()) {
       order.push(name);
       remaining.delete(name);
+      remainingSoft.delete(name);
       for (const d of remaining.values()) d.delete(name);
+      for (const d of remainingSoft.values()) d.delete(name);
     }
   }
   return order.map((name) => ({ name, version: byName.get(name).version }));
@@ -131,11 +149,20 @@ async function publishedVersions(name, fetchImpl = fetch) {
   }
 }
 
-// How long to wait before retrying a publish that crates.io rate limited, or null when the
-// failure was not a rate limit.
-function rateLimitDelayMs(output, attempt, now = Date.now()) {
-  if (!/429|too many requests|rate limit/i.test(output)) return null;
-  const m = output.match(/try again after ([^\n.]+?GMT)/i);
+// crates.io's own answer to an upload, as cargo reports it ("the remote server responded with an
+// error (status N ...): message"), or "" when the failure happened before the upload (compile,
+// verification, packaging). Classification never looks at build output.
+function registryError(stderr) {
+  const m = String(stderr).match(/the remote server responded with an error \((status \d{3}[^)]*)\): ?([^\n]*)/);
+  return m ? m[1] + ": " + m[2] : "";
+}
+
+// How long to wait before retrying a publish crates.io rate limited, or null when the failure was
+// not a rate limit.
+function rateLimitDelayMs(stderr, attempt, now = Date.now()) {
+  const error = registryError(stderr);
+  if (!/^status 429\b/.test(error)) return null;
+  const m = error.match(/try again after ([^.]+? GMT)/i);
   if (m) {
     const at = Date.parse(m[1]);
     if (!Number.isNaN(at)) return Math.max(at - now, 0) + 5000;
@@ -143,8 +170,11 @@ function rateLimitDelayMs(output, attempt, now = Date.now()) {
   return Math.min(60000 * 2 ** (attempt - 1), 600000);
 }
 
-function alreadyUploaded(output) {
-  return /already (exists|uploaded)/i.test(output);
+// True when crates.io (or cargo's pre-upload index check) says this exact version is already there.
+function alreadyUploaded(stderr, name, version) {
+  const esc = (v) => v.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+  if (new RegExp("^error: crate " + esc(name) + "@" + esc(version) + " already exists on crates\\.io index", "m").test(stderr)) return true;
+  return /already (uploaded|exists)/i.test(registryError(stderr));
 }
 
 function sleep(ms) {
@@ -165,6 +195,7 @@ function cargo(args, { capture = false } = {}) {
   const res = spawnSync("cargo", args, {
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
+    maxBuffer: 1024 * 1024 * 1024,
     env: process.env,
   });
   if (res.error) throw res.error;
@@ -174,7 +205,8 @@ function cargo(args, { capture = false } = {}) {
 async function plan() {
   const packages = splitList(process.env.INPUT_PACKAGES);
   const exclude = splitList(process.env.INPUT_EXCLUDE);
-  const skipPublished = parseBool("skip-published", process.env.INPUT_SKIP_PUBLISHED);
+  // A dry run checks every selected crate, published or not: cargo only warns about an existing version.
+  const skipPublished = !parseBool("dry-run", process.env.INPUT_DRY_RUN) && parseBool("skip-published", process.env.INPUT_SKIP_PUBLISHED);
 
   const meta = cargo(["metadata", "--format-version", "1", "--no-deps"], { capture: true });
   if (meta.status !== 0) {
@@ -226,10 +258,23 @@ async function publish() {
   }
 
   if (!process.env.CARGO_REGISTRY_TOKEN) throw new Error("no crates.io token; trusted publishing authentication did not run");
+  // The trusted publishing token lasts 30 minutes. Never start an upload or a wait that could
+  // outlast it; a rerun resumes after the crates already published (skip-published).
+  const issuedAt = Number(process.env.TOKEN_ISSUED_AT || "0") * 1000 || Date.now();
+  const deadline = issuedAt + TOKEN_BUDGET_MS;
+  const outOfTime = (pkg, waitMs) => {
+    if (Date.now() + waitMs <= deadline) return false;
+    setOutput("published", published.map((p) => p.name).join(" "));
+    throw new Error("stopping before " + pkg.name + "@" + pkg.version + ": the crates.io token expires soon. Published so far: " + (published.map((p) => p.name).join(" ") || "nothing") + ". Rerun the job to continue; crates already on crates.io are skipped");
+  };
 
   const published = [];
   for (const [i, pkg] of list.entries()) {
-    if (i > 0 && delayMs) await sleep(delayMs);
+    if (i > 0 && delayMs) {
+      outOfTime(pkg, delayMs);
+      await sleep(delayMs);
+    }
+    outOfTime(pkg, 0);
     for (let attempt = 1; ; attempt++) {
       console.log("::group::cargo publish -p " + pkg.name + " (" + pkg.version + ")" + (attempt > 1 ? ", attempt " + attempt : ""));
       const res = cargo(["publish", ...common, "-p", pkg.name], { capture: true });
@@ -240,16 +285,16 @@ async function publish() {
         published.push(pkg);
         break;
       }
-      const output = res.stdout + res.stderr;
-      if (alreadyUploaded(output)) {
+      if (alreadyUploaded(res.stderr, pkg.name, pkg.version)) {
         console.log("::notice::" + pkg.name + "@" + pkg.version + " is already on crates.io");
         break;
       }
-      const wait = rateLimitDelayMs(output, attempt);
+      const wait = rateLimitDelayMs(res.stderr, attempt);
       if (wait === null || attempt > retries) {
         setOutput("published", published.map((p) => p.name).join(" "));
         throw new Error("publishing " + pkg.name + "@" + pkg.version + " failed" + (wait === null ? "" : " after " + retries + " rate-limit retries"));
       }
+      outOfTime(pkg, wait);
       console.log("::warning::crates.io rate limited " + pkg.name + "; retrying in " + Math.ceil(wait / 1000) + "s");
       await sleep(wait);
     }
@@ -258,7 +303,7 @@ async function publish() {
   summary("Published: " + (published.map((p) => "\`" + p.name + "@" + p.version + "\`").join(", ") || "nothing"));
 }
 
-module.exports = { splitList, parseBool, indexPath, planPackages, publishedVersions, rateLimitDelayMs, alreadyUploaded };
+module.exports = { splitList, parseBool, indexPath, planPackages, publishedVersions, registryError, rateLimitDelayMs, alreadyUploaded };
 
 if (require.main === module) {
   const mode = process.argv[2];
