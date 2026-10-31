@@ -1,0 +1,328 @@
+name: changesets release
+
+# Releases a JavaScript workspace to npm with Changesets and npm trusted publishing (OIDC). On each
+# push to the default branch it either opens or updates the Changesets version pull request, or,
+# once that pull request has merged and no changesets are pending, publishes the new versions:
+#
+#   version   opens the version pull request with a token from github-sts (GITHUB_TOKEN cannot
+#             open pull requests that trigger CI). It and release run in github-environment, so
+#             the STS policy can require that environment and pack can never mint a token.
+#   pack      installs, builds and packs the unpublished versions. It runs the repository's code
+#             and has no npm publish rights.
+#   publish   in the npm environment, the only job npm trusts: checks the packed tarballs against
+#             the plan and publishes them in dependency order. It runs none of the repository's code.
+#   release   tags each published version and creates its GitHub release from its CHANGELOG.
+#
+# See README.md#changesets-release for the npm and github-sts setup.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version. Publishing needs npm 11.5.1 or newer, which Node.js 24 bundles.
+        required: false
+        type: string
+        default: "24"
+      install-command:
+        description: Dependency install command, run in the version and pack jobs. pnpm comes from the `packageManager` field when the repository has pnpm-lock.yaml.
+        required: false
+        type: string
+        default: pnpm install --frozen-lockfile --ignore-scripts
+      version-script:
+        description: Command that applies the pending changesets (bumps versions, writes changelogs).
+        required: false
+        type: string
+        default: pnpm changeset version
+      build-command:
+        description: Command run before packing, such as `pnpm build`. Empty skips it.
+        required: false
+        type: string
+        default: ""
+      packages:
+        description: Package directories to publish (newline or comma separated). Empty publishes every non-private workspace package.
+        required: false
+        type: string
+        default: ""
+      package-manager:
+        description: Tool that packs the packages, auto, npm, pnpm or bun.
+        required: false
+        type: string
+        default: auto
+      dist-tag:
+        description: Dist-tag to publish under. Empty uses npm's default, latest.
+        required: false
+        type: string
+        default: ""
+      provenance:
+        description: auto (on public repositories), true or false.
+        required: false
+        type: string
+        default: auto
+      access:
+        description: public or restricted. Empty leaves each package's publishConfig.access in charge.
+        required: false
+        type: string
+        default: ""
+      environment:
+        description: Environment of the publish job, the only job in it. npm's trusted publisher must name it.
+        required: false
+        type: string
+        default: npm
+      github-environment:
+        description: Environment of the version and release jobs, which mint github-sts tokens. The STS policy's subject must name it.
+        required: false
+        type: string
+        default: changesets
+      sts-policy:
+        description: github-sts policy in the calling repository that grants contents and pull_requests write.
+        required: false
+        type: string
+        default: changesets
+      pr-title:
+        description: Title and commit message of the version pull request.
+        required: false
+        type: string
+        default: Version Packages
+      github-releases:
+        description: Tag each published version and create its GitHub release.
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      published:
+        description: JSON array of the {name, version} uploaded by this run.
+        value: ${{ jobs.publish.outputs.published }}
+
+permissions: {}
+
+jobs:
+  version:
+    name: Version pull request
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github-environment }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      has-changesets: ${{ steps.changesets.outputs.has-changesets }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - name: Fetch GitHub token via STS
+        id: sts
+        uses: tempoxyz/gh-actions/actions/github-sts@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        with:
+          policy: ${{ inputs.sts-policy }}
+          ttl: 15m
+
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        if: hashFiles('pnpm-lock.yaml') != ''
+        uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - name: Set up bun
+        if: inputs.package-manager == 'bun' || hashFiles('bun.lock', 'bun.lockb') != ''
+        uses: tempoxyz/gh-actions/vendor/oven-sh/setup-bun@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: bash -c "$INSTALL_COMMAND"
+
+      - name: Open or update the version pull request
+        id: changesets
+        uses: tempoxyz/gh-actions/vendor/changesets/action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        with:
+          github-token: ${{ steps.sts.outputs.token }}
+          version-script: ${{ inputs.version-script }}
+          pr-title: ${{ inputs.pr-title }}
+          commit-message: ${{ inputs.pr-title }}
+
+  pack:
+    name: Pack
+    needs: version
+    if: needs.version.outputs.has-changesets == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # secure-runner only; npm trusts only the publish job's environment.
+      id-token: write
+    outputs:
+      packages: ${{ steps.pack.outputs.packages }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        if: hashFiles('pnpm-lock.yaml') != ''
+        uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - name: Set up bun
+        if: inputs.package-manager == 'bun' || hashFiles('bun.lock', 'bun.lockb') != ''
+        uses: tempoxyz/gh-actions/vendor/oven-sh/setup-bun@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: bash -c "$INSTALL_COMMAND"
+
+      - name: Build
+        if: inputs.build-command != ''
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: bash -c "$BUILD_COMMAND"
+
+      - name: Pack unpublished versions
+        id: pack
+        uses: tempoxyz/gh-actions/actions/npm-publish@b17536911462445950d5f151502076ba820ac0c5 # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
+        with:
+          mode: pack
+          packages: ${{ inputs.packages }}
+          package-manager: ${{ inputs.package-manager }}
+          dist-tag: ${{ inputs.dist-tag }}
+          pack-directory: ${{ runner.temp }}/npm-pack
+
+      - name: Upload packs
+        if: steps.pack.outputs.packages != '[]'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-packs
+          path: ${{ runner.temp }}/npm-pack
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: pack
+    if: needs.pack.outputs.packages != '[]'
+    # npm trusted publishing accepts only GitHub-hosted runners.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: changesets-release-publish-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+      released: ${{ steps.publish.outputs.released }}
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-packs
+          path: ${{ runner.temp }}/npm-pack
+
+      - name: Publish to npm
+        id: publish
+        uses: tempoxyz/gh-actions/actions/npm-publish@b17536911462445950d5f151502076ba820ac0c5 # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
+        with:
+          mode: publish
+          pack-directory: ${{ runner.temp }}/npm-pack
+          dist-tag: ${{ inputs.dist-tag }}
+          access: ${{ inputs.access }}
+          provenance: ${{ inputs.provenance }}
+
+  release:
+    name: Tag and release
+    needs: publish
+    environment: ${{ inputs.github-environment }}
+    # Tags every version confirmed on npm, including ones an interrupted earlier run uploaded, so
+    # rerunning the failed jobs completes the tags and releases too.
+    if: inputs.github-releases && needs.publish.outputs.released != '[]' && needs.publish.outputs.released != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-packs
+          path: ${{ runner.temp }}/npm-pack
+
+      - name: Fetch GitHub token via STS
+        id: sts
+        uses: tempoxyz/gh-actions/actions/github-sts@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        with:
+          policy: ${{ inputs.sts-policy }}
+          ttl: 10m
+
+      # Changesets' convention: v<version> for a single-package repository, <name>@<version> otherwise.
+      - name: Create tags and releases
+        env:
+          GH_TOKEN: ${{ steps.sts.outputs.token }}
+          PUBLISHED: ${{ needs.publish.outputs.released }}
+          PLAN: ${{ runner.temp }}/npm-pack/plan.json
+        run: |
+          set -euo pipefail
+          # Lines are "<tag> <prefix> <kind>": "released" versions the publish job confirmed, and
+          # "resume" versions pack found already on npm. A resume version is tagged only when its
+          # package has older tags but not this one: an earlier, interrupted release uploaded it.
+          # Unchanged siblings already have their tag, and a first release tags nothing it did not publish.
+          node -e '
+            const fs = require("fs");
+            const plan = JSON.parse(fs.readFileSync(process.env.PLAN, "utf8"));
+            const published = JSON.parse(process.env.PUBLISHED);
+            const single = plan.singlePackage === true;
+            const key = (p) => p.name + "@" + p.version;
+            const done = new Set(published.map(key));
+            const all = [...plan.packages, ...(plan.onNpm || [])];
+            const rows = [...published.map((p) => [p, "released"]), ...(plan.onNpm || []).filter((p) => !done.has(key(p))).map((p) => [p, "resume"])];
+            for (const [p, kind] of rows) {
+              const entry = all.find((e) => key(e) === key(p)) || {};
+              const tag = single ? "v" + p.version : key(p);
+              const prefix = single ? "v" : p.name + "@";
+              fs.writeFileSync(process.env.RUNNER_TEMP + "/notes-" + Buffer.from(tag).toString("hex"), entry.notes || "");
+              console.log(tag + " " + prefix + " " + kind);
+            }
+          ' > "$RUNNER_TEMP/tags"
+          while read -r tag prefix kind; do
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              echo "Release $tag already exists"
+              continue
+            fi
+            if [[ "$kind" == resume ]]; then
+              if [[ -n "$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq '.[] | select(.ref == "refs/tags/'"$tag"'") | .ref')" ]]; then
+                echo "Tag $tag already exists"
+                continue
+              fi
+              if [[ -z "$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$prefix" --jq '.[0].ref // empty')" ]]; then
+                echo "Skipping $tag: no earlier release of this package to resume"
+                continue
+              fi
+            fi
+            notes="$RUNNER_TEMP/notes-$(printf '%s' "$tag" | od -An -tx1 | tr -d ' \n')"
+            prerelease=()
+            [[ "$tag" =~ [0-9]+\.[0-9]+\.[0-9]+- ]] && prerelease=(--prerelease)
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$tag" --notes-file "$notes" "${prerelease[@]}"
+          done < "$RUNNER_TEMP/tags"

@@ -29,6 +29,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-pinact`](actions/setup-pinact) | Install pinact from an attested release
 | [`setup-terraform`](actions/setup-terraform) | Install Terraform verified against HashiCorp's signed checksums
 | [`setup-helm`](actions/setup-helm) | Install Helm verified against the maintainers' GPG signatures
+| [`npm-publish`](actions/npm-publish) | Pack and publish npm packages in dependency order with npm trusted publishing (OIDC)
 | [`cargo-dependency-changes`](actions/cargo-dependency-changes) | Detect selected Cargo dependency version/source changes without running repository code |
 | [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
 | [`codex-repair`](actions/codex-repair) | Repair Rust dependency migrations on the runner with bounded independent checks |
@@ -200,12 +201,76 @@ The SHA is the immutable reference; the timestamp comment records the reviewed, 
 | [`rust-fmt`](#rust-fmt-and-rust-clippy) | Formatting-only wrapper around rust-lint | rust repos |
 | [`rust-clippy`](#rust-fmt-and-rust-clippy) | Clippy-only wrapper around rust-lint | rust repos |
 | [`rust-build-binaries`](#rust-build-binaries) | Build Rust binaries and upload artifacts | rust repos |
+| [`changesets-release`](#changesets-release) | Changesets version PR, then npm trusted publishing, tags and GitHub releases | JavaScript packages |
 | [`tempo-extension`](#tempo-extension) | Build, sign, and publish a `tempo` CLI extension to cli.tempo.xyz | api, wallet-cli |
 | [`cargo-update-pr`](#cargo-update-pr) | Open a scheduled `cargo update` PR with a cooldown | tempo, reth |
 | [`auto-assign-pr`](#auto-assign-pr) | Auto-assign the author to their PR | tempo |
 | [`cloudflare-deploy-broker-build`](actions/cloudflare-deploy-broker/README.md) | Build and attest a Cloudflare Worker for the deploy broker | Worker repos |
 
 Reference reusable workflows using `tempoxyz/gh-actions/.github/workflows/<name>.yml@main` (pin to a commit SHA in production — see [Versioning](#versioning)).
+
+### `changesets-release`
+
+Releases a JavaScript workspace with [Changesets](https://github.com/changesets/changesets) and
+[npm trusted publishing](https://docs.npmjs.com/trusted-publishers), with no npm token. On every
+push to the default branch it opens or updates the version pull request, or, once that pull
+request has merged, publishes the new versions with [`npm-publish`](actions/npm-publish), then
+tags them and creates their GitHub releases from their CHANGELOG sections. Building and packing
+run in a job with no publish rights and no environment; only the `publish` job, in the `npm`
+environment, can publish, and it runs none of the repository's code. The `version` and `release`
+jobs, which mint `github-sts` tokens, run in a second environment (`changesets`), so neither npm
+nor the STS trusts the job that builds.
+
+```yaml
+# .github/workflows/release.yml
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release:
+    permissions:
+      contents: read
+      id-token: write
+    uses: tempoxyz/gh-actions/.github/workflows/changesets-release.yml@<sha> # <tag>
+    with:
+      build-command: pnpm build
+```
+
+Inputs: `node-version` (`24`), `install-command` (`pnpm install --frozen-lockfile --ignore-scripts`),
+`version-script` (`pnpm changeset version`), `build-command`, `packages`, `package-manager`,
+`dist-tag` (prereleases default to the tag in `.changeset/pre.json`), `access` (empty keeps each package's
+`publishConfig.access`), `provenance`, `environment` (`npm`), `github-environment` (`changesets`),
+`sts-policy` (`changesets`), `pr-title` and `github-releases` (`true`). Output: `published`. pnpm and bun
+are set up from their lockfiles.
+
+Setup in the calling repository:
+
+- **npm:** for each package, add a GitHub Actions trusted publisher naming the repository, the
+  **calling** workflow file (`release.yml` above) and the environment `npm`. The environment is
+  required: without it the pack job, which runs build code, could publish. Then disallow tokens
+  under Publishing access.
+- **Environments:** create `npm` and `changesets`, each limited to the default branch.
+- **github-sts:** `.github/sts/changesets.sts.yaml` must accept this reusable workflow, since the
+  OIDC token's `job_workflow_ref` names it, not the caller:
+
+  ```yaml
+  subject: repo:<owner>@<owner-id>/<repo>@<repo-id>:environment:changesets
+  claim_pattern:
+    workflow_ref: <owner>/<repo>/\.github/workflows/release\.yml@refs/heads/main
+    job_workflow_ref: tempoxyz/gh-actions/\.github/workflows/changesets-release\.yml@.+
+  permissions:
+    contents: write
+    pull_requests: write
+  ```
+
+  The `environment:changesets` subject is what keeps the pack job, which has no environment,
+  from minting a token.
+- Drop `changeset publish` from the repository's scripts: this workflow publishes and tags.
+  If a publish fails partway, rerun the failed jobs (not the whole workflow): the publish job then
+  counts the versions its first attempt uploaded as released, so the release job still tags them.
 
 ### `pr-audit`
 

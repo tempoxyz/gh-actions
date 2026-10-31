@@ -39,3 +39,8 @@ rules:
   - min_age: 0
     conditions:
       - expr: ActionName == "tempoxyz/gh-actions/actions/secure-runner" && ActionVersion == "d3efa0f3c3121a949e342d9a52240f988fbfd4ee"
+  # npm-publish is new in the same pull request as changesets-release; repin both uses to the
+  # merge commit's timestamp tag once it exists, then drop this exception.
+  - ignore: true
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/actions/npm-publish" && ActionVersion == "b17536911462445950d5f151502076ba820ac0c5"
