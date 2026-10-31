@@ -276,11 +276,11 @@ async function publish() {
 
   const version = npmVersion();
   if (!dryRun) {
-    if (!supportsTrustedPublishing(version)) throw new Error("npm " + version + " cannot use trusted publishing; it needs npm 11.5.1 or newer (Node.js 24 bundles it)");
     if (process.env.RUNNER_ENVIRONMENT && process.env.RUNNER_ENVIRONMENT !== "github-hosted") throw new Error("npm trusted publishing works only on GitHub-hosted runners, not " + process.env.RUNNER_ENVIRONMENT);
     if (!process.env.ACTIONS_ID_TOKEN_REQUEST_URL) throw new Error("npm trusted publishing needs 'permissions: id-token: write' on the job");
     const files = storedTokenFiles([path.join(os.homedir(), ".npmrc"), process.env.NPM_CONFIG_USERCONFIG, path.join(process.cwd(), ".npmrc")]);
     if (files.length) throw new Error("a stored npm token in " + files.join(", ") + " would bypass trusted publishing; remove it");
+    if (!supportsTrustedPublishing(version)) throw new Error("npm " + version + " cannot use trusted publishing; it needs npm 11.5.1 or newer (Node.js 24 bundles it)");
   }
 
   const isPublic = process.env.REPOSITORY_VISIBILITY === "public";

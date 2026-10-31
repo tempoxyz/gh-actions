@@ -139,7 +139,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      id-token: write # secure-runner only; npm trusts only the publish job's environment
+      # secure-runner only; npm trusts only the publish job's environment.
+      id-token: write
     outputs:
       packages: ${{ steps.pack.outputs.packages }}
     steps:
@@ -171,7 +172,7 @@ jobs:
 
       - name: Pack unpublished versions
         id: pack
-        uses: tempoxyz/gh-actions/actions/npm-publish@68607a4d239793e67a7b473393620cba038f04ab # npm-publish
+        uses: tempoxyz/gh-actions/actions/npm-publish@68607a4d239793e67a7b473393620cba038f04ab # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
         with:
           mode: pack
           packages: ${{ inputs.packages }}
@@ -218,7 +219,7 @@ jobs:
 
       - name: Publish to npm
         id: publish
-        uses: tempoxyz/gh-actions/actions/npm-publish@68607a4d239793e67a7b473393620cba038f04ab # npm-publish
+        uses: tempoxyz/gh-actions/actions/npm-publish@68607a4d239793e67a7b473393620cba038f04ab # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
         with:
           mode: publish
           pack-directory: ${{ runner.temp }}/npm-pack
