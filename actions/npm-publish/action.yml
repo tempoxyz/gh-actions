@@ -1,0 +1,108 @@
+name: "npm publish (trusted publishing)"
+description: "Pack and publish npm packages in dependency order with npm trusted publishing (GitHub OIDC), skipping versions already on npm"
+
+inputs:
+  packages:
+    description: "Package directories to publish, relative to working-directory (newline or comma separated); empty publishes every non-private workspace package"
+    required: false
+    default: ""
+  working-directory:
+    description: "Root of the package or workspace"
+    required: false
+    default: "."
+  package-manager:
+    description: "Tool that packs the packages: auto, npm, pnpm or bun (pnpm and bun rewrite workspace: dependencies)"
+    required: false
+    default: "auto"
+  pack-directory:
+    description: "Directory for the tarballs and plan.json. With mode publish, the tarballs to publish (such as a downloaded artifact)"
+    required: false
+    default: ""
+  mode:
+    description: "pack-and-publish (one job), pack (write tarballs only, runs pack scripts) or publish (publish an earlier pack, runs no repository code)"
+    required: false
+    default: "pack-and-publish"
+  dist-tag:
+    description: "Dist-tag to publish under; empty uses npm's default (latest)"
+    required: false
+    default: ""
+  access:
+    description: "public or restricted"
+    required: false
+    default: "public"
+  provenance:
+    description: "auto (provenance on public repositories, where npm accepts it), true or false"
+    required: false
+    default: "auto"
+  skip-published:
+    description: "Skip packages whose version is already on npm, so a rerun resumes a partial release"
+    required: false
+    default: "true"
+  dry-run:
+    description: "Pack and run npm publish --dry-run without authenticating"
+    required: false
+    default: "false"
+
+outputs:
+  packages:
+    description: "JSON array of {name, version} planned for publishing"
+    value: ${{ steps.pack.outputs.packages }}
+  skipped:
+    description: "Packages skipped because their version is already on npm (space separated name@version)"
+    value: ${{ steps.pack.outputs.skipped }}
+  published:
+    description: "JSON array of {name, version} this run published"
+    value: ${{ steps.publish.outputs.published }}
+  pack-directory:
+    description: "Directory holding the tarballs and plan.json"
+    value: ${{ steps.dir.outputs.path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve pack directory
+      id: dir
+      shell: bash
+      env:
+        PACK_DIRECTORY: ${{ inputs.pack-directory }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        case "$MODE" in
+          pack-and-publish|pack|publish) ;;
+          *) echo "::error::mode must be pack-and-publish, pack or publish"; exit 1 ;;
+        esac
+        if [[ -z "$PACK_DIRECTORY" ]]; then
+          if [[ "$MODE" == publish ]]; then echo "::error::mode publish needs pack-directory"; exit 1; fi
+          PACK_DIRECTORY="$RUNNER_TEMP/npm-publish"
+        fi
+        echo "path=$(realpath -m "$PACK_DIRECTORY")" >> "$GITHUB_OUTPUT"
+
+    - name: Pack
+      id: pack
+      if: inputs.mode != 'publish'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PACK_DIRECTORY: ${{ steps.dir.outputs.path }}
+        INPUT_PACKAGES: ${{ inputs.packages }}
+        INPUT_PACKAGE_MANAGER: ${{ inputs.package-manager }}
+        INPUT_SKIP_PUBLISHED: ${{ inputs.skip-published }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+      run: node "$ACTION_PATH/publish.cjs" pack
+
+    - name: Publish
+      id: publish
+      if: inputs.mode != 'pack'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PACK_DIRECTORY: ${{ steps.dir.outputs.path }}
+        INPUT_DIST_TAG: ${{ inputs.dist-tag }}
+        INPUT_ACCESS: ${{ inputs.access }}
+        INPUT_PROVENANCE: ${{ inputs.provenance }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
+      run: node "$ACTION_PATH/publish.cjs" publish
