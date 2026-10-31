@@ -213,17 +213,28 @@ test("released leaves out versions pack found already on npm", { skip: !has("npm
   }
 });
 
-test("a settings-only pnpm-workspace.yaml leaves a single package", () => {
-  assert.deepEqual(lib.pnpmWorkspacePackages("onlyBuiltDependencies:\n  - esbuild\n"), []);
-  assert.deepEqual(lib.pnpmWorkspacePackages("packages:\n  - 'packages/*'\n  - apps/web # app\nonlyBuiltDependencies:\n  - x\n"), ["packages/*", "apps/web"]);
-  assert.deepEqual(lib.pnpmWorkspacePackages("packages: [packages/*, 'tools/*']\n"), ["packages/*", "tools/*"]);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-settings-"));
-  try {
-    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "single", version: "1.0.0" }));
-    fs.writeFileSync(path.join(dir, "pnpm-workspace.yaml"), "onlyBuiltDependencies:\n  - esbuild\n");
-    assert.ok(!lib.isWorkspace(dir));
-    assert.deepEqual(lib.discoverPackages(dir, "pnpm"), [dir]);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+test("pnpm-workspace.yaml counts as a workspace only when pnpm lists member projects", { skip: !has("pnpm") }, () => {
+  const make = (yaml) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-pnpm-ws-"));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "root-pkg", version: "1.0.0" }));
+    fs.mkdirSync(path.join(dir, "packages", "lib"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "packages", "lib", "package.json"), JSON.stringify({ name: "lib", version: "1.0.0" }));
+    fs.writeFileSync(path.join(dir, "pnpm-workspace.yaml"), yaml);
+    return dir;
+  };
+  const cases = [
+    ["onlyBuiltDependencies:\n  - esbuild\n", false],
+    ["packages:\n- 'packages/*'\n", true],
+    ["packages: [\n  'packages/*',\n]\n", true],
+    ["packages:\n  - packages/*\nonlyBuiltDependencies:\n  - x\n", true],
+  ];
+  for (const [yaml, expected] of cases) {
+    const dir = make(yaml);
+    try {
+      assert.equal(lib.isWorkspace(dir), expected, yaml);
+      assert.deepEqual(lib.discoverPackages(dir, "pnpm").map((d) => path.basename(d)), expected ? ["lib"] : [path.basename(dir)], yaml);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   }
 });

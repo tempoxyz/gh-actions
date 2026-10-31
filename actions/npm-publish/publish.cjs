@@ -57,12 +57,11 @@ function detectPackageManager(root, requested) {
   return "npm";
 }
 
-// True when root is a workspace with member packages (a non-empty packages list in
-// pnpm-workspace.yaml, or a workspaces field), not a single package. pnpm-workspace.yaml may hold
-// only settings (onlyBuiltDependencies and the like), which leaves a single-package repository.
+// True when root is a workspace with member packages, not a single package. For pnpm, pnpm itself
+// lists the projects, since pnpm-workspace.yaml may hold only settings (onlyBuiltDependencies and
+// the like); npm, yarn and bun use a non-empty workspaces field.
 function isWorkspace(root) {
-  const yaml = path.join(root, "pnpm-workspace.yaml");
-  if (fs.existsSync(yaml) && pnpmWorkspacePackages(fs.readFileSync(yaml, "utf8")).length) return true;
+  if (fs.existsSync(path.join(root, "pnpm-workspace.yaml"))) return pnpmProjects(root).some((d) => path.resolve(d) !== path.resolve(root));
   const file = path.join(root, "package.json");
   if (!fs.existsSync(file)) return false;
   const ws = readJson(file).workspaces;
@@ -70,20 +69,10 @@ function isWorkspace(root) {
   return list.length > 0;
 }
 
-// The globs under the top-level packages key of pnpm-workspace.yaml (block or flow list).
-function pnpmWorkspacePackages(text) {
-  const lines = text.split("\n");
-  const i = lines.findIndex((l) => /^packages\s*:/.test(l));
-  if (i < 0) return [];
-  const inline = lines[i].replace(/^packages\s*:\s*/, "").replace(/\s+#.*$/, "").trim();
-  if (inline.startsWith("[")) return inline.replace(/^\[|\]$/g, "").split(",").map((x) => x.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean);
-  const out = [];
-  for (const line of lines.slice(i + 1)) {
-    if (/^\S/.test(line)) break;
-    const m = line.match(/^\s+-\s*['"]?([^'"#\s]+)/);
-    if (m) out.push(m[1]);
-  }
-  return out;
+function pnpmProjects(root) {
+  const res = run("pnpm", ["ls", "-r", "--depth", "-1", "--json"], { cwd: root });
+  if (res.status !== 0) throw new Error("pnpm ls failed: " + res.stderr);
+  return JSON.parse(res.stdout).map((p) => p.path);
 }
 
 // Directories of the packages to consider: the workspace's members, or the root of a single
@@ -91,10 +80,8 @@ function pnpmWorkspacePackages(text) {
 function discoverPackages(root, pm) {
   if (!isWorkspace(root)) return [root];
   let dirs;
-  if (pm === "pnpm") {
-    const res = run("pnpm", ["ls", "-r", "--depth", "-1", "--json"], { cwd: root });
-    if (res.status !== 0) throw new Error("pnpm ls failed: " + res.stderr);
-    dirs = JSON.parse(res.stdout).map((p) => p.path);
+  if (fs.existsSync(path.join(root, "pnpm-workspace.yaml"))) {
+    dirs = pnpmProjects(root);
   } else {
     const res = run("npm", ["query", ".workspace", "--json"], { cwd: root });
     if (res.status !== 0) throw new Error("npm query failed: " + res.stderr);
@@ -399,7 +386,7 @@ async function publish() {
   summary((dryRun ? "Dry run, would publish: " : "Published: ") + (published.map((p) => "\`" + p.name + "@" + p.version + "\`").join(", ") || "nothing"));
 }
 
-module.exports = { splitList, orderPackages, selectPackages, discoverPackages, isWorkspace, pnpmWorkspacePackages, changesetsPreTag, publishedVersions, changelogSection, checkTarball, supportsTrustedPublishing, storedTokenFiles, detectPackageManager };
+module.exports = { splitList, orderPackages, selectPackages, discoverPackages, isWorkspace, changesetsPreTag, publishedVersions, changelogSection, checkTarball, supportsTrustedPublishing, storedTokenFiles, detectPackageManager };
 
 if (require.main === module) {
   const mode = process.argv[2];

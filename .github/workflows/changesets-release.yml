@@ -285,22 +285,41 @@ jobs:
           PLAN: ${{ runner.temp }}/npm-pack/plan.json
         run: |
           set -euo pipefail
+          # Lines are "<tag> <prefix> <kind>": "released" versions the publish job confirmed, and
+          # "resume" versions pack found already on npm. A resume version is tagged only when its
+          # package has older tags but not this one: an earlier, interrupted release uploaded it.
+          # Unchanged siblings already have their tag, and a first release tags nothing it did not publish.
           node -e '
             const fs = require("fs");
             const plan = JSON.parse(fs.readFileSync(process.env.PLAN, "utf8"));
             const published = JSON.parse(process.env.PUBLISHED);
             const single = plan.singlePackage === true;
-            for (const p of published) {
-              const entry = [...plan.packages, ...(plan.onNpm || [])].find((e) => e.name === p.name && e.version === p.version) || {};
-              const tag = single ? "v" + p.version : p.name + "@" + p.version;
+            const key = (p) => p.name + "@" + p.version;
+            const done = new Set(published.map(key));
+            const all = [...plan.packages, ...(plan.onNpm || [])];
+            const rows = [...published.map((p) => [p, "released"]), ...(plan.onNpm || []).filter((p) => !done.has(key(p))).map((p) => [p, "resume"])];
+            for (const [p, kind] of rows) {
+              const entry = all.find((e) => key(e) === key(p)) || {};
+              const tag = single ? "v" + p.version : key(p);
+              const prefix = single ? "v" : p.name + "@";
               fs.writeFileSync(process.env.RUNNER_TEMP + "/notes-" + Buffer.from(tag).toString("hex"), entry.notes || "");
-              console.log(tag);
+              console.log(tag + " " + prefix + " " + kind);
             }
           ' > "$RUNNER_TEMP/tags"
-          while IFS= read -r tag; do
+          while read -r tag prefix kind; do
             if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
               echo "Release $tag already exists"
               continue
+            fi
+            if [[ "$kind" == resume ]]; then
+              if [[ -n "$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq '.[] | select(.ref == "refs/tags/'"$tag"'") | .ref')" ]]; then
+                echo "Tag $tag already exists"
+                continue
+              fi
+              if [[ -z "$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$prefix" --jq '.[0].ref // empty')" ]]; then
+                echo "Skipping $tag: no earlier release of this package to resume"
+                continue
+              fi
             fi
             notes="$RUNNER_TEMP/notes-$(printf '%s' "$tag" | od -An -tx1 | tr -d ' \n')"
             prerelease=()
