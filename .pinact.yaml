@@ -43,4 +43,4 @@ rules:
   # merge commit's timestamp tag once it exists, then drop this exception.
   - ignore: true
     conditions:
-      - expr: ActionName == "tempoxyz/gh-actions/actions/npm-publish" && ActionVersion == "68607a4d239793e67a7b473393620cba038f04ab"
+      - expr: ActionName == "tempoxyz/gh-actions/actions/npm-publish" && ActionVersion == "31753e6e4651ffbbc07332cd01632f975ea4b632"
