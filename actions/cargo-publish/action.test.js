@@ -81,8 +81,14 @@ test("breaks a dev-dependency cycle where it drops the fewest edges to unpublish
   const a = pkg("a"); a.dependencies.push(ver("b"));
   const b = pkg("b"); b.dependencies.push(ver("a"), ver("c"));
   const m2 = meta(a, b, pkg("c", [["a"]]));
-  assert.deepEqual(lib.planPackages(m2, { onRegistry: new Set(["b"]) }).map((p) => p.name), ["a", "c", "b"]);
+  // b's version is already published, so it is never uploaded and goes first at no cost.
+  assert.deepEqual(lib.planPackages(m2, { onRegistry: new Set(["b"]) }).map((p) => p.name), ["b", "a", "c"]);
   assert.deepEqual(lib.planPackages(m2, { onRegistry: new Set(["a", "c"]) }).map((p) => p.name), ["b", "a", "c"]);
+  // Lockstep a -> b -> c -> a dev cycle after a partial release published c: drop b's edge to c.
+  const la = pkg("a"); la.dependencies.push(ver("b"));
+  const lb = pkg("b"); lb.dependencies.push(ver("c"));
+  const lc = pkg("c"); lc.dependencies.push(ver("a"));
+  assert.deepEqual(lib.planPackages(meta(la, lb, lc), { onRegistry: new Set(["c"]) }).map((p) => p.name), ["c", "b", "a"]);
 });
 
 test("reports dependency cycles", () => {

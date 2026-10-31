@@ -133,8 +133,9 @@ function planPackages(metadata, { packages = [], exclude = [], onRegistry = new 
 
 // Tarjan's strongly connected components over the remaining hard and soft edges. Returns the
 // crate whose soft edges to drop, or null when only normal/build dependencies form the cycle.
-// Among the candidates it prefers the fewest dropped edges to crates not on crates.io at all
-// (those uploads would surely be rejected), then the fewest dropped edges, then the name.
+// onRegistry holds crates whose planned version is already on crates.io. Among the candidates it
+// prefers the fewest dropped edges to crates outside it (those uploads would be rejected), then
+// the fewest dropped edges, then the name.
 function breakSoftCycle(hard, soft, onRegistry = new Set()) {
   const edges = (n) => [...hard.get(n), ...soft.get(n)];
   const index = new Map(), low = new Map(), onStack = new Set(), stack = [], comps = [];
@@ -161,6 +162,8 @@ function breakSoftCycle(hard, soft, onRegistry = new Set()) {
     for (const n of comp) if (hard.get(n).size === 0) candidates.push(n);
   }
   const cost = (n) => {
+    // A crate whose version is already published is never uploaded, so its edges cost nothing.
+    if (onRegistry.has(n)) return [0, 0];
     const dropped = [...soft.get(n)];
     return [dropped.filter((d) => !onRegistry.has(d)).length, dropped.length];
   };
@@ -266,8 +269,11 @@ async function plan() {
   // Look up every selected crate once: the cycle breaker prefers dropping dev-dependency edges to
   // crates that already exist on crates.io, and skip-published needs the versions.
   const versions = new Map();
-  for (const pkg of planPackages(metadata, { packages, exclude })) versions.set(pkg.name, await publishedVersions(pkg.name));
-  const onRegistry = new Set([...versions].filter(([, v]) => v.size > 0).map(([name]) => name));
+  const planned = planPackages(metadata, { packages, exclude });
+  for (const pkg of planned) versions.set(pkg.name, await publishedVersions(pkg.name));
+  // Only the version this release needs counts: after a bump, an older release does not satisfy
+  // a sibling's dev-dependency requirement.
+  const onRegistry = new Set(planned.filter((pkg) => versions.get(pkg.name).has(pkg.version)).map((pkg) => pkg.name));
   const ordered = planPackages(metadata, { packages, exclude, onRegistry });
 
   const toPublish = [];
