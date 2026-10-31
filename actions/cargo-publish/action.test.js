@@ -71,6 +71,20 @@ test("drops dev-dependency edges only on a cycle", () => {
   assert.deepEqual(lib.planPackages(meta(x, y)).map((p) => p.name), ["x", "y"]);
 });
 
+test("breaks a dev-dependency cycle where it drops the fewest edges to unpublished crates", () => {
+  const ver = (dep) => ({ name: dep, kind: "dev", path: "/ws/" + dep, req: "^1.0.0" });
+  const core = pkg("foo-core"); core.dependencies.push(ver("foo-types"), ver("foo-testing"));
+  const types = pkg("foo-types"); types.dependencies.push(ver("foo-core"));
+  const m = meta(core, types, pkg("foo-testing", [["foo-types"]]));
+  assert.deepEqual(lib.planPackages(m).map((p) => p.name), ["foo-types", "foo-testing", "foo-core"]);
+  // Prefer dropping an edge to a crate already on crates.io over fewer edges to a new one.
+  const a = pkg("a"); a.dependencies.push(ver("b"));
+  const b = pkg("b"); b.dependencies.push(ver("a"), ver("c"));
+  const m2 = meta(a, b, pkg("c", [["a"]]));
+  assert.deepEqual(lib.planPackages(m2, { onRegistry: new Set(["b"]) }).map((p) => p.name), ["a", "c", "b"]);
+  assert.deepEqual(lib.planPackages(m2, { onRegistry: new Set(["a", "c"]) }).map((p) => p.name), ["b", "a", "c"]);
+});
+
 test("reports dependency cycles", () => {
   assert.throws(() => lib.planPackages(meta(pkg("a", [["b"]]), pkg("b", [["a"]]))), /cycle between: a, b/);
 });

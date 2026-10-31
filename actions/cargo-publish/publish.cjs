@@ -55,7 +55,7 @@ function publishesToCratesIo(pkg) {
 // path dev-dependency without a version, but keeps a versioned one in the uploaded manifest, and
 // crates.io rejects it until that crate exists; those are soft edges, dropped only to break a
 // cycle (then the dev-dependency must already be on crates.io at a matching version).
-function planPackages(metadata, { packages = [], exclude = [] } = {}) {
+function planPackages(metadata, { packages = [], exclude = [], onRegistry = new Set() } = {}) {
   const members = new Set(metadata.workspace_members);
   const byName = new Map();
   for (const pkg of metadata.packages) {
@@ -116,7 +116,7 @@ function planPackages(metadata, { packages = [], exclude = [] } = {}) {
       // strongly connected component with no edges leaving it (so its crates wait only on each
       // other), take its first crate with no normal/build dependencies left, and drop that crate's
       // dev-dependency edges, which all stay inside the component and so all lie on a cycle.
-      const pick = breakSoftCycle(remaining, remainingSoft);
+      const pick = breakSoftCycle(remaining, remainingSoft, onRegistry);
       if (!pick) throw new Error("dependency cycle between: " + [...remaining.keys()].sort().join(", "));
       ready = [pick];
     }
@@ -133,7 +133,9 @@ function planPackages(metadata, { packages = [], exclude = [] } = {}) {
 
 // Tarjan's strongly connected components over the remaining hard and soft edges. Returns the
 // crate whose soft edges to drop, or null when only normal/build dependencies form the cycle.
-function breakSoftCycle(hard, soft) {
+// Among the candidates it prefers the fewest dropped edges to crates not on crates.io at all
+// (those uploads would surely be rejected), then the fewest dropped edges, then the name.
+function breakSoftCycle(hard, soft, onRegistry = new Set()) {
   const edges = (n) => [...hard.get(n), ...soft.get(n)];
   const index = new Map(), low = new Map(), onStack = new Set(), stack = [], comps = [];
   let next = 0;
@@ -156,10 +158,17 @@ function breakSoftCycle(hard, soft) {
   for (const comp of comps) {
     const sink = [...comp].every((n) => edges(n).every((w) => comp.has(w)));
     if (!sink || comp.size < 2) continue;
-    const free = [...comp].filter((n) => hard.get(n).size === 0).sort();
-    if (free.length) candidates.push(free[0]);
+    for (const n of comp) if (hard.get(n).size === 0) candidates.push(n);
   }
-  return candidates.sort()[0] || null;
+  const cost = (n) => {
+    const dropped = [...soft.get(n)];
+    return [dropped.filter((d) => !onRegistry.has(d)).length, dropped.length];
+  };
+  candidates.sort((a, b) => {
+    const [ca, cb] = [cost(a), cost(b)];
+    return ca[0] - cb[0] || ca[1] - cb[1] || (a < b ? -1 : a > b ? 1 : 0);
+  });
+  return candidates[0] || null;
 }
 
 async function publishedVersions(name, fetchImpl = fetch) {
@@ -253,12 +262,18 @@ async function plan() {
     process.stderr.write(meta.stderr);
     throw new Error("cargo metadata failed");
   }
-  const ordered = planPackages(JSON.parse(meta.stdout), { packages, exclude });
+  const metadata = JSON.parse(meta.stdout);
+  // Look up every selected crate once: the cycle breaker prefers dropping dev-dependency edges to
+  // crates that already exist on crates.io, and skip-published needs the versions.
+  const versions = new Map();
+  for (const pkg of planPackages(metadata, { packages, exclude })) versions.set(pkg.name, await publishedVersions(pkg.name));
+  const onRegistry = new Set([...versions].filter(([, v]) => v.size > 0).map(([name]) => name));
+  const ordered = planPackages(metadata, { packages, exclude, onRegistry });
 
   const toPublish = [];
   const skipped = [];
   for (const pkg of ordered) {
-    if (skipPublished && (await publishedVersions(pkg.name)).has(pkg.version)) skipped.push(pkg);
+    if (skipPublished && versions.get(pkg.name).has(pkg.version)) skipped.push(pkg);
     else toPublish.push(pkg);
   }
 
