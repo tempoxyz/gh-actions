@@ -23,13 +23,13 @@ inputs:
     required: false
     default: "pack-and-publish"
   dist-tag:
-    description: "Dist-tag to publish under; empty uses npm's default (latest)"
+    description: "Dist-tag to publish under; empty uses npm's default (latest), or for prereleases the tag in .changeset/pre.json"
     required: false
     default: ""
   access:
-    description: "public or restricted"
+    description: "public or restricted; empty leaves each package's publishConfig.access in charge"
     required: false
-    default: "public"
+    default: ""
   provenance:
     description: "auto (provenance on public repositories, where npm accepts it), true or false"
     required: false
@@ -51,8 +51,11 @@ outputs:
     description: "Packages skipped because their version is already on npm (space separated name@version)"
     value: ${{ steps.pack.outputs.skipped }}
   published:
-    description: "JSON array of {name, version} this run published"
+    description: "JSON array of {name, version} this run uploaded"
     value: ${{ steps.publish.outputs.published }}
+  released:
+    description: "JSON array of {name, version} confirmed on npm: uploaded by this run or an earlier, interrupted one"
+    value: ${{ steps.publish.outputs.released }}
   pack-directory:
     description: "Directory holding the tarballs and plan.json"
     value: ${{ steps.dir.outputs.path }}
@@ -90,6 +93,7 @@ runs:
         INPUT_PACKAGE_MANAGER: ${{ inputs.package-manager }}
         INPUT_SKIP_PUBLISHED: ${{ inputs.skip-published }}
         INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        INPUT_DIST_TAG: ${{ inputs.dist-tag }}
       run: node "$ACTION_PATH/publish.cjs" pack
 
     - name: Publish

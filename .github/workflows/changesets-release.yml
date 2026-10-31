@@ -5,7 +5,8 @@ name: changesets release
 # once that pull request has merged and no changesets are pending, publishes the new versions:
 #
 #   version   opens the version pull request with a token from github-sts (GITHUB_TOKEN cannot
-#             open pull requests that trigger CI).
+#             open pull requests that trigger CI). It and release run in github-environment, so
+#             the STS policy can require that environment and pack can never mint a token.
 #   pack      installs, builds and packs the unpublished versions. It runs the repository's code
 #             and has no npm publish rights.
 #   publish   in the npm environment, the only job npm trusts: checks the packed tarballs against
@@ -57,11 +58,21 @@ on:
         required: false
         type: string
         default: auto
+      access:
+        description: public or restricted. Empty leaves each package's publishConfig.access in charge.
+        required: false
+        type: string
+        default: ""
       environment:
-        description: Environment of the publish job. npm's trusted publisher should name it.
+        description: Environment of the publish job, the only job in it. npm's trusted publisher must name it.
         required: false
         type: string
         default: npm
+      github-environment:
+        description: Environment of the version and release jobs, which mint github-sts tokens. The STS policy's subject must name it.
+        required: false
+        type: string
+        default: changesets
       sts-policy:
         description: github-sts policy in the calling repository that grants contents and pull_requests write.
         required: false
@@ -79,7 +90,7 @@ on:
         default: true
     outputs:
       published:
-        description: JSON array of the {name, version} published by this run.
+        description: JSON array of the {name, version} uploaded by this run.
         value: ${{ jobs.publish.outputs.published }}
 
 permissions: {}
@@ -88,6 +99,7 @@ jobs:
   version:
     name: Version pull request
     runs-on: ubuntu-latest
+    environment: ${{ inputs.github-environment }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -112,6 +124,10 @@ jobs:
       - name: Set up pnpm
         if: hashFiles('pnpm-lock.yaml') != ''
         uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - name: Set up bun
+        if: inputs.package-manager == 'bun' || hashFiles('bun.lock', 'bun.lockb') != ''
+        uses: tempoxyz/gh-actions/vendor/oven-sh/setup-bun@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -155,6 +171,10 @@ jobs:
         if: hashFiles('pnpm-lock.yaml') != ''
         uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
 
+      - name: Set up bun
+        if: inputs.package-manager == 'bun' || hashFiles('bun.lock', 'bun.lockb') != ''
+        uses: tempoxyz/gh-actions/vendor/oven-sh/setup-bun@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node-version }}
@@ -177,6 +197,7 @@ jobs:
           mode: pack
           packages: ${{ inputs.packages }}
           package-manager: ${{ inputs.package-manager }}
+          dist-tag: ${{ inputs.dist-tag }}
           pack-directory: ${{ runner.temp }}/npm-pack
 
       - name: Upload packs
@@ -204,6 +225,7 @@ jobs:
       id-token: write
     outputs:
       published: ${{ steps.publish.outputs.published }}
+      released: ${{ steps.publish.outputs.released }}
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
@@ -224,12 +246,16 @@ jobs:
           mode: publish
           pack-directory: ${{ runner.temp }}/npm-pack
           dist-tag: ${{ inputs.dist-tag }}
+          access: ${{ inputs.access }}
           provenance: ${{ inputs.provenance }}
 
   release:
     name: Tag and release
     needs: publish
-    if: inputs.github-releases && needs.publish.outputs.published != '[]' && needs.publish.outputs.published != ''
+    environment: ${{ inputs.github-environment }}
+    # Tags every version confirmed on npm, including ones an interrupted earlier run uploaded, so
+    # rerunning the failed jobs completes the tags and releases too.
+    if: inputs.github-releases && needs.publish.outputs.released != '[]' && needs.publish.outputs.released != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -255,7 +281,7 @@ jobs:
       - name: Create tags and releases
         env:
           GH_TOKEN: ${{ steps.sts.outputs.token }}
-          PUBLISHED: ${{ needs.publish.outputs.published }}
+          PUBLISHED: ${{ needs.publish.outputs.released }}
           PLAN: ${{ runner.temp }}/npm-pack/plan.json
         run: |
           set -euo pipefail
@@ -263,9 +289,9 @@ jobs:
             const fs = require("fs");
             const plan = JSON.parse(fs.readFileSync(process.env.PLAN, "utf8"));
             const published = JSON.parse(process.env.PUBLISHED);
-            const single = plan.workspaceSize === 1;
+            const single = plan.singlePackage === true;
             for (const p of published) {
-              const entry = plan.packages.find((e) => e.name === p.name && e.version === p.version) || {};
+              const entry = [...plan.packages, ...(plan.onNpm || [])].find((e) => e.name === p.name && e.version === p.version) || {};
               const tag = single ? "v" + p.version : p.name + "@" + p.version;
               fs.writeFileSync(process.env.RUNNER_TEMP + "/notes-" + Buffer.from(tag).toString("hex"), entry.notes || "");
               console.log(tag);

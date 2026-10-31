@@ -57,18 +57,40 @@ function detectPackageManager(root, requested) {
   return "npm";
 }
 
-// Directories of the workspace's packages (the root included), found with the package manager.
+// True when root is a workspace (pnpm-workspace.yaml or a workspaces field), not a single package.
+function isWorkspace(root) {
+  if (fs.existsSync(path.join(root, "pnpm-workspace.yaml"))) return true;
+  const file = path.join(root, "package.json");
+  return fs.existsSync(file) && Boolean(readJson(file).workspaces);
+}
+
+// Directories of the packages to consider: the workspace's members, or the root of a single
+// package. A workspace root is never published, as with changeset publish.
 function discoverPackages(root, pm) {
+  if (!isWorkspace(root)) return [root];
+  let dirs;
   if (pm === "pnpm") {
     const res = run("pnpm", ["ls", "-r", "--depth", "-1", "--json"], { cwd: root });
     if (res.status !== 0) throw new Error("pnpm ls failed: " + res.stderr);
-    return JSON.parse(res.stdout).map((p) => p.path);
+    dirs = JSON.parse(res.stdout).map((p) => p.path);
+  } else {
+    const res = run("npm", ["query", ".workspace", "--json"], { cwd: root });
+    if (res.status !== 0) throw new Error("npm query failed: " + res.stderr);
+    dirs = JSON.parse(res.stdout).map((p) => path.resolve(root, p.location || p.path));
   }
-  const rootPkg = readJson(path.join(root, "package.json"));
-  if (!rootPkg.workspaces) return [root];
-  const res = run("npm", ["query", ".workspace", "--json"], { cwd: root });
-  if (res.status !== 0) throw new Error("npm query failed: " + res.stderr);
-  return [root, ...JSON.parse(res.stdout).map((p) => path.resolve(root, p.location || p.path))];
+  return dirs.filter((d) => path.resolve(d) !== path.resolve(root));
+}
+
+function isPrerelease(version) {
+  return /^\d+\.\d+\.\d+-/.test(version);
+}
+
+// The dist-tag Changesets pre mode publishes prereleases under (.changeset/pre.json), or "".
+function changesetsPreTag(root) {
+  const file = path.join(root, ".changeset", "pre.json");
+  if (!fs.existsSync(file)) return "";
+  const pre = readJson(file);
+  return pre.mode === "pre" && typeof pre.tag === "string" ? pre.tag : "";
 }
 
 // Orders packages so each comes after the selected packages it depends on at run time
@@ -227,50 +249,69 @@ async function pack() {
   const dest = path.resolve(process.env.PACK_DIRECTORY);
   const skipPublished = parseBool("skip-published", process.env.INPUT_SKIP_PUBLISHED);
   const dryRun = parseBool("dry-run", process.env.INPUT_DRY_RUN);
+  const distTag = String(process.env.INPUT_DIST_TAG || "").trim();
+  if (distTag && !TAG_RE.test(distTag)) throw new Error("invalid dist-tag '" + distTag + "'");
+  const preTag = changesetsPreTag(root);
+  if (preTag && !TAG_RE.test(preTag)) throw new Error("invalid tag in .changeset/pre.json: '" + preTag + "'");
   const pm = detectPackageManager(root, process.env.INPUT_PACKAGE_MANAGER);
   const dirs = splitList(process.env.INPUT_PACKAGES);
   const pkgs = selectPackages(root, dirs.length ? dirs : discoverPackages(root, pm));
   fs.mkdirSync(dest, { recursive: true });
 
   const plan = [];
-  const skipped = [];
+  const onNpm = [];
   for (const pkg of pkgs) {
+    const notes = changelogSection(pkg.dir, pkg.version);
     if (skipPublished && !dryRun && (await publishedVersions(pkg.name)).has(pkg.version)) {
-      skipped.push(pkg.name + "@" + pkg.version);
+      onNpm.push({ name: pkg.name, version: pkg.version, notes });
       continue;
     }
+    // A prerelease must never land on latest: use the dist-tag given, else Changesets' pre tag.
+    const tag = distTag || (isPrerelease(pkg.version) ? preTag : "");
+    if (isPrerelease(pkg.version) && !tag) {
+      throw new Error(pkg.name + "@" + pkg.version + " is a prerelease, but no dist-tag is set and .changeset/pre.json names none; it would be published as latest");
+    }
     const file = packOne(pkg, pm, dest);
-    const entry = { name: pkg.name, version: pkg.version, file, notes: changelogSection(pkg.dir, pkg.version) };
+    const entry = { name: pkg.name, version: pkg.version, file, tag, notes };
     checkTarball(path.join(dest, file), entry);
     plan.push(entry);
   }
-  fs.writeFileSync(path.join(dest, "plan.json"), JSON.stringify({ packages: plan, workspaceSize: pkgs.length }, null, 2));
-  console.log("To publish: " + (plan.map((p) => p.name + "@" + p.version).join(" ") || "(nothing)"));
+  // Tags follow Changesets: v<version> for a single package, <name>@<version> in a workspace.
+  fs.writeFileSync(path.join(dest, "plan.json"), JSON.stringify({ packages: plan, onNpm, singlePackage: !isWorkspace(root) }, null, 2));
+  const skipped = onNpm.map((p) => p.name + "@" + p.version);
+  console.log("To publish: " + (plan.map((p) => p.name + "@" + p.version + (p.tag ? " (" + p.tag + ")" : "")).join(" ") || "(nothing)"));
   if (skipped.length) console.log("Already on npm, skipped: " + skipped.join(" "));
   setOutput("packages", JSON.stringify(plan.map(({ name, version }) => ({ name, version }))));
   setOutput("skipped", skipped.join(" "));
-  summary("### npm publish plan\n\n" + (plan.length ? plan.map((p, i) => (i + 1) + ". \`" + p.name + "@" + p.version + "\`").join("\n") : "Nothing to publish.") +
-    (skipped.length ? "\n\nAlready on npm: " + skipped.map((s) => "\`" + s + "\`").join(", ") : ""));
+  summary("### npm publish plan\n\n" + (plan.length ? plan.map((p, i) => (i + 1) + ". `" + p.name + "@" + p.version + "`" + (p.tag ? " under `" + p.tag + "`" : "")).join("\n") : "Nothing to publish.") +
+    (skipped.length ? "\n\nAlready on npm: " + skipped.map((s) => "`" + s + "`").join(", ") : ""));
 }
 
 async function publish() {
   const dir = path.resolve(process.env.PACK_DIRECTORY);
   const dryRun = parseBool("dry-run", process.env.INPUT_DRY_RUN);
   const tag = String(process.env.INPUT_DIST_TAG || "").trim();
-  const access = String(process.env.INPUT_ACCESS || "public").trim();
+  // Empty leaves each package's publishConfig.access (or npm's default) in charge.
+  const access = String(process.env.INPUT_ACCESS || "").trim();
   const provenance = String(process.env.INPUT_PROVENANCE || "auto").trim();
   if (tag && !TAG_RE.test(tag)) throw new Error("invalid dist-tag '" + tag + "'");
-  if (!["public", "restricted"].includes(access)) throw new Error("access must be public or restricted");
+  if (access && !["public", "restricted"].includes(access)) throw new Error("access must be public, restricted or empty");
   if (!["auto", "true", "false"].includes(provenance)) throw new Error("provenance must be auto, true or false");
 
-  const { packages: plan } = readJson(path.join(dir, "plan.json"));
+  const { packages: plan, onNpm = [] } = readJson(path.join(dir, "plan.json"));
   for (const entry of plan) {
     if (!NAME_RE.test(entry.name) || !VERSION_RE.test(entry.version) || path.basename(entry.file) !== entry.file) throw new Error("invalid plan entry " + JSON.stringify(entry));
+    if (entry.tag && !TAG_RE.test(entry.tag)) throw new Error("invalid plan tag " + JSON.stringify(entry));
+    if (isPrerelease(entry.version) && !(tag || entry.tag)) throw new Error(entry.name + "@" + entry.version + " is a prerelease and has no dist-tag; it would be published as latest");
     checkTarball(path.join(dir, entry.file), entry);
   }
+  // Every planned version confirmed on npm, uploaded now or earlier (a resumed release), plus the
+  // versions pack found already there: the versions a release step tags.
+  const released = onNpm.map(({ name, version }) => ({ name, version }));
   if (!plan.length) {
     console.log("Nothing to publish.");
     setOutput("published", "[]");
+    setOutput("released", JSON.stringify(released));
     return;
   }
 
@@ -284,8 +325,8 @@ async function publish() {
   }
 
   const isPublic = process.env.REPOSITORY_VISIBILITY === "public";
-  const common = ["--access", access, "--ignore-scripts"];
-  if (tag) common.push("--tag", tag);
+  const common = ["--ignore-scripts"];
+  if (access) common.push("--access", access);
   if (provenance === "true" || (provenance === "auto" && isPublic)) common.push("--provenance");
   else common.push("--provenance=false");
   if (dryRun) common.push("--dry-run");
@@ -297,38 +338,45 @@ async function publish() {
 
   const published = [];
   for (const entry of plan) {
+    const args = ["publish", path.join(dir, entry.file), ...common];
+    if (tag || entry.tag) args.push("--tag", tag || entry.tag);
     if (!dryRun && (await publishedVersions(entry.name)).has(entry.version)) {
       console.log("::notice::" + entry.name + "@" + entry.version + " is already on npm");
+      released.push({ name: entry.name, version: entry.version });
       continue;
     }
     for (let attempt = 1; ; attempt++) {
       console.log("::group::npm publish " + entry.name + "@" + entry.version + (attempt > 1 ? " (attempt " + attempt + ")" : ""));
-      const res = run("npm", ["publish", path.join(dir, entry.file), ...common], { env });
+      const res = run("npm", args, { env });
       process.stdout.write(res.stdout);
       process.stdout.write(res.stderr);
       console.log("::endgroup::");
       if (res.status === 0) {
         published.push({ name: entry.name, version: entry.version });
+        released.push({ name: entry.name, version: entry.version });
         break;
       }
       const out = res.stdout + res.stderr;
       if (/previously staged version|cannot publish over the previously published versions?/i.test(out)) {
         console.log("::notice::" + entry.name + "@" + entry.version + " is already published or staged on npm");
+        released.push({ name: entry.name, version: entry.version });
         break;
       }
       const transient = /\b(E5\d\d|ETIMEDOUT|ECONNRESET|EAI_AGAIN|E429)\b/.test(out);
       if (!transient || attempt >= 4) {
         setOutput("published", JSON.stringify(published));
+        setOutput("released", JSON.stringify(released));
         throw new Error("publishing " + entry.name + "@" + entry.version + " failed");
       }
       await sleep(15000 * attempt);
     }
   }
   setOutput("published", JSON.stringify(published));
+  setOutput("released", JSON.stringify(dryRun ? [] : released));
   summary((dryRun ? "Dry run, would publish: " : "Published: ") + (published.map((p) => "\`" + p.name + "@" + p.version + "\`").join(", ") || "nothing"));
 }
 
-module.exports = { splitList, orderPackages, selectPackages, publishedVersions, changelogSection, checkTarball, supportsTrustedPublishing, storedTokenFiles, detectPackageManager };
+module.exports = { splitList, orderPackages, selectPackages, discoverPackages, isWorkspace, changesetsPreTag, publishedVersions, changelogSection, checkTarball, supportsTrustedPublishing, storedTokenFiles, detectPackageManager };
 
 if (require.main === module) {
   const mode = process.argv[2];

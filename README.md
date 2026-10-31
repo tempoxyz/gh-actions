@@ -216,8 +216,10 @@ Releases a JavaScript workspace with [Changesets](https://github.com/changesets/
 push to the default branch it opens or updates the version pull request, or, once that pull
 request has merged, publishes the new versions with [`npm-publish`](actions/npm-publish), then
 tags them and creates their GitHub releases from their CHANGELOG sections. Building and packing
-run in a job with no publish rights; only the `publish` job, in the `npm` environment, can
-publish, and it runs none of the repository's code.
+run in a job with no publish rights and no environment; only the `publish` job, in the `npm`
+environment, can publish, and it runs none of the repository's code. The `version` and `release`
+jobs, which mint `github-sts` tokens, run in a second environment (`changesets`), so neither npm
+nor the STS trusts the job that builds.
 
 ```yaml
 # .github/workflows/release.yml
@@ -239,19 +241,23 @@ jobs:
 
 Inputs: `node-version` (`24`), `install-command` (`pnpm install --frozen-lockfile --ignore-scripts`),
 `version-script` (`pnpm changeset version`), `build-command`, `packages`, `package-manager`,
-`dist-tag`, `provenance`, `environment` (`npm`), `sts-policy` (`changesets`), `pr-title` and
-`github-releases` (`true`). Output: `published`.
+`dist-tag` (prereleases default to the tag in `.changeset/pre.json`), `access` (empty keeps each package's
+`publishConfig.access`), `provenance`, `environment` (`npm`), `github-environment` (`changesets`),
+`sts-policy` (`changesets`), `pr-title` and `github-releases` (`true`). Output: `published`. pnpm and bun
+are set up from their lockfiles.
 
 Setup in the calling repository:
 
 - **npm:** for each package, add a GitHub Actions trusted publisher naming the repository, the
-  **calling** workflow file (`release.yml` above) and the environment `npm`, then disallow
-  tokens under Publishing access. Create the `npm` environment, limited to the default branch.
+  **calling** workflow file (`release.yml` above) and the environment `npm`. The environment is
+  required: without it the pack job, which runs build code, could publish. Then disallow tokens
+  under Publishing access.
+- **Environments:** create `npm` and `changesets`, each limited to the default branch.
 - **github-sts:** `.github/sts/changesets.sts.yaml` must accept this reusable workflow, since the
   OIDC token's `job_workflow_ref` names it, not the caller:
 
   ```yaml
-  subject: repo:<owner>@<owner-id>/<repo>@<repo-id>:ref:refs/heads/main
+  subject: repo:<owner>@<owner-id>/<repo>@<repo-id>:environment:changesets
   claim_pattern:
     workflow_ref: <owner>/<repo>/\.github/workflows/release\.yml@refs/heads/main
     job_workflow_ref: tempoxyz/gh-actions/\.github/workflows/changesets-release\.yml@.+
@@ -260,7 +266,11 @@ Setup in the calling repository:
     pull_requests: write
   ```
 
+  The `environment:changesets` subject is what keeps the pack job, which has no environment,
+  from minting a token.
 - Drop `changeset publish` from the repository's scripts: this workflow publishes and tags.
+  If a publish fails partway, rerun the failed jobs: versions already on npm count as released,
+  so the release job still tags them.
 
 ### `pr-audit`
 

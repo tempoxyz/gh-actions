@@ -60,7 +60,7 @@ function workspace(pm) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-" + pm + "-"));
   const write = (rel, data) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), typeof data === "string" ? data : JSON.stringify(data, null, 2)); };
   const spec = pm === "pnpm" ? "workspace:^" : "1.2.3";
-  write("package.json", { name: "root", private: true, ...(pm === "npm" ? { workspaces: ["packages/*"] } : {}) });
+  write("package.json", { name: "root", version: "0.0.0", ...(pm === "npm" ? { workspaces: ["packages/*"] } : {}) });
   if (pm === "pnpm") write("pnpm-workspace.yaml", "packages:\n  - packages/*\n");
   write("packages/zz-core/package.json", { name: "@tempo-test/zz-core", version: "1.2.3", license: "MIT" });
   write("packages/zz-core/index.js", "module.exports = 1;\n");
@@ -147,4 +147,68 @@ test("action passes inputs only through env", () => {
   for (const block of action.split(/\n\s+run: /).slice(1)) assert.doesNotMatch(block.split("\n")[0], /\$\{\{/);
   assert.doesNotMatch(action, /secrets\.|NPM_TOKEN: \$\{\{/);
   assert.match(action, /RUNNER_ENVIRONMENT: \$\{\{ runner\.environment \}\}/);
+});
+
+test("a workspace root is never planned, even when not private", { skip: !has("pnpm") }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-root-"));
+  try {
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "repo-root", version: "1.0.0" }));
+    fs.writeFileSync(path.join(dir, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+    fs.mkdirSync(path.join(dir, "packages", "lib"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "packages", "lib", "package.json"), JSON.stringify({ name: "lib", version: "1.0.0" }));
+    assert.equal(spawnSync("pnpm", ["install"], { cwd: dir }).status, 0);
+    assert.ok(lib.isWorkspace(dir));
+    assert.deepEqual(lib.discoverPackages(dir, "pnpm").map((d) => path.basename(d)), ["lib"]);
+    const single = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-single-"));
+    fs.writeFileSync(path.join(single, "package.json"), JSON.stringify({ name: "single", version: "1.0.0" }));
+    assert.ok(!lib.isWorkspace(single));
+    assert.deepEqual(lib.discoverPackages(single, "npm"), [single]);
+    fs.rmSync(single, { recursive: true, force: true });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("prereleases use the Changesets pre tag and are refused without one", { skip: !has("npm") }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-pre-mode-"));
+  try {
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "@tempo-test/beta-pkg", version: "1.2.0-beta.0", publishConfig: { access: "restricted" } }));
+    const out = path.join(dir, "o");
+    const run = (extra) => {
+      fs.writeFileSync(out, "");
+      return spawnSync("node", [script, "pack"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: out, PACK_DIRECTORY: path.join(dir, "out"), INPUT_SKIP_PUBLISHED: "false", INPUT_DRY_RUN: "false", INPUT_DIST_TAG: "", ...extra } });
+    };
+    const refused = run({});
+    assert.equal(refused.status, 1);
+    assert.match(refused.stdout, /prerelease, but no dist-tag/);
+    fs.mkdirSync(path.join(dir, ".changeset"));
+    fs.writeFileSync(path.join(dir, ".changeset", "pre.json"), JSON.stringify({ mode: "pre", tag: "beta" }));
+    assert.equal(lib.changesetsPreTag(dir), "beta");
+    const packed = run({});
+    assert.equal(packed.status, 0, packed.stdout + packed.stderr);
+    const plan = JSON.parse(fs.readFileSync(path.join(dir, "out", "plan.json"), "utf8"));
+    assert.equal(plan.packages[0].tag, "beta");
+    assert.equal(plan.singlePackage, true);
+    // No --access unless asked: the dry run must not override publishConfig.access.
+    const dry = spawnSync("node", [script, "publish"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: out, PACK_DIRECTORY: path.join(dir, "out"), INPUT_DRY_RUN: "true", INPUT_ACCESS: "", INPUT_PROVENANCE: "false", INPUT_DIST_TAG: "" } });
+    assert.equal(dry.status, 0, dry.stdout + dry.stderr);
+    assert.match(dry.stdout + dry.stderr, /restricted access/);
+    assert.match(dry.stdout + dry.stderr, /tag beta/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("released includes versions found already on npm", { skip: !has("npm") }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-released-"));
+  try {
+    fs.writeFileSync(path.join(dir, "plan.json"), JSON.stringify({ packages: [], onNpm: [{ name: "a", version: "1.0.0", notes: "" }], singlePackage: false }));
+    const out = path.join(dir, "o");
+    fs.writeFileSync(out, "");
+    const res = spawnSync("node", [script, "publish"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: out, PACK_DIRECTORY: dir, INPUT_DRY_RUN: "false" } });
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(fs.readFileSync(out, "utf8"), /released<<\S+\n\[\{"name":"a","version":"1\.0\.0"\}\]/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

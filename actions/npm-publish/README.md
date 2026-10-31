@@ -4,7 +4,7 @@ Publish npm packages from CI with [npm trusted publishing](https://docs.npmjs.co
 npm exchanges the job's GitHub OIDC token for a one-time publish token, so no `NPM_TOKEN` exists to
 leak.
 
-1. **Pack:** finds the workspace's non-private packages (or the `packages` you list), orders them
+1. **Pack:** finds the workspace's non-private packages (never the workspace root) (or the `packages` you list), orders them
    so each comes after the packages it depends on at run time, skips versions already on npm, and
    packs each with the repository's package manager (pnpm and bun rewrite `workspace:`
    dependencies). Each tarball is checked: its manifest must hold exactly the planned name and
@@ -29,15 +29,18 @@ repositories, the only ones npm accepts it from.
 | `package-manager` | `auto`, `npm`, `pnpm` or `bun` | `auto` |
 | `mode` | `pack-and-publish`, `pack` or `publish` (see below) | `pack-and-publish` |
 | `pack-directory` | Where tarballs and `plan.json` go, or (for `publish`) come from | `$RUNNER_TEMP/npm-publish` |
-| `dist-tag` | Dist-tag to publish under | npm's default, `latest` |
-| `access` | `public` or `restricted` | `public` |
+| `dist-tag` | Dist-tag to publish under | `latest`; for prereleases the tag in `.changeset/pre.json` |
+| `access` | `public` or `restricted`. Empty keeps each package's `publishConfig.access` | `""` |
 | `provenance` | `auto`, `true` or `false` | `auto` |
 | `skip-published` | Skip versions already on npm | `true` |
 | `dry-run` | Pack and run `npm publish --dry-run` without authenticating | `false` |
 
 ## Outputs
 
-`packages` and `published` (JSON arrays of `{name, version}`), `skipped` and `pack-directory`.
+`packages`, `published` (uploaded by this run) and `released` (every planned version confirmed on npm,
+including ones an interrupted earlier run uploaded), as JSON arrays of `{name, version}`; `skipped`
+and `pack-directory`. A prerelease version with no dist-tag is refused rather than published as
+`latest`.
 
 ## Usage
 
