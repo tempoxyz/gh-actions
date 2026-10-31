@@ -269,8 +269,8 @@ Setup in the calling repository:
   The `environment:changesets` subject is what keeps the pack job, which has no environment,
   from minting a token.
 - Drop `changeset publish` from the repository's scripts: this workflow publishes and tags.
-  If a publish fails partway, rerun the failed jobs: versions already on npm count as released,
-  so the release job still tags them.
+  If a publish fails partway, rerun the failed jobs (not the whole workflow): the publish job then
+  counts the versions its first attempt uploaded as released, so the release job still tags them.
 
 ### `pr-audit`
 

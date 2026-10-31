@@ -57,11 +57,33 @@ function detectPackageManager(root, requested) {
   return "npm";
 }
 
-// True when root is a workspace (pnpm-workspace.yaml or a workspaces field), not a single package.
+// True when root is a workspace with member packages (a non-empty packages list in
+// pnpm-workspace.yaml, or a workspaces field), not a single package. pnpm-workspace.yaml may hold
+// only settings (onlyBuiltDependencies and the like), which leaves a single-package repository.
 function isWorkspace(root) {
-  if (fs.existsSync(path.join(root, "pnpm-workspace.yaml"))) return true;
+  const yaml = path.join(root, "pnpm-workspace.yaml");
+  if (fs.existsSync(yaml) && pnpmWorkspacePackages(fs.readFileSync(yaml, "utf8")).length) return true;
   const file = path.join(root, "package.json");
-  return fs.existsSync(file) && Boolean(readJson(file).workspaces);
+  if (!fs.existsSync(file)) return false;
+  const ws = readJson(file).workspaces;
+  const list = Array.isArray(ws) ? ws : ws && Array.isArray(ws.packages) ? ws.packages : [];
+  return list.length > 0;
+}
+
+// The globs under the top-level packages key of pnpm-workspace.yaml (block or flow list).
+function pnpmWorkspacePackages(text) {
+  const lines = text.split("\n");
+  const i = lines.findIndex((l) => /^packages\s*:/.test(l));
+  if (i < 0) return [];
+  const inline = lines[i].replace(/^packages\s*:\s*/, "").replace(/\s+#.*$/, "").trim();
+  if (inline.startsWith("[")) return inline.replace(/^\[|\]$/g, "").split(",").map((x) => x.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean);
+  const out = [];
+  for (const line of lines.slice(i + 1)) {
+    if (/^\S/.test(line)) break;
+    const m = line.match(/^\s+-\s*['"]?([^'"#\s]+)/);
+    if (m) out.push(m[1]);
+  }
+  return out;
 }
 
 // Directories of the packages to consider: the workspace's members, or the root of a single
@@ -305,9 +327,10 @@ async function publish() {
     if (isPrerelease(entry.version) && !(tag || entry.tag)) throw new Error(entry.name + "@" + entry.version + " is a prerelease and has no dist-tag; it would be published as latest");
     checkTarball(path.join(dir, entry.file), entry);
   }
-  // Every planned version confirmed on npm, uploaded now or earlier (a resumed release), plus the
-  // versions pack found already there: the versions a release step tags.
-  const released = onNpm.map(({ name, version }) => ({ name, version }));
+  // Every planned version confirmed on npm, uploaded now or by an interrupted run of this same
+  // publish job (a rerun of the failed jobs): the versions a release step tags. Versions pack found
+  // already on npm are left out, so unchanged siblings never get a tag on this commit.
+  const released = [];
   if (!plan.length) {
     console.log("Nothing to publish.");
     setOutput("published", "[]");
@@ -376,7 +399,7 @@ async function publish() {
   summary((dryRun ? "Dry run, would publish: " : "Published: ") + (published.map((p) => "\`" + p.name + "@" + p.version + "\`").join(", ") || "nothing"));
 }
 
-module.exports = { splitList, orderPackages, selectPackages, discoverPackages, isWorkspace, changesetsPreTag, publishedVersions, changelogSection, checkTarball, supportsTrustedPublishing, storedTokenFiles, detectPackageManager };
+module.exports = { splitList, orderPackages, selectPackages, discoverPackages, isWorkspace, pnpmWorkspacePackages, changesetsPreTag, publishedVersions, changelogSection, checkTarball, supportsTrustedPublishing, storedTokenFiles, detectPackageManager };
 
 if (require.main === module) {
   const mode = process.argv[2];

@@ -38,7 +38,7 @@ repositories, the only ones npm accepts it from.
 ## Outputs
 
 `packages`, `published` (uploaded by this run) and `released` (every planned version confirmed on npm,
-including ones an interrupted earlier run uploaded), as JSON arrays of `{name, version}`; `skipped`
+including ones an interrupted attempt of the same publish job uploaded; not versions pack skipped), as JSON arrays of `{name, version}`; `skipped`
 and `pack-directory`. A prerelease version with no dist-tag is refused rather than published as
 `latest`.
 

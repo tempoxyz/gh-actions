@@ -199,7 +199,7 @@ test("prereleases use the Changesets pre tag and are refused without one", { ski
   }
 });
 
-test("released includes versions found already on npm", { skip: !has("npm") }, () => {
+test("released leaves out versions pack found already on npm", { skip: !has("npm") }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-released-"));
   try {
     fs.writeFileSync(path.join(dir, "plan.json"), JSON.stringify({ packages: [], onNpm: [{ name: "a", version: "1.0.0", notes: "" }], singlePackage: false }));
@@ -207,7 +207,22 @@ test("released includes versions found already on npm", { skip: !has("npm") }, (
     fs.writeFileSync(out, "");
     const res = spawnSync("node", [script, "publish"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: out, PACK_DIRECTORY: dir, INPUT_DRY_RUN: "false" } });
     assert.equal(res.status, 0, res.stdout + res.stderr);
-    assert.match(fs.readFileSync(out, "utf8"), /released<<\S+\n\[\{"name":"a","version":"1\.0\.0"\}\]/);
+    assert.match(fs.readFileSync(out, "utf8"), /released<<\S+\n\[\]\n/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a settings-only pnpm-workspace.yaml leaves a single package", () => {
+  assert.deepEqual(lib.pnpmWorkspacePackages("onlyBuiltDependencies:\n  - esbuild\n"), []);
+  assert.deepEqual(lib.pnpmWorkspacePackages("packages:\n  - 'packages/*'\n  - apps/web # app\nonlyBuiltDependencies:\n  - x\n"), ["packages/*", "apps/web"]);
+  assert.deepEqual(lib.pnpmWorkspacePackages("packages: [packages/*, 'tools/*']\n"), ["packages/*", "tools/*"]);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-settings-"));
+  try {
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "single", version: "1.0.0" }));
+    fs.writeFileSync(path.join(dir, "pnpm-workspace.yaml"), "onlyBuiltDependencies:\n  - esbuild\n");
+    assert.ok(!lib.isWorkspace(dir));
+    assert.deepEqual(lib.discoverPackages(dir, "pnpm"), [dir]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
