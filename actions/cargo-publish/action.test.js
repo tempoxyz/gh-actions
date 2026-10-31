@@ -56,6 +56,21 @@ test("publishes versioned dev-dependencies first, unless that would form a cycle
   assert.deepEqual(lib.planPackages(meta(core, pkg("testkit", [["core"]]))).map((p) => p.name), ["core", "testkit"]);
 });
 
+test("drops dev-dependency edges only on a cycle", () => {
+  const ver = (dep) => ({ name: dep, kind: "dev", path: "/ws/" + dep, req: "^1.0.0" });
+  // aa dev-depends on new crate zz (no cycle); core/testkit form a dev cycle. aa sorts first, but
+  // must still wait for zz.
+  const aa = pkg("aa"); aa.dependencies.push(ver("zz"));
+  const core = pkg("core"); core.dependencies.push(ver("testkit"));
+  const order = lib.planPackages(meta(aa, pkg("zz", [["core"]]), core, pkg("testkit", [["core"]]))).map((p) => p.name);
+  assert.ok(order.indexOf("zz") < order.indexOf("aa"), order.join(","));
+  assert.ok(order.indexOf("core") < order.indexOf("testkit"), order.join(","));
+  // Two crates dev-depending on each other: one goes first.
+  const x = pkg("x"); x.dependencies.push(ver("y"));
+  const y = pkg("y"); y.dependencies.push(ver("x"));
+  assert.deepEqual(lib.planPackages(meta(x, y)).map((p) => p.name), ["x", "y"]);
+});
+
 test("reports dependency cycles", () => {
   assert.throws(() => lib.planPackages(meta(pkg("a", [["b"]]), pkg("b", [["a"]]))), /cycle between: a, b/);
 });
@@ -89,6 +104,7 @@ test("classifies only crates.io's registry answer, never build output", () => {
   assert.equal(lib.alreadyUploaded(build, "foo", "1.0.429"), false);
   assert.equal(lib.registryError(build), "");
   assert.ok(lib.alreadyUploaded("error: crate foo@1.0.0 already exists on crates.io index", "foo", "1.0.0"));
+  assert.ok(lib.alreadyUploaded("\x1b[1m\x1b[91merror\x1b[0m\x1b[1m:\x1b[0m crate foo@1.0.0 already exists on crates.io index", "foo", "1.0.0"));
   assert.ok(!lib.alreadyUploaded("error: crate foo@1.0.0 already exists on crates.io index", "foo-bar", "1.0.0"));
   assert.ok(lib.alreadyUploaded("Caused by:\n  the remote server responded with an error (status 400 Bad Request): crate version `1.0.0` is already uploaded", "foo", "1.0.0"));
   assert.ok(!lib.alreadyUploaded("Caused by:\n  the remote server responded with an error (status 400 Bad Request): missing description", "foo", "1.0.0"));

@@ -112,10 +112,13 @@ function planPackages(metadata, { packages = [], exclude = [] } = {}) {
   while (remaining.size) {
     let ready = [...remaining].filter(([name, d]) => d.size === 0 && remainingSoft.get(name).size === 0).map(([name]) => name);
     if (!ready.length) {
-      // Only dev-dependency edges (or a real cycle) block progress: fall back to hard edges.
-      ready = [...remaining].filter(([, d]) => d.size === 0).map(([name]) => name);
-      if (!ready.length) throw new Error("dependency cycle between: " + [...remaining.keys()].sort().join(", "));
-      ready = [ready.sort()[0]];
+      // Every crate waits on something. Break a cycle that includes dev-dependency edges: pick a
+      // strongly connected component with no edges leaving it (so its crates wait only on each
+      // other), take its first crate with no normal/build dependencies left, and drop that crate's
+      // dev-dependency edges, which all stay inside the component and so all lie on a cycle.
+      const pick = breakSoftCycle(remaining, remainingSoft);
+      if (!pick) throw new Error("dependency cycle between: " + [...remaining.keys()].sort().join(", "));
+      ready = [pick];
     }
     for (const name of ready.sort()) {
       order.push(name);
@@ -126,6 +129,37 @@ function planPackages(metadata, { packages = [], exclude = [] } = {}) {
     }
   }
   return order.map((name) => ({ name, version: byName.get(name).version }));
+}
+
+// Tarjan's strongly connected components over the remaining hard and soft edges. Returns the
+// crate whose soft edges to drop, or null when only normal/build dependencies form the cycle.
+function breakSoftCycle(hard, soft) {
+  const edges = (n) => [...hard.get(n), ...soft.get(n)];
+  const index = new Map(), low = new Map(), onStack = new Set(), stack = [], comps = [];
+  let next = 0;
+  const visit = (v) => {
+    index.set(v, next); low.set(v, next); next++;
+    stack.push(v); onStack.add(v);
+    for (const w of edges(v)) {
+      if (!index.has(w)) { visit(w); low.set(v, Math.min(low.get(v), low.get(w))); }
+      else if (onStack.has(w)) low.set(v, Math.min(low.get(v), index.get(w)));
+    }
+    if (low.get(v) === index.get(v)) {
+      const comp = new Set();
+      let w;
+      do { w = stack.pop(); onStack.delete(w); comp.add(w); } while (w !== v);
+      comps.push(comp);
+    }
+  };
+  for (const v of [...hard.keys()].sort()) if (!index.has(v)) visit(v);
+  const candidates = [];
+  for (const comp of comps) {
+    const sink = [...comp].every((n) => edges(n).every((w) => comp.has(w)));
+    if (!sink || comp.size < 2) continue;
+    const free = [...comp].filter((n) => hard.get(n).size === 0).sort();
+    if (free.length) candidates.push(free[0]);
+  }
+  return candidates.sort()[0] || null;
 }
 
 async function publishedVersions(name, fetchImpl = fetch) {
@@ -152,8 +186,12 @@ async function publishedVersions(name, fetchImpl = fetch) {
 // crates.io's own answer to an upload, as cargo reports it ("the remote server responded with an
 // error (status N ...): message"), or "" when the failure happened before the upload (compile,
 // verification, packaging). Classification never looks at build output.
+function stripAnsi(text) {
+  return String(text).replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+}
+
 function registryError(stderr) {
-  const m = String(stderr).match(/the remote server responded with an error \((status \d{3}[^)]*)\): ?([^\n]*)/);
+  const m = stripAnsi(stderr).match(/the remote server responded with an error \((status \d{3}[^)]*)\): ?([^\n]*)/);
   return m ? m[1] + ": " + m[2] : "";
 }
 
@@ -173,6 +211,7 @@ function rateLimitDelayMs(stderr, attempt, now = Date.now()) {
 // True when crates.io (or cargo's pre-upload index check) says this exact version is already there.
 function alreadyUploaded(stderr, name, version) {
   const esc = (v) => v.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+  stderr = stripAnsi(stderr);
   if (new RegExp("^error: crate " + esc(name) + "@" + esc(version) + " already exists on crates\\.io index", "m").test(stderr)) return true;
   return /already (uploaded|exists)/i.test(registryError(stderr));
 }
@@ -196,7 +235,8 @@ function cargo(args, { capture = false } = {}) {
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
     maxBuffer: 1024 * 1024 * 1024,
-    env: process.env,
+    // Captured output is parsed: keep cargo from colouring it (setup actions often set always).
+    env: capture ? { ...process.env, CARGO_TERM_COLOR: "never" } : process.env,
   });
   if (res.error) throw res.error;
   return res;
