@@ -1,0 +1,90 @@
+name: "cargo publish (trusted publishing)"
+description: "Publish a Cargo workspace's crates to crates.io in dependency order with a short-lived OIDC token from crates.io trusted publishing"
+
+inputs:
+  packages:
+    description: "Packages to publish (space, comma or newline separated); empty publishes every workspace member that may be published to crates.io"
+    required: false
+    default: ""
+  exclude:
+    description: "Packages to leave out"
+    required: false
+    default: ""
+  working-directory:
+    description: "Directory of the Cargo workspace"
+    required: false
+    default: "."
+  dry-run:
+    description: "Run cargo publish --dry-run for the plan without authenticating or uploading"
+    required: false
+    default: "false"
+  skip-published:
+    description: "Skip packages whose current version is already on crates.io, so a rerun after a partial release resumes where it stopped"
+    required: false
+    default: "true"
+  locked:
+    description: "Pass --locked to cargo publish"
+    required: false
+    default: "true"
+  delay-seconds:
+    description: "Seconds to wait between packages"
+    required: false
+    default: "0"
+  rate-limit-retries:
+    description: "How many times to retry a package crates.io rate limited, waiting as long as crates.io asks"
+    required: false
+    default: "10"
+
+outputs:
+  packages:
+    description: "Packages planned for publishing, in order (space separated)"
+    value: ${{ steps.plan.outputs.packages }}
+  skipped:
+    description: "Packages skipped because their version is already on crates.io"
+    value: ${{ steps.plan.outputs.skipped }}
+  published:
+    description: "Packages this run uploaded"
+    value: ${{ steps.publish.outputs.published }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check trusted publishing prerequisites
+      if: inputs.dry-run != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+          echo "::error::cargo-publish needs 'permissions: id-token: write' on the job to request a crates.io token"
+          exit 1
+        fi
+
+    - name: Plan publish
+      id: plan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_PACKAGES: ${{ inputs.packages }}
+        INPUT_EXCLUDE: ${{ inputs.exclude }}
+        INPUT_SKIP_PUBLISHED: ${{ inputs.skip-published }}
+      run: node "$ACTION_PATH/publish.cjs" plan
+
+    - name: Authenticate with crates.io
+      id: auth
+      if: inputs.dry-run != 'true' && steps.plan.outputs.packages != ''
+      uses: tempoxyz/gh-actions/vendor/rust-lang/crates-io-auth-action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+    - name: Publish
+      id: publish
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PLAN: ${{ steps.plan.outputs.plan }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        INPUT_LOCKED: ${{ inputs.locked }}
+        INPUT_DELAY_SECONDS: ${{ inputs.delay-seconds }}
+        INPUT_RATE_LIMIT_RETRIES: ${{ inputs.rate-limit-retries }}
+        CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      run: node "$ACTION_PATH/publish.cjs" publish

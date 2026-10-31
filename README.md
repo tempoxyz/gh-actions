@@ -31,6 +31,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`setup-helm`](actions/setup-helm) | Install Helm verified against the maintainers' GPG signatures
 | [`cargo-dependency-changes`](actions/cargo-dependency-changes) | Detect selected Cargo dependency version/source changes without running repository code |
 | [`cargo-cooldown`](actions/cargo-cooldown) | Reject crates.io dependencies newer than the configured cooldown
+| [`cargo-publish`](actions/cargo-publish) | Publish a Cargo workspace to crates.io in dependency order with trusted publishing (OIDC)
 | [`codex-repair`](actions/codex-repair) | Repair Rust dependency migrations on the runner with bounded independent checks |
 | [`cloudflare-deploy-broker`](actions/cloudflare-deploy-broker) | Deploy an attested Cloudflare Worker through the deploy broker |
 | [`cloudflare-deploy-broker-delete-preview`](actions/cloudflare-deploy-broker-delete-preview) | Delete a closed pull request's Cloudflare Preview through the deploy broker |
