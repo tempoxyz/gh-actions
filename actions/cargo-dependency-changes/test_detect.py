@@ -48,6 +48,26 @@ class DetectionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 detect.detect('tempoxyz/tempo', 'a'*40, 'b'*40, 'reth')
 
+    def test_api_retries_transient_failures(self):
+        from subprocess import CompletedProcess
+        results = [CompletedProcess([], 1, '', 'unexpected end of JSON input'),
+                   CompletedProcess([], 1, '', 'HTTP 502: Bad Gateway'),
+                   CompletedProcess([], 0, '{"ok": true}', '')]
+        with patch.object(detect.subprocess, 'run', side_effect=results), patch.object(detect.time, 'sleep') as sleep:
+            self.assertEqual(detect.api('repos/x'), {'ok': True})
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_api_gives_up_and_does_not_retry_not_found(self):
+        from subprocess import CompletedProcess
+        with patch.object(detect.subprocess, 'run', return_value=CompletedProcess([], 1, '', 'HTTP 503')), patch.object(detect.time, 'sleep') as sleep:
+            with self.assertRaises(RuntimeError):
+                detect.api('repos/x')
+        self.assertEqual(sleep.call_count, len(detect.RETRY_DELAYS))
+        with patch.object(detect.subprocess, 'run', return_value=CompletedProcess([], 1, '', 'Not Found (HTTP 404)')) as run, patch.object(detect.time, 'sleep'):
+            with self.assertRaises(RuntimeError):
+                detect.api('repos/x')
+        self.assertEqual(run.call_count, 1)
+
 
 if __name__ == '__main__':
     unittest.main()
