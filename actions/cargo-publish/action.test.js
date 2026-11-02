@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const { mkdtemp, mkdir, readFile, rm, writeFile } = require("node:fs/promises");
+const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
@@ -236,11 +237,14 @@ test("verify false passes --no-verify, and an expired token is reported as such"
     assert.equal(fresh.status, 1);
     assert.match(fresh.stdout, /publishing a@1\.0\.0 failed/);
     assert.match(await readFile(log, "utf8"), /publish --locked --no-verify -p a/);
-    // Started inside the budget (24 min), failed after the token's 30 minutes: the verify build ran long.
-    await writeFile(path.join(dir, "cargo"), "#!/bin/sh\nsleep 1\necho 'error: unauthorized' >&2\nexit 101\n", { mode: 0o755 });
-    const late = spawnSync("node", [path.join(__dirname, "publish.cjs"), "publish"], { encoding: "utf8", env: { ...base, INPUT_VERIFY: "true", TOKEN_ISSUED_AT: String(Math.floor(Date.now() / 1000) - (30 * 60 - 1)) } });
+    // Starts inside the budget, then the verify build outlasts the token's lifetime (both shortened).
+    const ran = path.join(dir, "ran");
+    await writeFile(path.join(dir, "cargo"), "#!/bin/sh\ntouch " + ran + "\nsleep 3\necho 'error: unauthorized' >&2\nexit 101\n", { mode: 0o755 });
+    const late = spawnSync("node", [path.join(__dirname, "publish.cjs"), "publish"], { encoding: "utf8", env: { ...base, INPUT_VERIFY: "true", TOKEN_ISSUED_AT: String(Math.floor(Date.now() / 1000)), CARGO_PUBLISH_TEST_BUDGET_MS: "60000", CARGO_PUBLISH_TEST_LIFETIME_MS: "1500" } });
     assert.equal(late.status, 1);
+    assert.ok(fs.existsSync(ran), "cargo publish started");
     assert.match(late.stdout, /token expires soon[^\n]*Rerun the job/);
+    assert.doesNotMatch(late.stdout, /publishing a@1\.0\.0 failed/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

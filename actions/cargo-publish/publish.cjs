@@ -13,8 +13,10 @@ const fs = require("node:fs");
 
 const INDEX_URL = "https://index.crates.io";
 // Upload only within the first 25 of the token's 30 minutes.
-const TOKEN_BUDGET_MS = 25 * 60 * 1000;
-const TOKEN_LIFETIME_MS = 30 * 60 * 1000;
+// Tests shorten both through the environment; neither can be raised past these values.
+const shorter = (name, max) => Math.min(max, Number(process.env[name]) > 0 ? Number(process.env[name]) : max);
+const TOKEN_BUDGET_MS = shorter("CARGO_PUBLISH_TEST_BUDGET_MS", 25 * 60 * 1000);
+const TOKEN_LIFETIME_MS = shorter("CARGO_PUBLISH_TEST_LIFETIME_MS", 30 * 60 * 1000);
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 function splitList(value) {
