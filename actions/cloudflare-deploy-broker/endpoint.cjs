@@ -1,4 +1,4 @@
-const DEFAULT_BROKER_HOST = "cf-deployer.tempoxyz.net";
+const DEFAULT_BROKER_HOST = "cf.tempoxyz.net";
 const HOSTNAME =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 

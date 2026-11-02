@@ -13,7 +13,7 @@ const { brokerFailureMessage } = require("./error.cjs");
 
 test("selects the broker endpoint and OIDC audience for the host", () => {
   for (const [host, endpoint, audience] of [
-    ["", "https://cf-deployer.tempoxyz.net/", "cf-deployer.tempoxyz.net"],
+    ["", "https://cf.tempoxyz.net/", "cf.tempoxyz.net"],
     ["broker.example.com", "https://broker.example.com/", "broker.example.com"],
   ]) {
     assert.equal(brokerEndpoint(host).href, endpoint);
@@ -39,7 +39,7 @@ test("exposes only a hostname override with the production default", () => {
   const action = readFileSync(path.join(__dirname, "action.yml"), "utf8");
   const main = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
   assert.ok(action.includes("  host:"));
-  assert.ok(action.includes('default: "cf-deployer.tempoxyz.net"'));
+  assert.ok(action.includes('default: "cf.tempoxyz.net"'));
   assert.ok(main.includes('input("host")'));
   for (const removed of [
     "  dev:",
