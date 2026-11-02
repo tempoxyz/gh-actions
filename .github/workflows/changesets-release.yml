@@ -251,7 +251,7 @@ jobs:
           ttl: 10m
 
       - name: Open or update the version pull request
-        uses: tempoxyz/gh-actions/actions/create-pull-request@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: tempoxyz/gh-actions/actions/create-pull-request@6ccf7934d151080610d355f887300f90370e91a8 # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
         with:
           token: ${{ steps.sts.outputs.token }}
           branch: changeset-release/${{ github.ref_name }}

@@ -44,3 +44,6 @@ rules:
   - ignore: true
     conditions:
       - expr: ActionName == "tempoxyz/gh-actions/actions/npm-publish" && ActionVersion == "215a7e8fa8909e7a21e8b5c02820764770e53400"
+  - ignore: true
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/actions/create-pull-request" && ActionVersion == "6ccf7934d151080610d355f887300f90370e91a8"
