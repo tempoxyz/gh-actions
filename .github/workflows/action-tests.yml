@@ -56,6 +56,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # npm-publish's pnpm workspace tests skip without pnpm on the runner.
+      - name: Set up pnpm
+        if: matrix.test == 'actions/npm-publish/action.test.js'
+        uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        with:
+          version: 10
+
       - name: Run action test
         env:
           TEST_FILE: ${{ matrix.test }}

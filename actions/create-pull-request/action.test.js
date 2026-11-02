@@ -31,7 +31,7 @@ case "$*" in
 esac
 `;
 
-function run(t, { branchSha = "", pr = "", sameTree = false, autoMerge = "" } = {}) {
+function run(t, { branchSha = "", pr = "", sameTree = false, autoMerge = "", setup = () => {} } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "create-pr-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const repo = path.join(directory, "repo");
@@ -43,6 +43,7 @@ function run(t, { branchSha = "", pr = "", sameTree = false, autoMerge = "" } = 
   git("init", "-q");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base");
   fs.writeFileSync(path.join(repo, "skill.md"), "new\n");
+  setup(repo);
   const tree = sameTree ? (git("add", "-A"), git("write-tree").stdout.trim()) : "other-tree";
   git("reset", "-q");
 
@@ -105,6 +106,21 @@ test("create-pull-request scenarios", { skip: !bashSupportsMapfile && "needs bas
     assert.equal(result.graphql, null);
     assert.ok(!result.calls.some((call) => call.includes("-X PATCH")));
     assert.match(result.output, new RegExp(`head-sha=${BRANCH_SHA}`));
+  });
+
+  await t.test("commits files larger than one argument, and never follows a staged symlink", (t) => {
+    const big = "x".repeat(400 * 1024);
+    const result = run(t, {
+      setup: (repo) => {
+        fs.writeFileSync(path.join(repo, "CHANGELOG.md"), big);
+        fs.symlinkSync("/etc/hostname", path.join(repo, "leak"));
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const additions = Object.fromEntries(result.graphql.variables.input.fileChanges.additions.map((a) => [a.path, Buffer.from(a.contents, "base64").toString()]));
+    assert.equal(additions["CHANGELOG.md"], big);
+    assert.equal(additions.leak, "/etc/hostname");
+    assert.equal(additions["skill.md"], "new\n");
   });
 
   await t.test("enables auto-merge", (t) => {
