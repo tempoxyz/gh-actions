@@ -24,7 +24,7 @@ test("runs on the runner's Node.js with the deploy action's broker client", () =
   const action = readFileSync(path.join(__dirname, "action.yml"), "utf8");
   const main = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
   assert.match(action, /\nruns:\n  using: node24\n  main: main\.cjs\n$/);
-  assert.ok(action.includes('default: "cfd.tempoxyz.net"'));
+  assert.ok(action.includes('default: "cf.tempoxyz.net"'));
   assert.ok(main.includes('operation: "delete-preview"'));
   assert.ok(main.includes('new URL("/v1/deploy", endpoint)'));
   assert.ok(main.includes("oidc(audience)"));

@@ -18,7 +18,7 @@ succeed. The job must grant `id-token: write`.
 | `account-id` | Cloudflare account ID of the app's Worker | Yes | |
 | `worker-name` | Name of the app's Worker | Yes | |
 | `preview-name` | `pr-<number>` to delete; required for merged pull requests | No | |
-| `host` | Broker hostname, without a scheme, port, or path | No | `cfd.tempoxyz.net` |
+| `host` | Broker hostname, without a scheme, port, or path | No | `cf.tempoxyz.net` |
 
 See [`action.yml`](action.yml) for outputs.
 

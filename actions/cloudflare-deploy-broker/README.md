@@ -16,7 +16,7 @@ The deploy job must grant `id-token: write` and match a deployment policy.
 | `artifact-id` | `artifact-id` output of the build workflow | Yes | |
 | `archive-digest` | `archive-digest` output of the build workflow | Yes | |
 | `module-digest` | `module-digest` output of the build workflow | Yes | |
-| `host` | Broker hostname, without a scheme, port, or path | No | `cfd.tempoxyz.net` |
+| `host` | Broker hostname, without a scheme, port, or path | No | `cf.tempoxyz.net` |
 
 See [`action.yml`](action.yml) for outputs.
 
