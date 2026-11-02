@@ -56,6 +56,9 @@ outputs:
   released:
     description: "JSON array of {name, version} confirmed on npm: uploaded by this run or an earlier, interrupted one"
     value: ${{ steps.publish.outputs.released }}
+  resumable:
+    description: "JSON array of {name, version} the pack step found already on npm, each checked and confirmed against npm by the publish step"
+    value: ${{ steps.publish.outputs.resumable }}
   pack-directory:
     description: "Directory holding the tarballs and plan.json"
     value: ${{ steps.dir.outputs.path }}

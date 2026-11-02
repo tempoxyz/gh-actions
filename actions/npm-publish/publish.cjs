@@ -61,12 +61,18 @@ function detectPackageManager(root, requested) {
 // lists the projects, since pnpm-workspace.yaml may hold only settings (onlyBuiltDependencies and
 // the like); npm, yarn and bun use a non-empty workspaces field.
 function isWorkspace(root) {
-  if (fs.existsSync(path.join(root, "pnpm-workspace.yaml"))) return pnpmProjects(root).some((d) => path.resolve(d) !== path.resolve(root));
+  if (fs.existsSync(path.join(root, "pnpm-workspace.yaml"))) return pnpmProjects(root).some((d) => !samePath(d, root));
   const file = path.join(root, "package.json");
   if (!fs.existsSync(file)) return false;
   const ws = readJson(file).workspaces;
   const list = Array.isArray(ws) ? ws : ws && Array.isArray(ws.packages) ? ws.packages : [];
   return list.length > 0;
+}
+
+// pnpm reports real paths; the workspace path may go through a symlink (macOS /var, for one).
+function samePath(a, b) {
+  const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+  return real(a) === real(b);
 }
 
 function pnpmProjects(root) {
@@ -87,7 +93,7 @@ function discoverPackages(root, pm) {
     if (res.status !== 0) throw new Error("npm query failed: " + res.stderr);
     dirs = JSON.parse(res.stdout).map((p) => path.resolve(root, p.location || p.path));
   }
-  return dirs.filter((d) => path.resolve(d) !== path.resolve(root));
+  return dirs.filter((d) => !samePath(d, root));
 }
 
 function isPrerelease(version) {
@@ -307,13 +313,23 @@ async function publish() {
   if (access && !["public", "restricted"].includes(access)) throw new Error("access must be public, restricted or empty");
   if (!["auto", "true", "false"].includes(provenance)) throw new Error("provenance must be auto, true or false");
 
-  const { packages: plan, onNpm = [] } = readJson(path.join(dir, "plan.json"));
+  const { packages: plan, onNpm: claimedOnNpm = [] } = readJson(path.join(dir, "plan.json"));
   for (const entry of plan) {
     if (!NAME_RE.test(entry.name) || !VERSION_RE.test(entry.version) || path.basename(entry.file) !== entry.file) throw new Error("invalid plan entry " + JSON.stringify(entry));
     if (entry.tag && !TAG_RE.test(entry.tag)) throw new Error("invalid plan tag " + JSON.stringify(entry));
     if (isPrerelease(entry.version) && !(tag || entry.tag)) throw new Error(entry.name + "@" + entry.version + " is a prerelease and has no dist-tag; it would be published as latest");
     checkTarball(path.join(dir, entry.file), entry);
   }
+  // plan.json comes from the pack job, which runs the repository's build: hand on only the entries
+  // that are well formed and that npm itself confirms, never the raw list.
+  const resumable = [];
+  if (!dryRun) {
+    for (const e of Array.isArray(claimedOnNpm) ? claimedOnNpm : []) {
+      if (!e || !NAME_RE.test(String(e.name)) || !VERSION_RE.test(String(e.version))) throw new Error("invalid onNpm entry in plan.json " + JSON.stringify(e));
+      if ((await publishedVersions(e.name)).has(e.version)) resumable.push({ name: e.name, version: e.version });
+    }
+  }
+  setOutput("resumable", JSON.stringify(resumable));
   // Every planned version confirmed on npm, uploaded now or by an interrupted run of this same
   // publish job (a rerun of the failed jobs): the versions a release step tags. Versions pack found
   // already on npm are left out, so unchanged siblings never get a tag on this commit.

@@ -238,3 +238,30 @@ test("pnpm-workspace.yaml counts as a workspace only when pnpm lists member proj
     }
   }
 });
+
+test("workspace root is recognised through a symlinked path", { skip: !has("pnpm") }, () => {
+  const real = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-real-"));
+  const link = real + "-link";
+  try {
+    fs.writeFileSync(path.join(real, "package.json"), JSON.stringify({ name: "single", version: "1.0.0" }));
+    fs.writeFileSync(path.join(real, "pnpm-workspace.yaml"), "onlyBuiltDependencies:\n  - esbuild\n");
+    fs.symlinkSync(real, link);
+    assert.ok(!lib.isWorkspace(link));
+    assert.deepEqual(lib.discoverPackages(link, "pnpm"), [link]);
+  } finally {
+    fs.rmSync(link, { force: true });
+    fs.rmSync(real, { recursive: true, force: true });
+  }
+});
+
+test("publish refuses a malformed onNpm entry from the pack artifact", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-onnpm-"));
+  try {
+    fs.writeFileSync(path.join(dir, "plan.json"), JSON.stringify({ packages: [], onNpm: [{ name: "x", version: "1.0.0 p resume\nv99.0.0 v released" }] }));
+    const res = spawnSync("node", [script, "publish"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: path.join(dir, "o"), PACK_DIRECTORY: dir, INPUT_DRY_RUN: "false" } });
+    assert.equal(res.status, 1);
+    assert.match(res.stdout, /invalid onNpm entry/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

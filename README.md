@@ -215,11 +215,14 @@ Releases a JavaScript workspace with [Changesets](https://github.com/changesets/
 [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), with no npm token. On every
 push to the default branch it opens or updates the version pull request, or, once that pull
 request has merged, publishes the new versions with [`npm-publish`](actions/npm-publish), then
-tags them and creates their GitHub releases from their CHANGELOG sections. Building and packing
-run in a job with no publish rights and no environment; only the `publish` job, in the `npm`
-environment, can publish, and it runs none of the repository's code. The `version` and `release`
-jobs, which mint `github-sts` tokens, run in a second environment (`changesets`), so neither npm
-nor the STS trusts the job that builds.
+tags them and creates their GitHub releases from their CHANGELOG sections.
+
+Jobs that run the repository's code (`version`, which runs the version script and changelog
+plugins with a read-only token, and `pack`, which builds) have no environment, so neither npm nor
+the STS trusts them. `version-pr` and `release` run in the `changesets` environment and mint
+`github-sts` tokens, and `publish` runs in `npm`; none of these three runs repository or
+dependency code, and none reads what the code-running jobs wrote except as checked data (the
+version patch, which becomes the pull request, and tarballs checked against the plan and npm).
 
 ```yaml
 # .github/workflows/release.yml
@@ -269,8 +272,10 @@ Setup in the calling repository:
   The `environment:changesets` subject is what keeps the pack job, which has no environment,
   from minting a token.
 - Drop `changeset publish` from the repository's scripts: this workflow publishes and tags.
-  If a publish fails partway, rerun the failed jobs (not the whole workflow): the publish job then
-  counts the versions its first attempt uploaded as released, so the release job still tags them.
+  If a publish fails partway, rerun the failed jobs or push again: versions an interrupted release
+  uploaded are tagged once npm confirms them, when the package already has older tags. Every tag
+  is created at the commit the workflow runs on, including tags for versions published earlier or
+  by hand, which may have been built from other contents.
 
 ### `pr-audit`
 

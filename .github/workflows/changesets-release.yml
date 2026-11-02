@@ -4,14 +4,17 @@ name: changesets release
 # push to the default branch it either opens or updates the Changesets version pull request, or,
 # once that pull request has merged and no changesets are pending, publishes the new versions:
 #
-#   version   opens the version pull request with a token from github-sts (GITHUB_TOKEN cannot
-#             open pull requests that trigger CI). It and release run in github-environment, so
-#             the STS policy can require that environment and pack can never mint a token.
-#   pack      installs, builds and packs the unpublished versions. It runs the repository's code
-#             and has no npm publish rights.
-#   publish   in the npm environment, the only job npm trusts: checks the packed tarballs against
-#             the plan and publishes them in dependency order. It runs none of the repository's code.
-#   release   tags each published version and creates its GitHub release from its CHANGELOG.
+#   version     runs the version script with a read-only token and no environment, and hands the
+#               changes on as a patch.
+#   version-pr  in github-environment: applies the patch and opens the version pull request with
+#               a github-sts token (GITHUB_TOKEN cannot open pull requests that trigger CI). It runs
+#               no repository code. Only it and release can mint STS tokens.
+#   pack        installs, builds and packs the unpublished versions. It runs the repository's code
+#               and has no npm publish rights.
+#   publish     in the npm environment, the only job npm trusts: checks the packed tarballs against
+#               the plan and publishes them in dependency order. It runs none of the repository's code.
+#   release     tags each published version and creates its GitHub release from its CHANGELOG,
+#               reading only the publish job outputs and its own checkout.
 #
 # See README.md#changesets-release for the npm and github-sts setup.
 
@@ -97,55 +100,122 @@ permissions: {}
 
 jobs:
   version:
-    name: Version pull request
+    name: Version changes
     runs-on: ubuntu-latest
-    environment: ${{ inputs.github-environment }}
     timeout-minutes: 15
+    # Runs the repository's version script and its changelog plugins with a read-only token and no
+    # environment, so nothing here can mint an STS token. It hands the changes on as a patch.
     permissions:
       contents: read
+      # secure-runner only.
       id-token: write
     outputs:
-      has-changesets: ${{ steps.changesets.outputs.has-changesets }}
+      has-changesets: ${{ steps.detect.outputs.has-changesets }}
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+
+      - name: Detect pending changesets
+        id: detect
+        run: |
+          if find .changeset -maxdepth 1 -type f -name '*.md' ! -name README.md -print -quit 2> /dev/null | grep -q .; then
+            echo "has-changesets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-changesets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up pnpm
+        if: steps.detect.outputs.has-changesets == 'true' && hashFiles('pnpm-lock.yaml') != ''
+        uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - name: Set up bun
+        if: steps.detect.outputs.has-changesets == 'true' && (inputs.package-manager == 'bun' || hashFiles('bun.lock', 'bun.lockb') != '')
+        uses: tempoxyz/gh-actions/vendor/oven-sh/setup-bun@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.detect.outputs.has-changesets == 'true'
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        if: steps.detect.outputs.has-changesets == 'true'
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: bash -c "$INSTALL_COMMAND"
+
+      - name: Apply changesets
+        if: steps.detect.outputs.has-changesets == 'true'
+        env:
+          # Read-only: enough for changelog plugins such as @changesets/changelog-github.
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION_SCRIPT: ${{ inputs.version-script }}
+        run: |
+          set -euo pipefail
+          bash -c "$VERSION_SCRIPT"
+          git add -A
+          git diff --cached --binary > "$RUNNER_TEMP/version.patch"
+          if [ ! -s "$RUNNER_TEMP/version.patch" ]; then
+            echo "::error::The version script changed nothing, though changesets are pending"
+            exit 1
+          fi
+
+      - name: Upload version changes
+        if: steps.detect.outputs.has-changesets == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: version-patch
+          path: ${{ runner.temp }}/version.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  version-pr:
+    name: Version pull request
+    needs: version
+    if: needs.version.outputs.has-changesets == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The only job besides release that mints an STS token. It runs no repository or dependency
+    # code: it applies the patch and opens the pull request with git and gh alone.
+    environment: ${{ inputs.github-environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: version-patch
+          path: ${{ runner.temp }}/version-patch
+
+      - name: Apply version changes
+        run: git apply --index "$RUNNER_TEMP/version-patch/version.patch"
 
       - name: Fetch GitHub token via STS
         id: sts
         uses: tempoxyz/gh-actions/actions/github-sts@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
         with:
           policy: ${{ inputs.sts-policy }}
-          ttl: 15m
-
-      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
-        with:
-          persist-credentials: false
-
-      - name: Set up pnpm
-        if: hashFiles('pnpm-lock.yaml') != ''
-        uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
-
-      - name: Set up bun
-        if: inputs.package-manager == 'bun' || hashFiles('bun.lock', 'bun.lockb') != ''
-        uses: tempoxyz/gh-actions/vendor/oven-sh/setup-bun@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ inputs.node-version }}
-
-      - name: Install dependencies
-        env:
-          INSTALL_COMMAND: ${{ inputs.install-command }}
-        run: bash -c "$INSTALL_COMMAND"
+          ttl: 10m
 
       - name: Open or update the version pull request
-        id: changesets
-        uses: tempoxyz/gh-actions/vendor/changesets/action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: tempoxyz/gh-actions/actions/create-pull-request@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
         with:
-          github-token: ${{ steps.sts.outputs.token }}
-          version-script: ${{ inputs.version-script }}
-          pr-title: ${{ inputs.pr-title }}
+          token: ${{ steps.sts.outputs.token }}
+          branch: changeset-release/${{ github.ref_name }}
+          base: ${{ github.ref_name }}
           commit-message: ${{ inputs.pr-title }}
+          title: ${{ inputs.pr-title }}
+          body: Merging this pull request publishes the versions below to npm. It is updated on every push with pending changesets.
 
   pack:
     name: Pack
@@ -226,6 +296,7 @@ jobs:
     outputs:
       published: ${{ steps.publish.outputs.published }}
       released: ${{ steps.publish.outputs.released }}
+      resumable: ${{ steps.publish.outputs.resumable }}
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
@@ -253,9 +324,10 @@ jobs:
     name: Tag and release
     needs: publish
     environment: ${{ inputs.github-environment }}
-    # Tags every version confirmed on npm, including ones an interrupted earlier run uploaded, so
-    # rerunning the failed jobs completes the tags and releases too.
-    if: inputs.github-releases && needs.publish.outputs.released != '[]' && needs.publish.outputs.released != ''
+    # Tags the versions the publish job confirmed on npm, and versions an interrupted earlier
+    # release uploaded (resumable, also confirmed by the publish job). It reads only job outputs
+    # and its own checkout, never the pack artifact, which the repository's build wrote.
+    if: inputs.github-releases && (needs.publish.outputs.released != '[]' || needs.publish.outputs.resumable != '[]')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -265,10 +337,9 @@ jobs:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
 
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
         with:
-          name: npm-packs
-          path: ${{ runner.temp }}/npm-pack
+          persist-credentials: false
 
       - name: Fetch GitHub token via STS
         id: sts
@@ -277,52 +348,66 @@ jobs:
           policy: ${{ inputs.sts-policy }}
           ttl: 10m
 
-      # Changesets' convention: v<version> for a single-package repository, <name>@<version> otherwise.
+      # Changesets' convention: v<version> for a package at the repository root, <name>@<version>
+      # in a workspace. A resumable version is tagged only when its package already has older
+      # tags but not this one. Every tag is created at this commit, also for versions published
+      # earlier or by hand.
       - name: Create tags and releases
         env:
           GH_TOKEN: ${{ steps.sts.outputs.token }}
-          PUBLISHED: ${{ needs.publish.outputs.released }}
-          PLAN: ${{ runner.temp }}/npm-pack/plan.json
+          RELEASED: ${{ needs.publish.outputs.released }}
+          RESUMABLE: ${{ needs.publish.outputs.resumable }}
         run: |
-          set -euo pipefail
-          # Lines are "<tag> <prefix> <kind>": "released" versions the publish job confirmed, and
-          # "resume" versions pack found already on npm. A resume version is tagged only when its
-          # package has older tags but not this one: an earlier, interrupted release uploaded it.
-          # Unchanged siblings already have their tag, and a first release tags nothing it did not publish.
-          node -e '
-            const fs = require("fs");
-            const plan = JSON.parse(fs.readFileSync(process.env.PLAN, "utf8"));
-            const published = JSON.parse(process.env.PUBLISHED);
-            const single = plan.singlePackage === true;
-            const key = (p) => p.name + "@" + p.version;
-            const done = new Set(published.map(key));
-            const all = [...plan.packages, ...(plan.onNpm || [])];
-            const rows = [...published.map((p) => [p, "released"]), ...(plan.onNpm || []).filter((p) => !done.has(key(p))).map((p) => [p, "resume"])];
-            for (const [p, kind] of rows) {
-              const entry = all.find((e) => key(e) === key(p)) || {};
-              const tag = single ? "v" + p.version : key(p);
-              const prefix = single ? "v" : p.name + "@";
-              fs.writeFileSync(process.env.RUNNER_TEMP + "/notes-" + Buffer.from(tag).toString("hex"), entry.notes || "");
-              console.log(tag + " " + prefix + " " + kind);
+          node - <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const NAME_RE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
+          const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+          const repo = process.env.GITHUB_REPOSITORY;
+          const gh = (args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+          const list = (name) => {
+            const value = JSON.parse(process.env[name] || "[]");
+            if (!Array.isArray(value)) throw new Error(name + " is not a list");
+            for (const p of value) if (!p || !NAME_RE.test(String(p.name)) || !VERSION_RE.test(String(p.version))) throw new Error("invalid entry in " + name + ": " + JSON.stringify(p));
+            return value;
+          };
+          // Package directories from this checkout: name -> directory.
+          const dirs = new Map();
+          for (const file of execFileSync("git", ["ls-files", "-z", "--", "package.json", "*/package.json"], { encoding: "utf8" }).split("\0").filter(Boolean)) {
+            try { const m = JSON.parse(fs.readFileSync(file, "utf8")); if (m.name && !dirs.has(m.name)) dirs.set(m.name, path.dirname(file)); } catch {}
+          }
+          const notes = (dir, version) => {
+            const file = path.join(dir, "CHANGELOG.md");
+            if (!fs.existsSync(file)) return "";
+            const lines = fs.readFileSync(file, "utf8").split("\n");
+            const start = lines.findIndex((l) => /^##\s+/.test(l) && l.replace(/^##\s+v?/, "").trim() === version);
+            if (start < 0) return "";
+            let end = lines.findIndex((l, i) => i > start && /^##\s+/.test(l));
+            if (end < 0) end = lines.length;
+            return lines.slice(start + 1, end).join("\n").trim();
+          };
+          const tagRefs = (prefix) => JSON.parse(gh(["api", "repos/" + repo + "/git/matching-refs/tags/" + encodeURIComponent(prefix).replace(/%2F/g, "/").replace(/%40/g, "@")]) || "[]").map((r) => r.ref);
+          const exists = (args) => { try { gh(args); return true; } catch { return false; } };
+          const key = (p) => p.name + "@" + p.version;
+          const released = list("RELEASED");
+          const done = new Set(released.map(key));
+          const rows = [...released.map((p) => [p, false]), ...list("RESUMABLE").filter((p) => !done.has(key(p))).map((p) => [p, true])];
+          for (const [p, resume] of rows) {
+            const dir = dirs.get(p.name);
+            const single = dir === ".";
+            const tag = single ? "v" + p.version : key(p);
+            const prefix = single ? "v" : p.name + "@";
+            if (exists(["release", "view", tag, "--repo", repo])) { console.log("Release " + tag + " already exists"); continue; }
+            if (resume) {
+              const refs = tagRefs(prefix);
+              if (refs.includes("refs/tags/" + tag)) { console.log("Tag " + tag + " already exists"); continue; }
+              if (!refs.length) { console.log("Skipping " + tag + ": no earlier release of this package to resume"); continue; }
             }
-          ' > "$RUNNER_TEMP/tags"
-          while read -r tag prefix kind; do
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-              echo "Release $tag already exists"
-              continue
-            fi
-            if [[ "$kind" == resume ]]; then
-              if [[ -n "$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq '.[] | select(.ref == "refs/tags/'"$tag"'") | .ref')" ]]; then
-                echo "Tag $tag already exists"
-                continue
-              fi
-              if [[ -z "$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$prefix" --jq '.[0].ref // empty')" ]]; then
-                echo "Skipping $tag: no earlier release of this package to resume"
-                continue
-              fi
-            fi
-            notes="$RUNNER_TEMP/notes-$(printf '%s' "$tag" | od -An -tx1 | tr -d ' \n')"
-            prerelease=()
-            [[ "$tag" =~ [0-9]+\.[0-9]+\.[0-9]+- ]] && prerelease=(--prerelease)
-            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$tag" --notes-file "$notes" "${prerelease[@]}"
-          done < "$RUNNER_TEMP/tags"
+            const file = path.join(process.env.RUNNER_TEMP, "notes-" + Buffer.from(tag).toString("hex"));
+            fs.writeFileSync(file, dir ? notes(dir, p.version) : "");
+            const args = ["release", "create", tag, "--repo", repo, "--target", process.env.GITHUB_SHA, "--title", tag, "--notes-file", file];
+            if (/^\d+\.\d+\.\d+-/.test(p.version)) args.push("--prerelease");
+            console.log(gh(args).trim());
+          }
+          NODE
