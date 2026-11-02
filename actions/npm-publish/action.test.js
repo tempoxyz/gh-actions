@@ -302,3 +302,19 @@ test("publish holds versions and dist-tags to the source checkout, not plan.json
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("unrelated package.json files sharing a name do not block publishing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-fixtures-"));
+  try {
+    fs.mkdirSync(path.join(dir, "fixtures", "a"), { recursive: true });
+    fs.mkdirSync(path.join(dir, "fixtures", "b"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "real", version: "1.0.0" }));
+    fs.writeFileSync(path.join(dir, "fixtures", "a", "package.json"), JSON.stringify({ name: "fixture", version: "1.0.0" }));
+    fs.writeFileSync(path.join(dir, "fixtures", "b", "package.json"), JSON.stringify({ name: "fixture", version: "2.0.0" }));
+    const src = lib.sourcePackages(dir);
+    assert.deepEqual([...src.get("real")], ["1.0.0"]);
+    assert.deepEqual([...src.get("fixture")].sort(), ["1.0.0", "2.0.0"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

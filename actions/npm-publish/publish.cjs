@@ -152,7 +152,7 @@ function selectPackages(root, dirs) {
   return orderPackages(pkgs);
 }
 
-// name -> version of the non-private packages in the source at root: the tracked package.json
+// name -> set of versions of the non-private packages in the source at root: the tracked package.json
 // files when root is a git checkout, otherwise every package.json outside node_modules. The
 // publish step holds this against plan.json, which the pack step (running the build) wrote.
 function sourcePackages(root) {
@@ -177,8 +177,9 @@ function sourcePackages(root) {
     let m;
     try { m = readJson(f); } catch { continue; }
     if (m.private || typeof m.name !== "string" || typeof m.version !== "string") continue;
-    if (out.has(m.name) && out.get(m.name) !== m.version) throw new Error("two package.json files name " + m.name + " with different versions");
-    out.set(m.name, m.version);
+    // Fixtures and examples may reuse a name; only a name being released must be unambiguous.
+    if (!out.has(m.name)) out.set(m.name, new Set());
+    out.get(m.name).add(m.version);
   }
   if (!out.size) throw new Error("no publishable package.json under " + root + "; the publish step needs a checkout of the commit being released");
   return out;
@@ -351,7 +352,11 @@ async function publish() {
   const source = sourcePackages(root);
   const preTag = changesetsPreTag(root);
   if (preTag && !TAG_RE.test(preTag)) throw new Error("invalid tag in .changeset/pre.json: '" + preTag + "'");
-  const atCommit = (e) => source.get(e.name) === e.version;
+  const atCommit = (e) => {
+    const versions = source.get(e.name);
+    if (versions && versions.size > 1) throw new Error("two package.json files at this commit name " + e.name + " with different versions: " + [...versions].join(", "));
+    return Boolean(versions && versions.has(e.version));
+  };
   const { packages: plan, onNpm: claimedOnNpm = [] } = readJson(path.join(dir, "plan.json"));
   for (const entry of plan) {
     if (!NAME_RE.test(entry.name) || !VERSION_RE.test(entry.version) || path.basename(entry.file) !== entry.file) throw new Error("invalid plan entry " + JSON.stringify(entry));

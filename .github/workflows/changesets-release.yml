@@ -229,7 +229,7 @@ jobs:
             "pnpm-lock.yaml", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "bun.lock", "bun.lockb",
             ...(process.env.EXTRA_PATHS || "").split("\n").filter((l) => l.trim()),
           ].map(glob);
-          const raw = execFileSync("git", ["diff", "--cached", "--raw", "--no-renames", "-z"], { encoding: "utf8" }).split("\0");
+          const raw = execFileSync("git", ["diff", "--cached", "--raw", "--no-renames", "-z"], { encoding: "utf8", maxBuffer: 1024 * 1024 * 1024 }).split("\0");
           const bad = [];
           for (let i = 0; i + 1 < raw.length; i += 2) {
             const [, newMode, , , status] = raw[i].split(" ");
@@ -239,18 +239,24 @@ jobs:
           }
           // package.json may change only its version and the ranges of workspace dependencies:
           // not scripts, not other dependencies, not new files.
-          const show = (spec) => execFileSync("git", ["show", spec], { encoding: "utf8" });
-          const headFiles = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", "HEAD"], { encoding: "utf8" }).split("\0").filter((f) => f === "package.json" || f.endsWith("/package.json"));
+          const big = { encoding: "utf8", maxBuffer: 1024 * 1024 * 1024 };
+          const show = (spec) => execFileSync("git", ["show", spec], big);
+          const headFiles = execFileSync("git", ["ls-files", "-z", "--", "package.json", "*/package.json"], big).split("\0").filter(Boolean);
           const workspace = new Set();
           for (const f of headFiles) { try { const n = JSON.parse(show("HEAD:" + f)).name; if (n) workspace.add(n); } catch {} }
           const canon = (v) => Array.isArray(v) ? v.map(canon) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v;
+          // A workspace dependency may move to another semver range or workspace: spec, never to an
+          // alias, URL, git or file spec, which could point a published package anywhere.
+          const RANGE = /^(?:workspace:)?[0-9A-Za-z.^~<>=|*+ -]+$/;
           const strip = (m, other) => {
             const c = { ...m };
             delete c.version;
             for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
               if (!c[field] || typeof c[field] !== "object") continue;
               c[field] = { ...c[field] };
-              for (const dep of Object.keys(c[field])) if (workspace.has(dep) && other[field] && dep in other[field]) delete c[field][dep];
+              for (const dep of Object.keys(c[field])) {
+                if (workspace.has(dep) && other[field] && dep in other[field] && RANGE.test(String(c[field][dep])) && RANGE.test(String(other[field][dep]))) delete c[field][dep];
+              }
             }
             return JSON.stringify(canon(c));
           };
