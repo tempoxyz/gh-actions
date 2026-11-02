@@ -337,7 +337,7 @@ jobs:
 
       - name: Pack unpublished versions
         id: pack
-        uses: tempoxyz/gh-actions/actions/npm-publish@18f7e84175d58295045c9e064ce4635f3ccea899 # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
+        uses: tempoxyz/gh-actions/actions/npm-publish@89d2bc70aa8d2a1f3a3a02917e385284dbe07214 # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
         with:
           mode: pack
           packages: ${{ inputs.packages }}
@@ -393,7 +393,7 @@ jobs:
 
       - name: Publish to npm
         id: publish
-        uses: tempoxyz/gh-actions/actions/npm-publish@18f7e84175d58295045c9e064ce4635f3ccea899 # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
+        uses: tempoxyz/gh-actions/actions/npm-publish@89d2bc70aa8d2a1f3a3a02917e385284dbe07214 # zizmor: ignore[ref-version-mismatch] unreleased; repin to the merge commit tag
         with:
           mode: publish
           pack-directory: ${{ runner.temp }}/npm-pack
