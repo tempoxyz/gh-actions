@@ -103,6 +103,9 @@ runs:
       id: publish
       if: inputs.mode != 'pack'
       shell: bash
+      # Versions and dist-tags are read from the package.json files here, so mode publish needs a
+      # checkout of the commit being released (no repository code runs).
+      working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_PATH: ${{ github.action_path }}
         PACK_DIRECTORY: ${{ steps.dir.outputs.path }}

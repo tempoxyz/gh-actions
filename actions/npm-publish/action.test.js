@@ -202,6 +202,7 @@ test("prereleases use the Changesets pre tag and are refused without one", { ski
 test("released leaves out versions pack found already on npm", { skip: !has("npm") }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-released-"));
   try {
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "a", version: "1.0.0" }));
     fs.writeFileSync(path.join(dir, "plan.json"), JSON.stringify({ packages: [], onNpm: [{ name: "a", version: "1.0.0", notes: "" }], singlePackage: false }));
     const out = path.join(dir, "o");
     fs.writeFileSync(out, "");
@@ -257,10 +258,46 @@ test("workspace root is recognised through a symlinked path", { skip: !has("pnpm
 test("publish refuses a malformed onNpm entry from the pack artifact", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-onnpm-"));
   try {
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "x", version: "1.0.0" }));
     fs.writeFileSync(path.join(dir, "plan.json"), JSON.stringify({ packages: [], onNpm: [{ name: "x", version: "1.0.0 p resume\nv99.0.0 v released" }] }));
     const res = spawnSync("node", [script, "publish"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: path.join(dir, "o"), PACK_DIRECTORY: dir, INPUT_DRY_RUN: "false" } });
     assert.equal(res.status, 1);
     assert.match(res.stdout, /invalid onNpm entry/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("publish holds versions and dist-tags to the source checkout, not plan.json", { skip: !has("npm") }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-source-"));
+  try {
+    const pkgDir = path.join(dir, "pkg");
+    fs.mkdirSync(pkgDir);
+    const pack = (manifest) => {
+      fs.writeFileSync(path.join(pkgDir, "package.json"), JSON.stringify(manifest));
+      assert.equal(spawnSync("npm", ["pack", "--pack-destination", dir], { cwd: pkgDir }).status, 0);
+    };
+    const publish = (plan, extra = {}) => {
+      fs.writeFileSync(path.join(dir, "plan.json"), JSON.stringify(plan));
+      return spawnSync("node", [script, "publish"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: path.join(dir, "o"), PACK_DIRECTORY: dir, INPUT_DRY_RUN: "true", INPUT_PROVENANCE: "false", INPUT_DIST_TAG: "", ...extra } });
+    };
+    // The source says 1.0.0; a plan for 99.0.0 with a matching tarball is refused.
+    pack({ name: "src-pkg", version: "99.0.0" });
+    fs.writeFileSync(path.join(pkgDir, "package.json"), JSON.stringify({ name: "src-pkg", version: "1.0.0" }));
+    const forged = publish({ packages: [{ name: "src-pkg", version: "99.0.0", file: "src-pkg-99.0.0.tgz", tag: "" }] });
+    assert.equal(forged.status, 1);
+    assert.match(forged.stdout, /src-pkg@99\.0\.0 is not a publishable package version at this commit/);
+    // A prerelease whose plan entry claims latest, with no pre.json and no dist-tag input: refused.
+    pack({ name: "src-pkg", version: "2.0.0-beta.0" });
+    const beta = publish({ packages: [{ name: "src-pkg", version: "2.0.0-beta.0", file: "src-pkg-2.0.0-beta.0.tgz", tag: "latest" }] });
+    assert.equal(beta.status, 1);
+    assert.match(beta.stdout, /prerelease and has no dist-tag/);
+    // With .changeset/pre.json the tag comes from the source.
+    fs.mkdirSync(path.join(dir, ".changeset"));
+    fs.writeFileSync(path.join(dir, ".changeset", "pre.json"), JSON.stringify({ mode: "pre", tag: "beta", changesets: [] }));
+    const ok = publish({ packages: [{ name: "src-pkg", version: "2.0.0-beta.0", file: "src-pkg-2.0.0-beta.0.tgz", tag: "latest" }] });
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.match(ok.stdout + ok.stderr, /tag beta/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

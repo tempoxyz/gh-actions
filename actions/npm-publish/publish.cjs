@@ -152,6 +152,38 @@ function selectPackages(root, dirs) {
   return orderPackages(pkgs);
 }
 
+// name -> version of the non-private packages in the source at root: the tracked package.json
+// files when root is a git checkout, otherwise every package.json outside node_modules. The
+// publish step holds this against plan.json, which the pack step (running the build) wrote.
+function sourcePackages(root) {
+  let files;
+  const git = run("git", ["-C", root, "ls-files", "-z", "--", "package.json", "*/package.json"]);
+  if (git.status === 0) {
+    files = git.stdout.split("\0").filter(Boolean).map((f) => path.join(root, f));
+  } else {
+    files = [];
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        if (e.name === "node_modules" || e.name === ".git") continue;
+        const full = path.join(d, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (e.name === "package.json") files.push(full);
+      }
+    };
+    walk(root);
+  }
+  const out = new Map();
+  for (const f of files) {
+    let m;
+    try { m = readJson(f); } catch { continue; }
+    if (m.private || typeof m.name !== "string" || typeof m.version !== "string") continue;
+    if (out.has(m.name) && out.get(m.name) !== m.version) throw new Error("two package.json files name " + m.name + " with different versions");
+    out.set(m.name, m.version);
+  }
+  if (!out.size) throw new Error("no publishable package.json under " + root + "; the publish step needs a checkout of the commit being released");
+  return out;
+}
+
 async function publishedVersions(name, fetchImpl = fetch) {
   const url = REGISTRY + "/" + name.replace("/", "%2f");
   for (let attempt = 1; ; attempt++) {
@@ -313,11 +345,19 @@ async function publish() {
   if (access && !["public", "restricted"].includes(access)) throw new Error("access must be public, restricted or empty");
   if (!["auto", "true", "false"].includes(provenance)) throw new Error("provenance must be auto, true or false");
 
+  // Versions and dist-tags come from the source checkout, never from plan.json: the pack step
+  // could otherwise choose a version number or move latest.
+  const root = path.resolve(process.env.INPUT_WORKING_DIRECTORY || ".");
+  const source = sourcePackages(root);
+  const preTag = changesetsPreTag(root);
+  if (preTag && !TAG_RE.test(preTag)) throw new Error("invalid tag in .changeset/pre.json: '" + preTag + "'");
+  const atCommit = (e) => source.get(e.name) === e.version;
   const { packages: plan, onNpm: claimedOnNpm = [] } = readJson(path.join(dir, "plan.json"));
   for (const entry of plan) {
     if (!NAME_RE.test(entry.name) || !VERSION_RE.test(entry.version) || path.basename(entry.file) !== entry.file) throw new Error("invalid plan entry " + JSON.stringify(entry));
-    if (entry.tag && !TAG_RE.test(entry.tag)) throw new Error("invalid plan tag " + JSON.stringify(entry));
-    if (isPrerelease(entry.version) && !(tag || entry.tag)) throw new Error(entry.name + "@" + entry.version + " is a prerelease and has no dist-tag; it would be published as latest");
+    if (!atCommit(entry)) throw new Error(entry.name + "@" + entry.version + " is not a publishable package version at this commit");
+    entry.tag = tag || (isPrerelease(entry.version) ? preTag : "");
+    if (isPrerelease(entry.version) && !entry.tag) throw new Error(entry.name + "@" + entry.version + " is a prerelease and has no dist-tag; it would be published as latest");
     checkTarball(path.join(dir, entry.file), entry);
   }
   // plan.json comes from the pack job, which runs the repository's build: hand on only the entries
@@ -326,7 +366,7 @@ async function publish() {
   if (!dryRun) {
     for (const e of Array.isArray(claimedOnNpm) ? claimedOnNpm : []) {
       if (!e || !NAME_RE.test(String(e.name)) || !VERSION_RE.test(String(e.version))) throw new Error("invalid onNpm entry in plan.json " + JSON.stringify(e));
-      if ((await publishedVersions(e.name)).has(e.version)) resumable.push({ name: e.name, version: e.version });
+      if (atCommit(e) && (await publishedVersions(e.name)).has(e.version)) resumable.push({ name: e.name, version: e.version });
     }
   }
   setOutput("resumable", JSON.stringify(resumable));
@@ -365,7 +405,7 @@ async function publish() {
   const published = [];
   for (const entry of plan) {
     const args = ["publish", path.join(dir, entry.file), ...common];
-    if (tag || entry.tag) args.push("--tag", tag || entry.tag);
+    if (entry.tag) args.push("--tag", entry.tag);
     if (!dryRun && (await publishedVersions(entry.name)).has(entry.version)) {
       console.log("::notice::" + entry.name + "@" + entry.version + " is already on npm");
       released.push({ name: entry.name, version: entry.version });
@@ -402,7 +442,7 @@ async function publish() {
   summary((dryRun ? "Dry run, would publish: " : "Published: ") + (published.map((p) => "\`" + p.name + "@" + p.version + "\`").join(", ") || "nothing"));
 }
 
-module.exports = { splitList, orderPackages, selectPackages, discoverPackages, isWorkspace, changesetsPreTag, publishedVersions, changelogSection, checkTarball, supportsTrustedPublishing, storedTokenFiles, detectPackageManager };
+module.exports = { sourcePackages, splitList, orderPackages, selectPackages, discoverPackages, isWorkspace, changesetsPreTag, publishedVersions, changelogSection, checkTarball, supportsTrustedPublishing, storedTokenFiles, detectPackageManager };
 
 if (require.main === module) {
   const mode = process.argv[2];

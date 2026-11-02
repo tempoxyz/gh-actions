@@ -237,8 +237,34 @@ jobs:
             if (status !== "D" && newMode !== "100644" && newMode !== "100755") bad.push(file + " (mode " + newMode + ")");
             else if (!allowed.some((re) => re.test(file))) bad.push(file);
           }
+          // package.json may change only its version and the ranges of workspace dependencies:
+          // not scripts, not other dependencies, not new files.
+          const show = (spec) => execFileSync("git", ["show", spec], { encoding: "utf8" });
+          const headFiles = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", "HEAD"], { encoding: "utf8" }).split("\0").filter((f) => f === "package.json" || f.endsWith("/package.json"));
+          const workspace = new Set();
+          for (const f of headFiles) { try { const n = JSON.parse(show("HEAD:" + f)).name; if (n) workspace.add(n); } catch {} }
+          const canon = (v) => Array.isArray(v) ? v.map(canon) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v;
+          const strip = (m, other) => {
+            const c = { ...m };
+            delete c.version;
+            for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+              if (!c[field] || typeof c[field] !== "object") continue;
+              c[field] = { ...c[field] };
+              for (const dep of Object.keys(c[field])) if (workspace.has(dep) && other[field] && dep in other[field]) delete c[field][dep];
+            }
+            return JSON.stringify(canon(c));
+          };
+          for (let i = 0; i + 1 < raw.length; i += 2) {
+            const status = raw[i].split(" ")[4];
+            const file = raw[i + 1];
+            if (!(file === "package.json" || file.endsWith("/package.json")) || status === "D") continue;
+            if (status !== "M") { bad.push(file + " (new package.json)"); continue; }
+            let before, after;
+            try { before = JSON.parse(show("HEAD:" + file)); after = JSON.parse(show(":" + file)); } catch { bad.push(file + " (not valid JSON)"); continue; }
+            if (strip(before, after) !== strip(after, before)) bad.push(file + " (changes beyond version and workspace dependency ranges)");
+          }
           if (bad.length) {
-            console.log("::error::The version script changed files outside the allow-list (add them to version-paths if expected): " + bad.join(", "));
+            console.log("::error::The version script made changes the version pull request does not accept (add expected paths to version-paths): " + bad.join(", "));
             process.exit(1);
           }
           NODE
@@ -347,6 +373,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node-version }}
+
+      # Read only, for the versions and dist-tags the packed tarballs are held against. No
+      # repository code runs in this job.
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

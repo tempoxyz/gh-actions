@@ -274,6 +274,10 @@ Setup in the calling repository:
 
   The `environment:changesets` subject is what keeps the pack job, which has no environment,
   from minting a token.
+- The version pull request accepts only regular files under `package.json`, `CHANGELOG.md`, `.changeset/`,
+  lockfiles and `version-paths`, and in `package.json` only the version and workspace dependency
+  ranges. Lockfile contents are not checked: review lockfile changes in the version pull request,
+  which CI runs with the repository's secrets before anyone reviews it.
 - Drop `changeset publish` from the repository's scripts: this workflow publishes and tags.
   If a publish fails partway, rerun the failed jobs: the publish job then counts the versions its
   first attempt uploaded as released, and the release job tags them. (A later release that
