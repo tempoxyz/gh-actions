@@ -236,6 +236,7 @@ jobs:
   release:
     permissions:
       contents: read
+      pull-requests: read # the version job's changelog plugins read pull requests
       id-token: write
     uses: tempoxyz/gh-actions/.github/workflows/changesets-release.yml@<sha> # <tag>
     with:
@@ -248,6 +249,8 @@ Inputs: `node-version` (`24`), `install-command` (`pnpm install --frozen-lockfil
 `publishConfig.access`), `provenance`, `environment` (`npm`), `github-environment` (`changesets`),
 `version-paths` (extra paths the version script may change), `sts-policy` (`changesets`), `pr-title` and `github-releases` (`true`). Output: `published`. pnpm and bun
 are set up from their lockfiles.
+
+The calling job must grant at least `contents: read`, `pull-requests: read` and `id-token: write`: a reusable workflow's jobs cannot ask for more than their caller grants.
 
 Setup in the calling repository:
 
