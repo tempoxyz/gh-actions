@@ -161,7 +161,7 @@ test("plans and dry-runs a real workspace", { skip: spawnSync("cargo", ["--versi
     await crate("hidden", "publish = false\n");
     const outFile = path.join(dir, "out");
     await writeFile(outFile, "");
-    const env = { ...process.env, GITHUB_OUTPUT: outFile, INPUT_PACKAGES: "", INPUT_EXCLUDE: "", INPUT_SKIP_PUBLISHED: "false" };
+    const env = { ...process.env, GITHUB_OUTPUT: outFile, INPUT_PACKAGES: "", INPUT_EXCLUDE: "", INPUT_SKIP_PUBLISHED: "false", INPUT_DRY_RUN: "true" };
     const res = spawnSync("node", [path.join(__dirname, "publish.cjs"), "plan"], { cwd: dir, env, encoding: "utf8" });
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const out = await readFile(outFile, "utf8");
@@ -205,4 +205,43 @@ test("publish refuses to run without a token", () => {
   });
   assert.equal(res.status, 1);
   assert.match(res.stdout, /no crates\.io token/);
+});
+
+test("a real run refuses crates not on crates.io yet; a dry run checks them", { skip: spawnSync("cargo", ["--version"]).status !== 0 }, async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "cargo-publish-new-"));
+  try {
+    await mkdir(path.join(dir, "src"));
+    await writeFile(path.join(dir, "Cargo.toml"), '[package]\nname = "tempo-zz-never-published-xq"\nversion = "0.1.0"\nedition = "2021"\n');
+    await writeFile(path.join(dir, "src", "lib.rs"), "");
+    const out = path.join(dir, "out");
+    const run = (dry) => spawnSync("node", [path.join(__dirname, "publish.cjs"), "plan"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: out, INPUT_PACKAGES: "", INPUT_EXCLUDE: "", INPUT_SKIP_PUBLISHED: "true", INPUT_DRY_RUN: dry } });
+    await writeFile(out, "");
+    const real = run("false");
+    assert.equal(real.status, 1);
+    assert.match(real.stdout, /not on crates\.io yet[^\n]*tempo-zz-never-published-xq@0\.1\.0/);
+    const dry = run("true");
+    assert.equal(dry.status, 0, dry.stdout + dry.stderr);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("verify false passes --no-verify, and an expired token is reported as such", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "cargo-publish-fake-"));
+  try {
+    const log = path.join(dir, "args");
+    await writeFile(path.join(dir, "cargo"), "#!/bin/sh\necho \"$@\" >> " + log + "\necho 'error: failed to publish' >&2\nexit 101\n", { mode: 0o755 });
+    const base = { ...process.env, PATH: dir + ":" + process.env.PATH, PLAN: '[{"name":"a","version":"1.0.0"}]', INPUT_DRY_RUN: "false", INPUT_LOCKED: "true", INPUT_DELAY_SECONDS: "0", INPUT_RATE_LIMIT_RETRIES: "0", CARGO_REGISTRY_TOKEN: "x" };
+    const fresh = spawnSync("node", [path.join(__dirname, "publish.cjs"), "publish"], { encoding: "utf8", env: { ...base, INPUT_VERIFY: "false", TOKEN_ISSUED_AT: String(Math.floor(Date.now() / 1000)) } });
+    assert.equal(fresh.status, 1);
+    assert.match(fresh.stdout, /publishing a@1\.0\.0 failed/);
+    assert.match(await readFile(log, "utf8"), /publish --locked --no-verify -p a/);
+    // Started inside the budget (24 min), failed after the token's 30 minutes: the verify build ran long.
+    await writeFile(path.join(dir, "cargo"), "#!/bin/sh\nsleep 1\necho 'error: unauthorized' >&2\nexit 101\n", { mode: 0o755 });
+    const late = spawnSync("node", [path.join(__dirname, "publish.cjs"), "publish"], { encoding: "utf8", env: { ...base, INPUT_VERIFY: "true", TOKEN_ISSUED_AT: String(Math.floor(Date.now() / 1000) - (30 * 60 - 1)) } });
+    assert.equal(late.status, 1);
+    assert.match(late.stdout, /token expires soon[^\n]*Rerun the job/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

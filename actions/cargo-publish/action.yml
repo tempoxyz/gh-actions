@@ -26,6 +26,10 @@ inputs:
     description: "Pass --locked to cargo publish"
     required: false
     default: "true"
+  verify:
+    description: "Let cargo publish build each crate before uploading. Set false (--no-verify) in a publish job whose crates a dry run in an earlier job without id-token already built, so no dependency build script runs while crates.io trusts the job"
+    required: false
+    default: "true"
   delay-seconds:
     description: "Seconds to wait between packages"
     required: false
@@ -91,6 +95,7 @@ runs:
         PLAN: ${{ steps.plan.outputs.plan }}
         INPUT_DRY_RUN: ${{ inputs.dry-run }}
         INPUT_LOCKED: ${{ inputs.locked }}
+        INPUT_VERIFY: ${{ inputs.verify }}
         INPUT_DELAY_SECONDS: ${{ inputs.delay-seconds }}
         INPUT_RATE_LIMIT_RETRIES: ${{ inputs.rate-limit-retries }}
         CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

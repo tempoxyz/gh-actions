@@ -38,6 +38,7 @@ on the runner. GitHub-hosted and Depot runners have Node.
 | `dry-run` | Only `cargo publish --dry-run`; no token is requested | `false` |
 | `skip-published` | Skip crates whose version is already on crates.io | `true` |
 | `locked` | Pass `--locked` | `true` |
+| `verify` | Build each crate before uploading; `false` passes `--no-verify`, for a publish job after a separate dry-run job | `true` |
 | `delay-seconds` | Pause between crates | `0` |
 | `rate-limit-retries` | Retries per crate after a 429 | `10` |
 
@@ -47,6 +48,12 @@ on the runner. GitHub-hosted and Depot runners have Node.
 this run), each space separated.
 
 ## Usage
+
+Build in one job and publish from another. `cargo publish` compiles each crate and its
+dependencies before uploading, and every `build.rs` and proc macro it runs could request the job's
+OIDC token and exchange it with crates.io. So the `verify` job runs the dry run, which builds
+everything, outside the `release` environment; the `publish` job, the only one crates.io trusts,
+uploads with `verify: false` and builds nothing.
 
 ```yaml
 name: Release
@@ -58,9 +65,26 @@ on:
 permissions: {}
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
-    environment: release # optional; require reviewers on it for a human approval step
+    permissions:
+      contents: read
+      id-token: write # secure-runner only: crates.io trusts only the release environment
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@<sha> # <tag>
+      - uses: actions/checkout@<sha> # <tag>
+        with:
+          persist-credentials: false
+      - uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@<sha> # <tag>
+      - uses: tempoxyz/gh-actions/actions/cargo-publish@<sha> # <tag>
+        with:
+          dry-run: true
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: release # required: the trusted publisher names it
     permissions:
       contents: read
       id-token: write
@@ -72,9 +96,12 @@ jobs:
           persist-credentials: false
       - uses: tempoxyz/gh-actions/vendor/dtolnay/rust-toolchain@<sha> # <tag>
       - uses: tempoxyz/gh-actions/actions/cargo-publish@<sha> # <tag>
+        with:
+          verify: false
 ```
 
-Run it with `dry-run: true` on pull requests to catch packaging errors before a release.
+The publish job should run nothing else that builds or runs repository code. Run the `verify` job
+alone on pull requests to catch packaging errors before a release.
 
 ## Setting up crates.io
 
@@ -84,9 +111,10 @@ trusted publisher:
 - **Repository owner / name:** the repository that runs the workflow, such as `alloy-rs` / `alloy`.
 - **Workflow filename:** the calling workflow's file name, such as `release.yml`. This is a
   composite action, so crates.io sees the caller's workflow, not this repository.
-- **Environment:** the job's `environment`, if it has one. Set it whenever the job uses one, so
-  only that environment's protection rules can unlock a publish.
+- **Environment:** the publish job's `environment` (`release` above). Always set it: it is what keeps
+  the build job, and any build script in it, from publishing.
 
 A crate must already exist on crates.io before it can have a trusted publisher, so publish a
-brand-new crate once by hand. Once a CI release has worked, turn on **Require trusted publishing
+brand-new crate once by hand. A real run refuses, before authenticating, when any crate to publish
+has no version on crates.io yet, rather than stop partway; dry runs still check new crates. Once a CI release has worked, turn on **Require trusted publishing
 for all new versions** in the same settings page, so API tokens can no longer publish the crate.

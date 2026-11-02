@@ -14,6 +14,7 @@ const fs = require("node:fs");
 const INDEX_URL = "https://index.crates.io";
 // Upload only within the first 25 of the token's 30 minutes.
 const TOKEN_BUDGET_MS = 25 * 60 * 1000;
+const TOKEN_LIFETIME_MS = 30 * 60 * 1000;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 function splitList(value) {
@@ -258,7 +259,8 @@ async function plan() {
   const packages = splitList(process.env.INPUT_PACKAGES);
   const exclude = splitList(process.env.INPUT_EXCLUDE);
   // A dry run checks every selected crate, published or not: cargo only warns about an existing version.
-  const skipPublished = !parseBool("dry-run", process.env.INPUT_DRY_RUN) && parseBool("skip-published", process.env.INPUT_SKIP_PUBLISHED);
+  const dryRun = parseBool("dry-run", process.env.INPUT_DRY_RUN);
+  const skipPublished = !dryRun && parseBool("skip-published", process.env.INPUT_SKIP_PUBLISHED);
 
   const meta = cargo(["metadata", "--format-version", "1", "--no-deps"], { capture: true });
   if (meta.status !== 0) {
@@ -284,6 +286,13 @@ async function plan() {
   }
 
   const fmt = (list) => list.map((p) => p.name + "@" + p.version).join(" ");
+  // Trusted publishing cannot create a crate. Refuse before authenticating rather than upload the
+  // crates ahead of a new one and stop there. Dry runs go on: they check a crate before its first
+  // manual release.
+  const brandNew = toPublish.filter((p) => versions.get(p.name).size === 0);
+  if (brandNew.length && !dryRun) {
+    throw new Error("not on crates.io yet, so trusted publishing cannot create them: " + fmt(brandNew) + ". Publish their first version by hand (and add the trusted publisher), then rerun");
+  }
   console.log("Publish order: " + (fmt(toPublish) || "(nothing)"));
   if (skipped.length) console.log("Already on crates.io, skipped: " + fmt(skipped));
   setOutput("packages", toPublish.map((p) => p.name).join(" "));
@@ -300,6 +309,7 @@ async function publish() {
   const list = JSON.parse(process.env.PLAN || "[]");
   const dryRun = parseBool("dry-run", process.env.INPUT_DRY_RUN);
   const locked = parseBool("locked", process.env.INPUT_LOCKED);
+  const verify = parseBool("verify", process.env.INPUT_VERIFY ?? "true");
   const delayMs = parseNonNegativeInt("delay-seconds", process.env.INPUT_DELAY_SECONDS) * 1000;
   const retries = parseNonNegativeInt("rate-limit-retries", process.env.INPUT_RATE_LIMIT_RETRIES);
   for (const pkg of list) if (!NAME_RE.test(pkg.name)) throw new Error("invalid package name '" + pkg.name + "'");
@@ -338,7 +348,7 @@ async function publish() {
     outOfTime(pkg, 0);
     for (let attempt = 1; ; attempt++) {
       console.log("::group::cargo publish -p " + pkg.name + " (" + pkg.version + ")" + (attempt > 1 ? ", attempt " + attempt : ""));
-      const res = cargo(["publish", ...common, "-p", pkg.name], { capture: true });
+      const res = cargo(["publish", ...common, ...(verify ? [] : ["--no-verify"]), "-p", pkg.name], { capture: true });
       process.stdout.write(res.stdout);
       process.stdout.write(res.stderr);
       console.log("::endgroup::");
@@ -350,6 +360,8 @@ async function publish() {
         console.log("::notice::" + pkg.name + "@" + pkg.version + " is already on crates.io");
         break;
       }
+      // Verification can outlast the token after outOfTime let the crate start: say so plainly.
+      if (Date.now() >= issuedAt + TOKEN_LIFETIME_MS) outOfTime(pkg, Infinity);
       const wait = rateLimitDelayMs(res.stderr, attempt);
       if (wait === null || attempt > retries) {
         setOutput("published", published.map((p) => p.name).join(" "));
