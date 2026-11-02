@@ -17,7 +17,7 @@ inputs:
   host:
     description: "Broker hostname without a scheme, port, or path"
     required: false
-    default: "cf-deployer.tempoxyz.net"
+    default: "cfd.tempoxyz.net"
 outputs:
   managed-resources:
     description: "JSON array of owned R2, stream, sink, Pipeline and Queue IDs (no credentials)"
