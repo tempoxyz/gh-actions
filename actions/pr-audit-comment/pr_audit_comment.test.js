@@ -41,6 +41,23 @@ test("private composes with fast and note arguments", () => {
   assert.equal(defaults.note, "focus on authorization");
 });
 
+test("notes aliases note for quoted guidance, validation and repeated options", () => {
+  for (const args of [
+    'fast notes="7510 is the PR for the TIPs. This Pr only adds native multisig types"',
+    "notes:'focus on authorization'",
+    'notes=""',
+    'notes=',
+    'note=first notes=second',
+    'notes=first note=second',
+  ]) {
+    assert.deepEqual(
+      handle.parseArgs(`cyclops audit ${args}`, "^cyclops\\s+audit\\b"),
+      handle.parseArgs(`cyclops audit ${args.replaceAll("notes", "note")}`, "^cyclops\\s+audit\\b"),
+      args,
+    );
+  }
+});
+
 test("env selects the audit environment and falls back to the default", () => {
   const regex = "^cyclops\\s+audit\\b";
   for (const [body, defaultEnv, expected] of [
@@ -621,7 +638,7 @@ test("private audit publishes the flag without creating a GitHub status comment"
   try {
     const result = await runScenario({
       mode: "association",
-      body: "cyclops private audit fast note='focus here'",
+      body: "cyclops private audit fast notes='focus here'",
     });
 
     assert.deepEqual(result.core.failures, []);
@@ -716,7 +733,7 @@ test("only successful plain commands acknowledge Warden opt-in", async () => {
     assert.equal(result.primary.calls.commentUpdates[0].body.startsWith("<!-- cyclops:warden"), true);
   }
   for (const option of ["fast", "super-fast", "iterations=2", "hours=1", "models=openai/gpt-5.5",
-    "config=pr-review.yaml", "note=focus", "run-label=custom", "perf", "dry-run"]) {
+    "config=pr-review.yaml", "note=focus", "notes=focus", "run-label=custom", "perf", "dry-run"]) {
     const result = await publishScenario({ body: `cyclops audit ${option}`, defaultEnv: "prod" });
     assert.deepEqual(result.core.failures, []);
     assert.equal(result.primary.calls.commentUpdates[0].body.startsWith("<!-- cyclops:warden"), false, option);

@@ -84,6 +84,6 @@ Supported arguments:
 - `private` (also accepted before `audit`; publishes findings only to Linear and links them from Slack)
 - `perf`
 - `env=staging|prod|production|ab` (`ab` runs both; defaults to the `default-env` input, which defaults to `prod`)
-- `note="..."`
+- `note="..."` (alias: `notes="..."`)
 
 `staging` and `ab` set `runner_channel` in the event and are named in the status comment; `prod` omits it.
