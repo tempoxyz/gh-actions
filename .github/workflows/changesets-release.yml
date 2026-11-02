@@ -76,6 +76,11 @@ on:
         required: false
         type: string
         default: changesets
+      version-paths:
+        description: Extra paths (globs, one per line) the version script may change besides package.json, CHANGELOG.md, .changeset/ and lockfiles, such as a generated version file.
+        required: false
+        type: string
+        default: ""
       sts-policy:
         description: github-sts policy in the calling repository that grants contents and pull_requests write.
         required: false
@@ -107,6 +112,8 @@ jobs:
     # environment, so nothing here can mint an STS token. It hands the changes on as a patch.
     permissions:
       contents: read
+      # Changelog plugins such as @changesets/changelog-github read pull requests.
+      pull-requests: read
       # secure-runner only.
       id-token: write
     outputs:
@@ -121,12 +128,20 @@ jobs:
 
       - name: Detect pending changesets
         id: detect
+        # As changesets/action does: in pre mode, changesets already listed in .changeset/pre.json
+        # have been versioned and stay on disk, so they are not pending.
         run: |
-          if find .changeset -maxdepth 1 -type f -name '*.md' ! -name README.md -print -quit 2> /dev/null | grep -q .; then
-            echo "has-changesets=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has-changesets=false" >> "$GITHUB_OUTPUT"
-          fi
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require("node:fs");
+          let ids = [];
+          try { ids = fs.readdirSync(".changeset").filter((f) => f.endsWith(".md") && f !== "README.md").map((f) => f.slice(0, -3)); } catch {}
+          let done = new Set();
+          try {
+            const pre = JSON.parse(fs.readFileSync(".changeset/pre.json", "utf8"));
+            if (pre.mode === "pre" && Array.isArray(pre.changesets)) done = new Set(pre.changesets);
+          } catch {}
+          console.log("has-changesets=" + ids.some((id) => !done.has(id)));
+          NODE
 
       - name: Set up pnpm
         if: steps.detect.outputs.has-changesets == 'true' && hashFiles('pnpm-lock.yaml') != ''
@@ -150,7 +165,7 @@ jobs:
       - name: Apply changesets
         if: steps.detect.outputs.has-changesets == 'true'
         env:
-          # Read-only: enough for changelog plugins such as @changesets/changelog-github.
+          # Read-only (contents and pull requests), for changelog plugins.
           GITHUB_TOKEN: ${{ github.token }}
           VERSION_SCRIPT: ${{ inputs.version-script }}
         run: |
@@ -199,6 +214,34 @@ jobs:
 
       - name: Apply version changes
         run: git apply --index "$RUNNER_TEMP/version-patch/version.patch"
+
+      - name: Check version changes
+        # The patch comes from the version job, which runs repository code. Only regular files on
+        # the allow-list may change, so it cannot add workflows, symlinks or submodules.
+        env:
+          EXTRA_PATHS: ${{ inputs.version-paths }}
+        run: |
+          node - <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const glob = (g) => new RegExp("^" + g.trim().split("**/").map((part) => part.split("**").map((p) => p.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")).join(".*")).join("(?:.*/)?") + "$");
+          const allowed = [
+            "package.json", "**/package.json", "CHANGELOG.md", "**/CHANGELOG.md", ".changeset/**",
+            "pnpm-lock.yaml", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "bun.lock", "bun.lockb",
+            ...(process.env.EXTRA_PATHS || "").split("\n").filter((l) => l.trim()),
+          ].map(glob);
+          const raw = execFileSync("git", ["diff", "--cached", "--raw", "--no-renames", "-z"], { encoding: "utf8" }).split("\0");
+          const bad = [];
+          for (let i = 0; i + 1 < raw.length; i += 2) {
+            const [, newMode, , , status] = raw[i].split(" ");
+            const file = raw[i + 1];
+            if (status !== "D" && newMode !== "100644" && newMode !== "100755") bad.push(file + " (mode " + newMode + ")");
+            else if (!allowed.some((re) => re.test(file))) bad.push(file);
+          }
+          if (bad.length) {
+            console.log("::error::The version script changed files outside the allow-list (add them to version-paths if expected): " + bad.join(", "));
+            process.exit(1);
+          }
+          NODE
 
       - name: Fetch GitHub token via STS
         id: sts

@@ -246,7 +246,7 @@ Inputs: `node-version` (`24`), `install-command` (`pnpm install --frozen-lockfil
 `version-script` (`pnpm changeset version`), `build-command`, `packages`, `package-manager`,
 `dist-tag` (prereleases default to the tag in `.changeset/pre.json`), `access` (empty keeps each package's
 `publishConfig.access`), `provenance`, `environment` (`npm`), `github-environment` (`changesets`),
-`sts-policy` (`changesets`), `pr-title` and `github-releases` (`true`). Output: `published`. pnpm and bun
+`version-paths` (extra paths the version script may change), `sts-policy` (`changesets`), `pr-title` and `github-releases` (`true`). Output: `published`. pnpm and bun
 are set up from their lockfiles.
 
 Setup in the calling repository:
@@ -272,8 +272,10 @@ Setup in the calling repository:
   The `environment:changesets` subject is what keeps the pack job, which has no environment,
   from minting a token.
 - Drop `changeset publish` from the repository's scripts: this workflow publishes and tags.
-  If a publish fails partway, rerun the failed jobs or push again: versions an interrupted release
-  uploaded are tagged once npm confirms them, when the package already has older tags. Every tag
+  If a publish fails partway, rerun the failed jobs: the publish job then counts the versions its
+  first attempt uploaded as released, and the release job tags them. (A later release that
+  publishes something also tags versions an interrupted release uploaded, when the package
+  already has older tags; a push that publishes nothing does not.) Every tag
   is created at the commit the workflow runs on, including tags for versions published earlier or
   by hand, which may have been built from other contents.
 

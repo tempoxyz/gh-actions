@@ -125,21 +125,22 @@ runs:
         # Classify the staged changes into the GraphQL fileChanges shape.
         # --no-renames so a rename surfaces as D + A; any status other
         # than A/M/D (e.g. T for a type change) is unsupported and fails.
-        ADDITIONS='[]'
-        DELETIONS='[]'
+        # Each file's contents go to jq through a file, never an argument, so commits of any
+        # size fit (one argument is capped at 128 KiB). Contents come from the index, not the
+        # working tree, so a staged symlink is never followed.
+        CHANGES_DIR="$(mktemp -d "$RUNNER_TEMP/create-pull-request.XXXXXX")"
+        : > "$CHANGES_DIR/additions.jsonl"
+        : > "$CHANGES_DIR/deletions.jsonl"
         CHANGE_COUNT=0
         while IFS= read -r -d '' status && IFS= read -r -d '' path; do
           case "$status" in
             A|M)
-              ADDITIONS="$(
-                jq --arg path "$path" --arg contents "$(base64 -w0 < "$path")" \
-                  '. + [{path: $path, contents: $contents}]' <<<"$ADDITIONS"
-              )"
+              git cat-file blob ":$path" | base64 -w0 > "$CHANGES_DIR/contents"
+              jq -cn --arg path "$path" --rawfile contents "$CHANGES_DIR/contents" \
+                '{path: $path, contents: $contents}' >> "$CHANGES_DIR/additions.jsonl"
               ;;
             D)
-              DELETIONS="$(
-                jq --arg path "$path" '. + [{path: $path}]' <<<"$DELETIONS"
-              )"
+              jq -cn --arg path "$path" '{path: $path}' >> "$CHANGES_DIR/deletions.jsonl"
               ;;
             *)
               echo "::error::unsupported change type '$status' for '$path'" >&2
@@ -197,8 +198,8 @@ runs:
             --arg branch "$COMMIT_BRANCH" \
             --arg oid "$BASE_SHA" \
             --arg headline "$COMMIT_MESSAGE" \
-            --argjson additions "$ADDITIONS" \
-            --argjson deletions "$DELETIONS" \
+            --slurpfile additions "$CHANGES_DIR/additions.jsonl" \
+            --slurpfile deletions "$CHANGES_DIR/deletions.jsonl" \
             '{query: $query, variables: {input: {
                 branch: {repositoryNameWithOwner: $repo, branchName: $branch},
                 expectedHeadOid: $oid,
