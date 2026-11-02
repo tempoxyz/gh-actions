@@ -318,3 +318,19 @@ test("unrelated package.json files sharing a name do not block publishing", () =
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("an ambiguous onNpm name is skipped, not fatal", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-publish-ambig-"));
+  try {
+    fs.mkdirSync(path.join(dir, "fixtures"));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "sib", version: "1.0.0" }));
+    fs.writeFileSync(path.join(dir, "fixtures", "package.json"), JSON.stringify({ name: "sib", version: "0.0.1" }));
+    fs.writeFileSync(path.join(dir, "plan.json"), JSON.stringify({ packages: [], onNpm: [{ name: "sib", version: "1.0.0" }] }));
+    const out = path.join(dir, "o");
+    const res = spawnSync("node", [script, "publish"], { cwd: dir, encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: out, PACK_DIRECTORY: dir, INPUT_DRY_RUN: "false" } });
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(fs.readFileSync(out, "utf8"), /resumable<<\S+\n\[\]\n/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

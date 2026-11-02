@@ -371,7 +371,9 @@ async function publish() {
   if (!dryRun) {
     for (const e of Array.isArray(claimedOnNpm) ? claimedOnNpm : []) {
       if (!e || !NAME_RE.test(String(e.name)) || !VERSION_RE.test(String(e.version))) throw new Error("invalid onNpm entry in plan.json " + JSON.stringify(e));
-      if (atCommit(e) && (await publishedVersions(e.name)).has(e.version)) resumable.push({ name: e.name, version: e.version });
+      // An ambiguous name (fixtures reusing it) is simply not resumable: only planned entries must be unambiguous.
+      const versions = source.get(e.name);
+      if (versions && versions.size === 1 && versions.has(e.version) && (await publishedVersions(e.name)).has(e.version)) resumable.push({ name: e.name, version: e.version });
     }
   }
   setOutput("resumable", JSON.stringify(resumable));
