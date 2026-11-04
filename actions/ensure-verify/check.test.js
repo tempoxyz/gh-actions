@@ -1,10 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateRun, needsTipCheck, isTransient, shouldShip } from "./check.mjs";
+import { evaluateRun, needsTipCheck, retryDelay, shouldShip } from "./check.mjs";
 
-test("waits while no run exists or it has not finished", () => {
+const headers = (h) => ({ get: (name) => h[name] ?? null });
+
+test("waits for a missing run until the grace period, then reports it missing", () => {
   assert.deepEqual(evaluateRun(undefined), { state: "wait" });
-  for (const status of ["queued", "in_progress", "waiting", "pending"]) assert.deepEqual(evaluateRun({ status }), { state: "wait" });
+  assert.deepEqual(evaluateRun(undefined, { pastGrace: true }), { state: "missing" });
+});
+test("waits while the run has not finished, however long", () => {
+  for (const status of ["queued", "in_progress", "waiting", "pending"]) {
+    assert.deepEqual(evaluateRun({ status }, { pastGrace: true }), { state: "wait" });
+  }
 });
 test("passes only on success", () => {
   assert.deepEqual(evaluateRun({ status: "completed", conclusion: "success" }), { state: "pass" });
@@ -26,7 +33,17 @@ test("ships only at the tip and refuses an unknown tip", () => {
   assert.throws(() => shouldShip({ sha: "a", tip: "" }));
   assert.throws(() => shouldShip({ sha: "a", tip: undefined }));
 });
-test("retries network errors, rate limits and server errors only", () => {
-  for (const status of [undefined, 429, 500, 502, 503]) assert.equal(isTransient(status), true, String(status));
-  for (const status of [400, 401, 403, 404, 422]) assert.equal(isTransient(status), false, String(status));
+test("retries network errors, 429 and 5xx with backoff", () => {
+  for (const status of [undefined, 429, 500, 502, 503]) assert.equal(retryDelay({ status, attempt: 2 }), 4, String(status));
+});
+test("retries rate-limit 403s and waits for their reset", () => {
+  assert.equal(retryDelay({ status: 403, headers: headers({ "retry-after": "60" }), attempt: 1 }), 60);
+  assert.equal(retryDelay({ status: 403, headers: headers({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1100" }), attempt: 1, now: 1000 }), 101);
+  assert.equal(retryDelay({ status: 403, body: "You have exceeded a secondary rate limit", attempt: 3 }), 8);
+  assert.equal(retryDelay({ status: 429, headers: headers({ "retry-after": "9999" }), attempt: 1 }), 300);
+});
+test("fails at once on permission and other client errors", () => {
+  for (const status of [400, 401, 403, 404, 422]) {
+    assert.equal(retryDelay({ status, headers: headers({}), body: "Resource not accessible by integration", attempt: 1 }), null, String(status));
+  }
 });

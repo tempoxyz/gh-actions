@@ -14,7 +14,7 @@ inputs:
     required: false
     default: "push"
   branch:
-    description: "Branch whose tip a re-run must still be at to ship. Empty uses the repository's default branch"
+    description: "Branch whose verify run counts and whose tip a re-run must still be at to ship. Empty uses the pushed branch (github.ref_name), else the default branch"
     required: false
     default: ""
   check-tip:
@@ -25,6 +25,10 @@ inputs:
     description: "How long to wait for the run to finish"
     required: false
     default: "60"
+  missing-minutes:
+    description: "How long to wait for the run to exist before failing; push runs are created when the push happens"
+    required: false
+    default: "5"
   poll-seconds:
     description: "Seconds between checks"
     required: false
@@ -55,9 +59,11 @@ runs:
         BRANCH: ${{ inputs.branch }}
         CHECK_TIP: ${{ inputs.check-tip }}
         TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+        MISSING_MINUTES: ${{ inputs.missing-minutes }}
         POLL_SECONDS: ${{ inputs.poll-seconds }}
         TOKEN: ${{ inputs.token }}
         REPO: ${{ github.repository }}
         RUN_ATTEMPT: ${{ github.run_attempt }}
+        REF_NAME: ${{ github.event_name == 'push' && github.ref_name || '' }}
         API_URL: ${{ github.api_url }}
       run: node "$GITHUB_ACTION_PATH/main.mjs"
