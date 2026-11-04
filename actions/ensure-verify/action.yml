@@ -1,0 +1,63 @@
+name: "Ensure verify"
+description: "Wait for a commit's verify workflow run and fail unless it passed; on re-runs, report whether the commit is still the branch tip"
+
+inputs:
+  workflow:
+    description: "Verify workflow file name or ID, such as verify.yml"
+    required: true
+  sha:
+    description: "Commit whose run to wait for"
+    required: false
+    default: ${{ github.sha }}
+  event:
+    description: "Event of the run to wait for (the verify workflow's own push run)"
+    required: false
+    default: "push"
+  branch:
+    description: "Branch whose tip a re-run must still be at to ship. Empty uses the repository's default branch"
+    required: false
+    default: ""
+  check-tip:
+    description: "When to compare the commit with the branch tip: rerun (only on re-runs), always or never"
+    required: false
+    default: "rerun"
+  timeout-minutes:
+    description: "How long to wait for the run to finish"
+    required: false
+    default: "60"
+  poll-seconds:
+    description: "Seconds between checks"
+    required: false
+    default: "30"
+  token:
+    description: "Token with actions: read and contents: read"
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  ship:
+    description: "true unless the tip check found the branch has moved past the commit"
+    value: ${{ steps.ensure.outputs.ship }}
+  run-url:
+    description: "URL of the verify run that passed"
+    value: ${{ steps.ensure.outputs.run-url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Ensure verify passed
+      id: ensure
+      shell: bash
+      env:
+        WORKFLOW: ${{ inputs.workflow }}
+        SHA: ${{ inputs.sha }}
+        EVENT: ${{ inputs.event }}
+        BRANCH: ${{ inputs.branch }}
+        CHECK_TIP: ${{ inputs.check-tip }}
+        TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+        POLL_SECONDS: ${{ inputs.poll-seconds }}
+        TOKEN: ${{ inputs.token }}
+        REPO: ${{ github.repository }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        API_URL: ${{ github.api_url }}
+      run: node "$GITHUB_ACTION_PATH/main.mjs"
