@@ -20,7 +20,17 @@ and SLSA verification for `github.com/google/osv-scanner` at the exact release t
 before execution. Failed verification stops the action. Cached downloads under
 `runner.temp` are rechecked on every scan invocation.
 
-Runner policy must allow GitHub release downloads, Sigstore verification, OSV API
+Downloads retry only transient connection failures and HTTP 408, 429, 500, 502,
+503, and 504. After those retries, the official GitHub API resolves the exact pinned
+release tag and asset. The API response must identify one uploaded asset with the
+expected repository, tag, name, size, and download URL. All bytes still require the
+pinned checksum, followed by the mandatory SLSA verification above. Checksum,
+identity, certificate, authorization, and other permanent failures stop immediately.
+Transfers use exclusive temporary files, a 60-second inactivity timeout, and atomic
+publication after checksum verification. Public downloads send no workflow tokens;
+API rate-limit denials fail closed rather than bypassing access controls.
+
+Runner policy must allow api.github.com, GitHub release downloads, Sigstore verification, OSV API
 access, and any package metadata endpoints the selected scanners use. No GitHub
 or OIDC credentials or process-injection environment variables are forwarded to
 the native child processes. Call analysis is disabled, so Rust build scripts are

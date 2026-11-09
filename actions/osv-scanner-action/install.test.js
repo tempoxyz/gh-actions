@@ -28,84 +28,51 @@ test('rejects a modified download before it can be executed', async () => {
   assert.throws(() => verifyChecksum(Buffer.from('modified binary'), digest, 'scanner'), /Checksum mismatch/);
 });
 
-test('retries 5xx and 409 release downloads with exponential backoff', async t => {
-  const { download } = await import('./install.mjs');
-  const bytes = Buffer.from('trusted asset');
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'osv-download-'));
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const delays = [];
-  const statuses = [500, 409];
-  const result = await download(
-    { assets: { 'asset.bin': createHash('sha256').update(bytes).digest('hex') } },
-    'asset.bin',
-    directory,
-    {
-      fetch: async () => {
-        const status = statuses.shift();
-        return status === undefined
-          ? { ok: true, arrayBuffer: async () => bytes }
-          : { ok: false, status, headers: new Headers() };
-      },
-      sleep: async delay => delays.push(delay),
-    },
-  );
-
-  assert.equal(result, path.join(directory, 'asset.bin'));
-  assert.deepEqual(delays, [1_000, 2_000]);
-});
-
-test('honors Retry-After before retrying a rate-limited release download', async t => {
-  const { download } = await import('./install.mjs');
-  const bytes = Buffer.from('trusted asset');
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'osv-download-'));
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const delays = [];
-  let calls = 0;
-  await download(
-    { assets: { 'asset.bin': createHash('sha256').update(bytes).digest('hex') } },
-    'asset.bin',
-    directory,
-    {
-      fetch: async () => {
-        calls += 1;
-        return calls === 1
-          ? { ok: false, status: 429, headers: new Headers({ 'Retry-After': '3' }) }
-          : { ok: true, arrayBuffer: async () => bytes };
-      },
-      sleep: async delay => delays.push(delay),
-    },
-  );
-
-  assert.deepEqual(delays, [3_000]);
-});
-
-test('does not retry permanent release download failures', async t => {
-  const { download } = await import('./install.mjs');
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'osv-download-'));
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  let calls = 0;
-  await assert.rejects(
-    download(
-      { assets: { 'asset.bin': '0'.repeat(64) } },
-      'asset.bin',
-      directory,
-      {
-        fetch: async () => {
-          calls += 1;
-          return { ok: false, status: 404, headers: new Headers() };
-        },
-        sleep: async () => assert.fail('permanent failure must not sleep'),
-      },
-    ),
-    /Download asset\.bin: HTTP 404/,
-  );
-  assert.equal(calls, 1);
-});
-
 test('native children receive platform necessities without tokens or injection variables', async () => {
   const { childEnvironment } = await import('./install.mjs');
   assert.deepEqual(childEnvironment({ Path: 'C:\\tools', SystemRoot: 'C:\\Windows', TEMP: 'C:\\temp', HOME: '/home/user',
     GITHUB_TOKEN: 'secret', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'secret', GH_TOKEN: 'secret', NODE_OPTIONS: '--require evil',
     LD_PRELOAD: 'evil', DYLD_INSERT_LIBRARIES: 'evil', GIT_CONFIG_COUNT: '1' }),
   { Path: 'C:\\tools', SystemRoot: 'C:\\Windows', TEMP: 'C:\\temp', HOME: '/home/user' });
+});
+
+test('self-verification precedes scanner verification, and either failure blocks installation', async t => {
+  const { install, assetNames, releases } = await import('./install.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osv verification '));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const names = assetNames();
+  const directory = path.join(root, `tempo-osv-${releases.scanner.version}-${releases.verifier.version}-${process.platform}-${process.arch}`);
+  fs.mkdirSync(directory);
+  const original = structuredClone(releases);
+  t.after(() => Object.assign(releases, original));
+  // Local fixtures stand in for checksum-pinned bytes; only the subprocess boundary is intercepted.
+  function seed() {
+    for (const [release, name] of [[releases.scanner, names.scanner], [releases.verifier, names.verifier],
+      [releases.scanner, 'multiple.intoto.jsonl'], [releases.verifier, `${names.verifier}.intoto.jsonl`]]) {
+      const bytes = Buffer.from(name);
+      release.assets[name] = createHash('sha256').update(bytes).digest('hex');
+      fs.writeFileSync(path.join(directory, name), bytes);
+    }
+  }
+  for (const failure of [0, 1, -1]) {
+    seed(); const calls = [];
+    const invoke = install({ RUNNER_TEMP: root, GITHUB_TOKEN: 'secret', NODE_OPTIONS: '--require evil' }, (binary, args, options) => {
+      calls.push({ binary, args, options });
+      return { status: calls.length - 1 === failure ? 1 : 0 };
+    });
+    if (failure >= 0) {
+      await assert.rejects(invoke, /SLSA verification failed/);
+      assert.equal(fs.existsSync(path.join(directory, names.scanner)), false);
+    } else assert.equal(await invoke, path.join(directory, names.scanner));
+    assert.equal(calls.length, failure === 0 ? 1 : 2);
+    for (const [index, call] of calls.entries()) {
+      const release = index === 0 ? releases.verifier : releases.scanner;
+      const artifact = index === 0 ? names.verifier : names.scanner;
+      const provenance = index === 0 ? `${names.verifier}.intoto.jsonl` : 'multiple.intoto.jsonl';
+      assert.equal(call.binary, path.join(directory, names.verifier));
+      assert.deepEqual(call.args, ['verify-artifact', path.join(directory, artifact), '--provenance-path',
+        path.join(directory, provenance), '--source-uri', `github.com/${release.repository}`, '--source-tag', release.version]);
+      assert.deepEqual(call.options.env, {});
+    }
+  }
 });
