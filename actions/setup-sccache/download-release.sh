@@ -14,6 +14,8 @@ fi
 # An interrupted transfer must never leave a partial file at the destination.
 partial=$(mktemp "${destination}.XXXXXX")
 download_pid=
+# Invoked through the EXIT/signal trap cleanup chain.
+# shellcheck disable=SC2317,SC2329
 stop_download() {
   if [[ -n "$download_pid" ]]; then
     kill "$download_pid" 2>/dev/null || true
@@ -28,6 +30,8 @@ stop_download() {
     download_pid=
   fi
 }
+# Invoked through the EXIT/signal trap cleanup chain.
+# shellcheck disable=SC2317,SC2329
 cleanup() {
   # Repeated cancellation must not interrupt the forced kill, wait or removal.
   trap '' INT TERM
