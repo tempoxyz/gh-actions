@@ -349,3 +349,10 @@ for (const secondSignal of ['SIGTERM', 'SIGINT']) {
     assertApiStopped(f);
   });
 }
+
+test('CI Foundry smoke tests execute the checked-out candidate action', () => {
+  const workflow = fs.readFileSync(path.join(action, '../../.github/workflows/test.yml'), 'utf8');
+  const references = workflow.split('\n').filter(line => line.includes('uses:') && line.includes('/setup-foundry'));
+  assert.equal(references.length, 3);
+  for (const reference of references) assert.match(reference, /uses: \.\/actions\/setup-foundry #/);
+});

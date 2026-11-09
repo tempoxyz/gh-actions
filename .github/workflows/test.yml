@@ -264,7 +264,7 @@ jobs:
             echo "$RUNNER_TEMP/old-gh" >> "$GITHUB_PATH"
           fi
       - name: Install attested Foundry with bootstrapped GitHub CLI
-        uses: tempoxyz/gh-actions/actions/setup-foundry@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/setup-foundry # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
         with:
           version: nightly
           cache: "false"
@@ -600,12 +600,12 @@ jobs:
         uses: tempoxyz/gh-actions/actions/setup-argo-cli@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
       - name: Smoke test setup-foundry stable (SLSA attestation)
         id: foundry-stable
-        uses: tempoxyz/gh-actions/actions/setup-foundry@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/setup-foundry # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
         with:
           cache: "false"
       - name: Smoke test setup-foundry nightly (SLSA attestation, nightly-<commit> resolution)
         id: foundry-nightly
-        uses: tempoxyz/gh-actions/actions/setup-foundry@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/setup-foundry # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
         with:
           version: nightly
           cache: "false"
