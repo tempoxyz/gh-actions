@@ -39,9 +39,10 @@ echo "$sha256  $archive" | sha256sum --check --strict
 tar -xzf "$archive" -C "$install_dir" --strip-components=1 "gh_${version}_linux_${arch}/bin/gh"
 
 # The digest establishes the bootstrap trust; also verify the publisher's
-# provenance before exposing the CLI to subsequent steps.
+# provenance before exposing the CLI to subsequent steps. Release v2.102.1 was
+# deployed from this patch branch, not trunk (cli/cli Actions run 39482998765).
 "$install_dir/bin/gh" attestation verify "$archive" --repo cli/cli \
   --signer-workflow cli/cli/.github/workflows/deployment.yml \
-  --source-ref refs/heads/trunk
+  --source-ref refs/heads/bagtoad/go-1-27-3-patch-on-v2-102-0
 "$install_dir/bin/gh" --version
 echo "$install_dir/bin" >> "${GITHUB_PATH:?}"

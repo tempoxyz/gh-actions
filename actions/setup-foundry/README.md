@@ -44,7 +44,11 @@ provenance from `foundry-rs/foundry` at the resolved tag (or `master` for nightl
 `.github/workflows/release.yml`. The action reuses `gh` when it supports the required attestation
 flags. Otherwise, on Linux x86_64 or ARM64 it installs GitHub CLI 2.102.1 under `RUNNER_TEMP`,
 checks an archive SHA-256 pinned in the action, and verifies the CLI's own provenance before
-adding it to `PATH`. No root access or preinstalled `gh` is required; the runner needs Bash,
+adding it to `PATH`. The CLI attestation must name `cli/cli`, its `.github/workflows/deployment.yml`,
+and the exact source ref `refs/heads/bagtoad/go-1-27-3-patch-on-v2-102-0`. That patch branch,
+not `trunk`, produced both pinned archives in the [official 2.102.1 deployment](https://github.com/cli/cli/actions/runs/39482998765)
+at release-tag commit [`89d7dce`](https://github.com/cli/cli/commit/89d7dcec017194af1d6f8853176b2dae9c1da762).
+No root access or preinstalled `gh` is required; the runner needs Bash,
 curl, tar, gzip, sha256sum, mktemp, GNU stat, and GNU timeout. Foundry's checksum and attestation checks still run.
 
 Binaries are installed under `RUNNER_TEMP` and added to `PATH`; `foundryup` itself is not installed.
