@@ -45,6 +45,21 @@ provenance from `foundry-rs/foundry` at the resolved tag (or `master` for nightl
 flags. Otherwise, on Linux x86_64 or ARM64 it installs GitHub CLI 2.102.1 under `RUNNER_TEMP`,
 checks an archive SHA-256 pinned in the action, and verifies the CLI's own provenance before
 adding it to `PATH`. No root access or preinstalled `gh` is required; the runner needs Bash,
-curl, tar, gzip, sha256sum, and mktemp. Foundry's checksum and attestation checks still run.
+curl, tar, gzip, sha256sum, mktemp, and GNU timeout. Foundry's checksum and attestation checks still run.
 
 Binaries are installed under `RUNNER_TEMP` and added to `PATH`; `foundryup` itself is not installed.
+
+## Download recovery
+
+Release URLs are retried three times, with a 10-second connection timeout, a 120-second
+per-attempt limit, and a 180-second retry window (an in-flight attempt can finish after that
+window). After a transient HTTP or interrupted network failure, the action resolves the exact
+asset by tag and name through GitHub's official release API and downloads it by ID. API metadata
+and asset requests are limited to 30 and 180 seconds respectively, with a forced kill after
+a further 5 seconds if needed. Partial downloads are never
+published to the installer. Missing assets, HTTP or proxy authorization denials, and certificate errors fail
+without a fallback.
+
+Both routes feed the same mandatory checksum and provenance checks before extraction or PATH
+publication. Neither a checksum nor an attestation failure triggers another route or changes the
+requested Foundry version. RPC caching is unchanged; it does not cache the downloaded binaries.
