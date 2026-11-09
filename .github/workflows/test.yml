@@ -296,7 +296,7 @@ jobs:
       # Invoke unconditionally, as release workflows do in cross-platform matrices.
       # The action itself must skip the Linux-only installer on these runners.
       - name: Smoke test setup-mold on non-Linux runners
-        uses: tempoxyz/gh-actions/actions/setup-mold@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/setup-mold # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
 
   rust-lint-disabled:
     name: Rust lint with all checks disabled
@@ -480,7 +480,7 @@ jobs:
       - name: Stage clean fixture
         run: cp testdata/fixtures/clean.yml .github/workflows/zz-clean-fixture.yml
       - name: Run composite on clean fixture (expected to pass)
-        uses: tempoxyz/gh-actions/actions/scan-github-actions@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/scan-github-actions # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
         with:
           paths: ".github actions"
 
@@ -492,7 +492,7 @@ jobs:
       - name: Run composite on broken fixture (expected to fail)
         id: scan
         continue-on-error: true
-        uses: tempoxyz/gh-actions/actions/scan-github-actions@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/scan-github-actions # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
         with:
           paths: ".github actions"
       - name: Assert the scan failed
@@ -535,7 +535,7 @@ jobs:
           echo "include=^${ACTION_NAME}$" >> "$GITHUB_OUTPUT"
           echo "policy=$policy" >> "$GITHUB_OUTPUT"
       - name: Install pinact
-        uses: tempoxyz/gh-actions/actions/setup-pinact@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/setup-pinact # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
         with:
           version: v5.0.1
       - name: Verify timestamp tag comment
@@ -618,13 +618,13 @@ jobs:
         with:
           version: v4.1.1
       - name: Smoke test setup-mold (digest-pinned install)
-        uses: tempoxyz/gh-actions/actions/setup-mold@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/setup-mold # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
         with:
           make-default: "false"
       # Scoped to the new first-party actions: older files in actions/ contain test fixtures and
       # identifiers that typos flags, and adopting typos repo-wide is a separate decision.
       - name: Smoke test actionlint (digest-pinned image) on this repository's workflows
-        uses: tempoxyz/gh-actions/actions/actionlint@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: ./actions/actionlint # zizmor: ignore[self-repository] Exercise the checked-out candidate installer.
       - name: Shellcheck cargo-cooldown script
         run: shellcheck actions/cargo-cooldown/check.sh
       - name: Smoke test typos (release attestation) on the first-party action sources

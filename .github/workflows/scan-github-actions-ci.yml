@@ -13,7 +13,7 @@ permissions: {}
 jobs:
   scan:
     name: Scan GitHub Actions
-    uses: tempoxyz/gh-actions/.github/workflows/scan-github-actions.yml@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+    uses: ./.github/workflows/scan-github-actions.yml # zizmor: ignore[self-repository] Exercise this revision of the reusable scanner.
     permissions:
       actions: read
       contents: read

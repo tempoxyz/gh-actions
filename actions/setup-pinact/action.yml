@@ -15,8 +15,11 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
         GH_TOKEN: ${{ github.token }}
+        GH_HOST: github.com
       run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
         set -euo pipefail
+        # shellcheck source=actions/download-release/download-release.sh
+        source "$GITHUB_ACTION_PATH/../download-release/download-release.sh"
         if [ "$VERSION" = "latest" ]; then
           echo "::error::setup-pinact requires an immutable pinact release tag, not 'latest'"
           exit 1
@@ -29,12 +32,11 @@ runs:
 
         ASSET="pinact_linux_${ARCH}.tar.gz"
         CHECKSUMS="pinact_${VERSION#v}_checksums.txt"
-        BASE_URL="https://github.com/suzuki-shunsuke/pinact/releases/download/${VERSION}"
         INSTALL_DIR="${RUNNER_TEMP:-/tmp}/pinact-bin"
         mkdir -p "$INSTALL_DIR"
 
-        curl -fsSL -o "$INSTALL_DIR/$ASSET" "$BASE_URL/$ASSET"
-        curl -fsSL -o "$INSTALL_DIR/$CHECKSUMS" "$BASE_URL/$CHECKSUMS"
+        download_release suzuki-shunsuke/pinact "$VERSION" "$ASSET" "$INSTALL_DIR/$ASSET"
+        download_release suzuki-shunsuke/pinact "$VERSION" "$CHECKSUMS" "$INSTALL_DIR/$CHECKSUMS"
         grep "  $ASSET$" "$INSTALL_DIR/$CHECKSUMS" > "$INSTALL_DIR/$ASSET.sha256"
         (cd "$INSTALL_DIR" && sha256sum -c "$ASSET.sha256")
 

@@ -37,11 +37,14 @@ runs:
       if: inputs.mold == 'true'
       shell: bash
       env:
+        GH_TOKEN: ${{ github.token }}
         MOLD_VERSION: "2.42.1"
         MOLD_SHA256_X86_64: 6ff270c9bf07d2bec5c98aa324eb7c4daf6a1a4d815c05ff1708049616047855
         MOLD_SHA256_AARCH64: 16b025652d3d7456689e6025a77e1903bb2a15e7630877c26cc133f5df95b9c6
       run: |
         set -euo pipefail
+        # shellcheck source=actions/download-release/download-release.sh
+        source "$GITHUB_ACTION_PATH/../download-release/download-release.sh"
         # mold publishes no checksums, signatures or attestations, so the release tarball digests
         # are pinned here and change together with MOLD_VERSION (test.yml keeps this block in
         # step with the copy in .github/workflows/rust-build-binaries.yml).
@@ -54,7 +57,7 @@ runs:
         ASSET="mold-${MOLD_VERSION}-${ARCH}-linux.tar.gz"
         TMP="${RUNNER_TEMP:?}/mold"
         mkdir -p "$TMP"
-        curl -fsSL --retry 3 -o "$TMP/$ASSET" "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/${ASSET}"
+        download_release rui314/mold "v${MOLD_VERSION}" "$ASSET" "$TMP/$ASSET"
         echo "$EXPECTED  $TMP/$ASSET" | sha256sum -c
         SUDO=""
         [ "$(id -u)" = 0 ] || SUDO=sudo

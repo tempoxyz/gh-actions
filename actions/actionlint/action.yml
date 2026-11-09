@@ -14,8 +14,12 @@ runs:
       shell: bash
       # actionlint publishes release checksums but no attestations, so the tarball digests are pinned
       # here (the same approach as mold). Bump ACTIONLINT_VERSION and both digests together.
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: | # zizmor: ignore[github-env] INSTALL_DIR is created under RUNNER_TEMP, not derived from user input.
         set -euo pipefail
+        # shellcheck source=actions/download-release/download-release.sh
+        source "$GITHUB_ACTION_PATH/../download-release/download-release.sh"
         ACTIONLINT_VERSION="1.7.12"
         case "$(uname -m)" in
           x86_64)        ARCH=amd64; SHA256="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8" ;;
@@ -25,7 +29,7 @@ runs:
         ASSET="actionlint_${ACTIONLINT_VERSION}_linux_${ARCH}.tar.gz"
         INSTALL_DIR="${RUNNER_TEMP:?}/actionlint-bin"
         mkdir -p "$INSTALL_DIR"
-        curl -fsSL --retry 3 -o "$INSTALL_DIR/$ASSET" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${ASSET}"
+        download_release rhysd/actionlint "v${ACTIONLINT_VERSION}" "$ASSET" "$INSTALL_DIR/$ASSET"
         echo "${SHA256}  ${INSTALL_DIR}/${ASSET}" | sha256sum --check --strict
         tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" actionlint
         echo "$INSTALL_DIR" >> "$GITHUB_PATH"
