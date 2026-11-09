@@ -90,7 +90,7 @@ jobs:
             # An interrupted transfer must never leave a partial file at the destination.
             partial=$(mktemp "${destination}.XXXXXX")
             download_pid=
-            # shellcheck disable=SC2317 # Called by the EXIT trap through cleanup.
+            # shellcheck disable=SC2317,SC2329 # Called by the EXIT trap through cleanup.
             stop_download() {
               if [[ -n "$download_pid" ]]; then
                 kill "$download_pid" 2>/dev/null || true
@@ -105,7 +105,7 @@ jobs:
                 download_pid=
               fi
             }
-            # shellcheck disable=SC2317 # Called indirectly by the EXIT trap.
+            # shellcheck disable=SC2317,SC2329 # Called indirectly by the EXIT trap.
             cleanup() {
               # Repeated cancellation must not interrupt the forced kill, wait or removal.
               trap '' INT TERM
