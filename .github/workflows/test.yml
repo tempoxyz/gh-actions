@@ -275,6 +275,29 @@ jobs:
           [[ "$(command -v gh)" == "$RUNNER_TEMP"/foundry-gh.*/bin/gh ]]
           forge --version
 
+  setup-sccache-download:
+    name: setup-sccache verified download
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+      - name: Checkout repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # main
+        with:
+          persist-credentials: false
+      - name: Install the candidate sccache wrapper
+        uses: ./actions/setup-sccache # zizmor: ignore[self-repository] Exercise the checked-out candidate installer and its upstream post hook.
+        with:
+          version: v0.19.0
+      - name: Verify sccache is available to later steps
+        run: |
+          set -euo pipefail
+          sccache --version
+          sccache --show-stats
+
   setup-mold-non-linux:
     name: setup-mold skips installation (${{ matrix.os }})
     strategy:

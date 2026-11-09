@@ -1,0 +1,31 @@
+name: Setup sccache
+description: Prepare verified sccache downloads while retaining upstream cache and post-job statistics
+inputs:
+  version:
+    description: Exact sccache release tag (empty resolves the latest release once)
+    required: false
+  token:
+    description: GitHub.com token for release metadata and the official asset API
+    default: ${{ github.server_url == 'https://github.com' && github.token || '' }}
+  disable_annotations:
+    description: Disable upstream post-job statistics annotations
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Prepare verified Linux sccache cache
+      if: runner.os == 'Linux'
+      id: prepare
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        VERSION: ${{ inputs.version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/prepare.sh"
+    # Keep the actual Node action as a uses step so the runner registers its post hook.
+    - name: Enable sccache and register post-job statistics
+      uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+      with:
+        version: ${{ steps.prepare.outputs.version || inputs.version }}
+        token: ${{ inputs.token }}
+        disable_annotations: ${{ inputs.disable_annotations }}

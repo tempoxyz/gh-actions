@@ -65,6 +65,18 @@ runs:
         fi
         mold --version
 
+    - name: Prepare verified Linux sccache cache
+      if: inputs.sccache == 'true' && runner.os == 'Linux'
+      id: sccache-prepare
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.server_url == 'https://github.com' && github.token || '' }}
+        VERSION: ''
+        ACTION_PATH: ${{ github.action_path }}/../setup-sccache
+      run: bash "$ACTION_PATH/prepare.sh"
+
     - name: Enable sccache
       if: inputs.sccache == 'true'
       uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        version: ${{ steps.sccache-prepare.outputs.version }}

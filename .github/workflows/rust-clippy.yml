@@ -88,8 +88,206 @@ jobs:
             $SUDO ln -sf /usr/local/bin/mold "$(realpath /usr/bin/ld)"
           fi
           mold --version
+      - name: Prepare verified Linux sccache cache
+        if: runner.os == 'Linux'
+        id: sccache-prepare
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.server_url == 'https://github.com' && github.token || '' }}
+          VERSION: ''
+        run: |
+          # BEGIN GENERATED sccache transport (actions/setup-sccache/render.mjs)
+          download_release() (
+          set -euo pipefail
+
+          # Only the delivery route changes. The caller must verify the release checksum
+          # before extracting or exposing these bytes.
+          tag=${1:?release tag required}
+          asset=${2:?asset name required}
+          destination=${3:?destination required}
+          if [[ ! "$tag" =~ ^[a-zA-Z0-9._-]+$ || ! "$asset" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            echo "::error::setup-sccache: invalid release tag or asset name" >&2
+            exit 1
+          fi
+
+          # An interrupted transfer must never leave a partial file at the destination.
+          partial=$(mktemp "${destination}.XXXXXX")
+          download_pid=
+          stop_download() {
+            if [[ -n "$download_pid" ]]; then
+              kill "$download_pid" 2>/dev/null || true
+              for ((i = 0; i < 5; i++)); do
+                kill -0 "$download_pid" 2>/dev/null || break
+                sleep 1
+              done
+              if kill -0 "$download_pid" 2>/dev/null; then
+                kill -KILL "$download_pid" 2>/dev/null || true
+              fi
+              wait "$download_pid" 2>/dev/null || true
+              download_pid=
+            fi
+          }
+          cleanup() {
+            # Repeated cancellation must not interrupt the forced kill, wait or removal.
+            trap '' INT TERM
+            trap - EXIT
+            stop_download
+            rm -f "$partial"
+            exit "$1"
+          }
+          trap 'cleanup "$?"' EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          status=0
+          response=$(curl -fsSL --proto '=https' --proto-redir '=https' \
+            --connect-timeout 10 --speed-limit 1024 --speed-time 60 --retry 3 --retry-max-time 180 \
+            --write-out '%{http_code} %{http_connect}' -o "$partial" \
+            "https://github.com/mozilla/sccache/releases/download/$tag/$asset") || status=$?
+          read -r http proxy <<< "$response"
+          if [[ "$status" == 0 ]]; then
+            mv "$partial" "$destination"
+            exit 0
+          fi
+
+          # Missing assets, authorization denials and certificate errors are not outages
+          # to route around. Retry only transient HTTP or interrupted transport failures.
+          # A proxy CONNECT denial may be reported as curl 56 with HTTP 000. Check
+          # both statuses before interpreting a curl transport error as recoverable.
+          # A failed redirect connection retains the preceding 3xx response; allow that
+          # only for the HTTP response, never for a refused proxy CONNECT.
+          for field in http proxy; do
+            case "$field:${!field}" in
+              *:000|*:2[0-9][0-9]|*:408|*:429|*:500|*:502|*:503|*:504|http:301|http:302|http:303|http:307|http:308) ;;
+              *)
+                echo "::error::setup-sccache: $asset HTTP $http / proxy CONNECT $proxy; refusing fallback" >&2
+                exit "$status"
+                ;;
+            esac
+          done
+          case "$status:$http" in
+            22:408|22:429|22:500|22:502|22:503|22:504|6:*|7:*|18:*|28:*|52:*|55:*|56:*) ;;
+            *)
+              echo "::error::setup-sccache: $asset download failed (curl $status, HTTP $http); refusing fallback" >&2
+              exit "$status"
+              ;;
+          esac
+
+          echo "::warning::setup-sccache: $asset download failed (curl $status, HTTP $http); trying the official release asset API" >&2
+          # The fixed repository, exact tag/name match and numeric ID keep the fallback
+          # on this release. gh handles authentication without forwarding a token ourselves.
+          query="select(.tag_name == \"$tag\" and .draft == false) | .assets[] | select(.name == \"$asset\") | .id"
+          id=$(timeout --kill-after=5s 30s gh api --hostname github.com "repos/mozilla/sccache/releases/tags/$tag" --jq "$query")
+          if [[ ! "$id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::setup-sccache: release must contain exactly one asset named $asset" >&2
+            exit 1
+          fi
+          # gh streams the response to disk. Bound inactivity rather than elapsed time,
+          # so a large archive on a slow but progressing connection can finish.
+          : > "$partial"
+          gh api --hostname github.com -H 'Accept: application/octet-stream' \
+            "repos/mozilla/sccache/releases/assets/$id" > "$partial" &
+          download_pid=$!
+          last_size=0
+          progress_at=$SECONDS
+          while kill -0 "$download_pid" 2>/dev/null; do
+            size=$(stat -c %s -- "$partial")
+            if ((size > last_size)); then
+              last_size=$size
+              progress_at=$SECONDS
+            fi
+            if ((SECONDS - progress_at >= 60)) && kill -0 "$download_pid" 2>/dev/null; then
+              echo "::error::setup-sccache: $asset API download made no progress for 60 seconds" >&2
+              exit 124
+            fi
+            sleep 1
+          done
+          status=0
+          wait "$download_pid" || status=$?
+          download_pid=
+          if [[ "$status" != 0 ]]; then exit "$status"; fi
+          mv "$partial" "$destination"
+          )
+          set -euo pipefail
+          export GH_HOST=github.com
+
+          # Resolve a moving release only once; the upstream action receives the exact tag.
+          version=${VERSION:-}
+          if [[ -z "$version" ]]; then
+            version=$(timeout --kill-after=5s 30s gh api --hostname github.com repos/mozilla/sccache/releases/latest \
+              --jq 'select(.draft == false and .prerelease == false) | .tag_name')
+          fi
+          # Match tool-cache's semver normalization, without accepting ranges as release names.
+          if [[ ! "$version" =~ ^v?((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?)$ ]]; then
+            echo '::error::setup-sccache: expected an exact semantic release tag' >&2
+            exit 1
+          fi
+          cache_version=${BASH_REMATCH[1]}
+          if [[ "$cache_version" == *-* ]]; then
+            IFS=. read -ra identifiers <<< "${cache_version#*-}"
+            for identifier in "${identifiers[@]}"; do
+              if [[ "$identifier" =~ ^0[0-9]+$ ]]; then
+                echo '::error::setup-sccache: numeric prerelease identifiers cannot have leading zeroes' >&2
+                exit 1
+              fi
+            done
+          fi
+          arch=$(node -p 'process.arch')
+          case "$arch" in
+            x64) target=x86_64-unknown-linux-musl ;;
+            arm64) target=aarch64-unknown-linux-musl ;;
+            arm) target=armv7-unknown-linux-musleabi ;;
+            *) echo "::error::setup-sccache: unsupported architecture $arch" >&2; exit 1 ;;
+          esac
+          home="${RUNNER_TOOL_CACHE:?}/sccache/$cache_version/$arch"
+          if [[ -d "$home" && -f "$home.complete" ]]; then
+            echo "version=$version" >> "${GITHUB_OUTPUT:?}"
+            exit 0
+          fi
+
+          # Keep staging on the same filesystem as the cache so publication is a rename.
+          mkdir -p "$(dirname "$home")"
+          staging=$(mktemp -d "$(dirname "$home")/.sccache.XXXXXX")
+          trap 'rm -rf "$staging"' EXIT
+          name="sccache-$version-$target"
+          asset="$name.tar.gz"
+          download_release "$version" "$asset" "$staging/$asset"
+          download_release "$version" "$asset.sha256" "$staging/checksum"
+          # Upstream checks an exact lowercase digest, not a checksum-list filename supplied by the network.
+          checksum=$(cat "$staging/checksum")
+          if [[ ! "$checksum" =~ ^[a-f0-9]{64}$ ]]; then
+            echo '::error::setup-sccache: invalid release checksum' >&2
+            exit 1
+          fi
+          echo "$checksum  $staging/$asset" | sha256sum --check --strict
+          mkdir "$staging/extracted"
+          # Only extract the one regular executable, not arbitrary archive paths or links.
+          python3 - "$staging/$asset" "$name/sccache" "$staging/extracted/sccache" <<'PY'
+          import shutil
+          import sys
+          import tarfile
+
+          with tarfile.open(sys.argv[1], 'r:gz') as archive:
+              members = [member for member in archive.getmembers() if member.name == sys.argv[2]]
+              if len(members) != 1 or not members[0].isfile():
+                  raise SystemExit('Expected exactly one regular sccache executable')
+              with archive.extractfile(members[0]) as source, open(sys.argv[3], 'xb') as target:
+                  shutil.copyfileobj(source, target)
+          PY
+          chmod +x "$staging/extracted/sccache"
+          # A stale incomplete entry must not masquerade as success. Do not merge directories.
+          if [[ -e "$home" || -e "$home.complete" ]]; then
+            echo "::error::setup-sccache: incomplete tool-cache entry at $home; remove it before retrying" >&2
+            exit 1
+          fi
+          mv -T "$staging/extracted" "$home"
+          # Match @actions/tool-cache: the completion marker is written only after the entire tool exists.
+          touch "$home.complete"
+          echo "version=$version" >> "${GITHUB_OUTPUT:?}"
+          # END GENERATED sccache transport
       - name: Enable sccache
         uses: tempoxyz/gh-actions/vendor/mozilla-actions/sccache-action@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        with:
+          version: ${{ steps.sccache-prepare.outputs.version }}
       - name: Run clippy
         run: |
           # CLIPPY_FLAGS is a space-separated flag list that must word-split.
