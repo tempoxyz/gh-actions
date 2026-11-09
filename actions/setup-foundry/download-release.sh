@@ -13,10 +13,35 @@ fi
 
 # An interrupted transfer must never leave a partial file at the destination.
 partial=$(mktemp "${destination}.XXXXXX")
-trap 'rm -f "$partial"' EXIT
+download_pid=
+stop_download() {
+  if [[ -n "$download_pid" ]]; then
+    kill "$download_pid" 2>/dev/null || true
+    for ((i = 0; i < 5; i++)); do
+      kill -0 "$download_pid" 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 "$download_pid" 2>/dev/null; then
+      kill -KILL "$download_pid" 2>/dev/null || true
+    fi
+    wait "$download_pid" 2>/dev/null || true
+    download_pid=
+  fi
+}
+cleanup() {
+  # Repeated cancellation must not interrupt the forced kill, wait or removal.
+  trap '' INT TERM
+  trap - EXIT
+  stop_download
+  rm -f "$partial"
+  exit "$1"
+}
+trap 'cleanup "$?"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 status=0
 response=$(curl -fsSL --proto '=https' --proto-redir '=https' \
-  --connect-timeout 10 --max-time 120 --retry 3 --retry-max-time 180 \
+  --connect-timeout 10 --speed-limit 1024 --speed-time 60 --retry 3 --retry-max-time 180 \
   --write-out '%{http_code} %{http_connect}' -o "$partial" \
   "https://github.com/foundry-rs/foundry/releases/download/$tag/$asset") || status=$?
 read -r http proxy <<< "$response"
@@ -29,9 +54,11 @@ fi
 # to route around. Retry only transient HTTP or interrupted transport failures.
 # A proxy CONNECT denial may be reported as curl 56 with HTTP 000. Check
 # both statuses before interpreting a curl transport error as recoverable.
-for code in "$http" "$proxy"; do
-  case "$code" in
-    000|2[0-9][0-9]|408|429|500|502|503|504) ;;
+# A failed redirect connection retains the preceding 3xx response; allow that
+# only for the HTTP response, never for a refused proxy CONNECT.
+for field in http proxy; do
+  case "$field:${!field}" in
+    *:000|*:2[0-9][0-9]|*:408|*:429|*:500|*:502|*:503|*:504|http:301|http:302|http:303|http:307|http:308) ;;
     *)
       echo "::error::setup-foundry: $asset HTTP $http / proxy CONNECT $proxy; refusing fallback" >&2
       exit "$status"
@@ -55,6 +82,28 @@ if [[ ! "$id" =~ ^[1-9][0-9]*$ ]]; then
   echo "::error::setup-foundry: release must contain exactly one asset named $asset" >&2
   exit 1
 fi
-timeout --kill-after=5s 180s gh api --hostname github.com -H 'Accept: application/octet-stream' \
-  "repos/foundry-rs/foundry/releases/assets/$id" > "$partial"
+# gh streams the response to disk. Bound inactivity rather than elapsed time,
+# so a large archive on a slow but progressing connection can finish.
+: > "$partial"
+gh api --hostname github.com -H 'Accept: application/octet-stream' \
+  "repos/foundry-rs/foundry/releases/assets/$id" > "$partial" &
+download_pid=$!
+last_size=0
+progress_at=$SECONDS
+while kill -0 "$download_pid" 2>/dev/null; do
+  size=$(stat -c %s -- "$partial")
+  if ((size > last_size)); then
+    last_size=$size
+    progress_at=$SECONDS
+  fi
+  if ((SECONDS - progress_at >= 60)) && kill -0 "$download_pid" 2>/dev/null; then
+    echo "::error::setup-foundry: $asset API download made no progress for 60 seconds" >&2
+    exit 124
+  fi
+  sleep 1
+done
+status=0
+wait "$download_pid" || status=$?
+download_pid=
+if [[ "$status" != 0 ]]; then exit "$status"; fi
 mv "$partial" "$destination"
