@@ -434,13 +434,14 @@ jobs:
               else throw new Error(`Wrangler output contains an unsupported file: ${name}`);
             }
           })(build);
-          const topLevelScripts = files.filter((name) => !name.includes("/") && name.endsWith(".js"));
-          let main = topLevelScripts.length === 1 ? topLevelScripts[0] : undefined;
-          if (main === undefined) {
-            const expected = `${parse((await wranglerConfig()).main ?? "").name}.js`;
-            if (!topLevelScripts.includes(expected)) throw new Error("Wrangler output does not identify exactly one main module");
-            main = expected;
-          }
+          // Wrangler writes its bundle as <main name>.js and, under no_bundle,
+          // copies the entry under its own file name. Only that file can be the
+          // main module; any other top-level script is an additional module.
+          const { main: entry, no_bundle: noBundle } = await wranglerConfig();
+          if (typeof entry !== "string" || entry === "") throw new Error("Wrangler configuration has no main module");
+          const main = noBundle === true ? parse(entry).base : `${parse(entry).name}.js`;
+          if (!/\.m?js$/.test(main)) throw new Error(`Worker main module ${main} is not JavaScript`);
+          if (!files.includes(main)) throw new Error(`Wrangler output does not contain the main module ${main}`);
           const present = new Set(files);
           // Source maps are never uploaded. README.md is Wrangler's own note.
           const additional = files
@@ -455,30 +456,57 @@ jobs:
 
           if (additional.length > 0) {
             if (additional.length > MAX_MODULES) throw new Error(`Wrangler emitted ${additional.length} additional modules; at most ${MAX_MODULES} are supported`);
-            // Wrangler's default module rules follow any configured rules; the
-            // first matching rule decides the type, as when Wrangler uploads.
-            const rules = [
-              ...((await wranglerConfig()).rules ?? []),
-              { type: "ESModule", globs: ["**/*.js", "**/*.mjs"] },
-              { type: "CommonJS", globs: ["**/*.cjs"] },
+            // Wrangler matches a rule glob against the import specifier or the
+            // source path, and neither survives into its output; only the file
+            // name does. A **/*<suffix> or **/<file name> glob depends on the
+            // file name alone, so only those can be classified exactly as
+            // Wrangler did. Any other configured glob fails the build.
+            const matcher = (glob) => {
+              const match = /^\*\*\/(\*?)([A-Za-z0-9._-]+)$/.exec(glob);
+              if (match === null) {
+                throw new Error(`Wrangler module rule glob ${JSON.stringify(glob)} is unsupported; use **/*<suffix> or **/<file name>`);
+              }
+              const [, star, tail] = match;
+              return star === "" ? (file) => file === tail : (file) => file.endsWith(tail);
+            };
+            const configured = (await wranglerConfig()).rules ?? [];
+            // Wrangler's default rules follow the configured ones. The builder
+            // also accepts ES module files, which Wrangler emits only through a
+            // configured rule, and names CommonJS so that it fails clearly.
+            // Wrangler strips the ?module query from module names, so **/*.wasm
+            // covers its **/*.wasm?module default.
+            const defaults = [
               { type: "Text", globs: ["**/*.txt", "**/*.html", "**/*.sql"] },
               { type: "Data", globs: ["**/*.bin"] },
-              { type: "CompiledWasm", globs: ["**/*.wasm", "**/*.wasm?module"] },
+              { type: "CompiledWasm", globs: ["**/*.wasm"] },
+              { type: "ESModule", globs: ["**/*.js", "**/*.mjs"] },
+              { type: "CommonJS", globs: ["**/*.cjs"] },
             ];
+            // As in Wrangler's parseRules, a rule without fallthrough: true
+            // removes every later rule of the same type.
+            const completed = new Set();
+            const rules = [];
+            for (const rule of [...configured, ...defaults]) {
+              if (completed.has(rule.type)) continue;
+              rules.push({ type: rule.type, matchers: (rule.globs ?? []).map(matcher) });
+              if (rule.fallthrough !== true) completed.add(rule.type);
+            }
             const types = { ESModule: "esm", Text: "text", Data: "data", CompiledWasm: "compiled-wasm" };
             const classify = (name) => {
               // Wrangler prefixes copied non-JavaScript modules with a 40-hex content hash.
-              const original = posix.basename(name).replace(/^[0-9a-f]{40}-/, "");
+              const file = posix.basename(name).replace(/^[0-9a-f]{40}-/, "");
               for (const rule of rules) {
-                for (const glob of rule.globs ?? []) {
-                  if (!posix.matchesGlob(original, glob) && !posix.matchesGlob(name, glob)) continue;
-                  const type = types[rule.type];
-                  if (type === undefined) throw new Error(`Wrangler module ${name} has type ${rule.type}, which the deploy broker does not upload`);
-                  return type;
-                }
+                if (!rule.matchers.some((matches) => matches(file))) continue;
+                const type = types[rule.type];
+                if (type === undefined) throw new Error(`Wrangler module ${name} has type ${rule.type}, which the deploy broker does not upload`);
+                return type;
               }
               throw new Error(`Wrangler module ${name} matches no module rule`);
             };
+            // The broker uploads the main module as index.js. An additional ES
+            // module that imports it by Wrangler's file name would reference a
+            // module that is never uploaded.
+            const mainReferences = main === "index.js" ? [] : ['"', "'", "`"].map((quote) => `/${main}${quote}`);
             let totalBytes = mainBytes.byteLength;
             const modules = [];
             for (const name of additional) {
@@ -493,7 +521,12 @@ jobs:
               }
               const type = classify(name);
               const bytes = readFileSync(join(build, name));
-              if (type === "esm") new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+              if (type === "esm") {
+                const source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+                if (mainReferences.some((reference) => source.includes(reference))) {
+                  throw new Error(`Wrangler module ${name} references the main module as ${main}, which the deploy broker uploads as index.js`);
+                }
+              }
               totalBytes += bytes.byteLength;
               const staged = join(artifact, "modules", name);
               mkdirSync(dirname(staged), { recursive: true });
