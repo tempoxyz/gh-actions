@@ -622,8 +622,8 @@ jobs:
           // Every other Wrangler field must be unset, so an unsupported binding or
           // setting fails the build instead of silently missing from the manifest.
           const handledFields = new Set([
-            "account_id", "ai", "ai_search", "ai_search_namespaces", "analytics_engine_datasets",
-            "artifacts", "assets", "browser", "compatibility_date", "compatibility_flags", "connect",
+            "account_id", "ai", "ai_search", "ai_search_namespaces", "analytics", "analytics_engine_datasets",
+            "artifacts", "assets", "browser", "cache", "compatibility_date", "compatibility_flags", "connect",
             "containers", "d1_databases", "dispatch_namespaces", "durable_objects", "exports",
             "hyperdrive", "keep_vars", "kv_namespaces", "limits", "logpush", "main", "migrations",
             "mtls_certificates", "name", "observability", "pipelines", "placement", "preview_urls", "queues",
@@ -651,10 +651,15 @@ jobs:
             invariant(isUnset(value), `Wrangler ${field} is not authorized by the deploy broker`);
           }
 
+          // An ID-free binding asks the broker to provision a namespace. An
+          // explicit id adopts an existing namespace, which only an explicit
+          // policy naming the same ID authorizes.
           const kv = (config.kv_namespaces ?? []).map((binding) => {
-            invariant(Object.keys(binding).every((key) => key === "binding"), "KV provisioning accepts only a binding name; existing IDs, preview IDs, jurisdiction, remote, and unknown options are not supported");
+            invariant(isRecord(binding) && Object.keys(binding).every((key) => key === "binding" || key === "id"), "KV bindings accept only a binding name and an optional existing id; preview IDs, jurisdiction, remote, and unknown options are not supported");
             invariant(typeof binding.binding === "string" && bindingName.test(binding.binding), "KV binding name is invalid");
-            return { binding: binding.binding, provisioning: "new" };
+            if (binding.id === undefined) return { binding: binding.binding, provisioning: "new" };
+            invariant(typeof binding.id === "string" && accountId.test(binding.id), `KV binding ${binding.binding} id must be a 32-character hexadecimal namespace ID`);
+            return { binding: binding.binding, id: binding.id };
           }).sort((left, right) => left.binding.localeCompare(right.binding));
           invariant(kv.length <= 10 && new Set(kv.map((binding) => binding.binding)).size === kv.length, "KV bindings must be unique and limited to ten");
 
@@ -711,6 +716,20 @@ jobs:
             invariant(Number.isInteger(value.simple.limit) && value.simple.limit > 0 && value.simple.limit <= 2147483647 && [10, 60].includes(value.simple.period), "invalid rate limit limit or period");
             return { binding: value.name, namespaceId: value.namespace_id, simple: { limit: value.simple.limit, period: value.simple.period } };
           });
+          // Analytics SQL queries the account's Analytics Engine datasets; it
+          // has no options, and remote mode never becomes a deployment input.
+          const analyticsSql = isUnset(config.analytics)
+            ? []
+            : mapBindings([config.analytics], ["binding"], (value) => ({ binding: value.binding }));
+
+          // Response caching grants no access. Only enabled is supported, as
+          // Wrangler uploads it; omit an unset table so manifests stay stable.
+          let cache;
+          if (!isUnset(config.cache)) {
+            invariant(isRecord(config.cache) && Object.keys(config.cache).every((key) => key === "enabled") && typeof config.cache.enabled === "boolean", "cache accepts only enabled = true or false");
+            invariant(process.env.DISPATCH_NAMESPACE === "", "cache is only supported for service Workers");
+            cache = { enabled: config.cache.enabled };
+          }
 
           const resourceDeclaration = config.vars?.CLOUDFLARE_DEPLOY_BROKER_NEW_RESOURCES;
           let resources;
@@ -853,7 +872,9 @@ jobs:
           invariant(sendEmail.length <= 10, "at most ten email bindings are supported");
 
           const className = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
-          const sqliteClasses = new Set();
+          // Live classes this Worker exports, mapped to their storage. A
+          // legacy-kv class can only be adopted; the broker never creates one.
+          const exportedClasses = new Map();
           const deletedClasses = [];
           const migrations = config.migrations ?? [];
           const exports = config.exports ?? {};
@@ -872,24 +893,33 @@ jobs:
               continue;
             }
             invariant(Object.keys(value).every((key) => ["type", "state", "storage"].includes(key)), `Worker export ${name} uses unsupported options`);
-            invariant(value.type === "durable-object" && (value.state === undefined || value.state === "created") && value.storage === "sqlite", `Worker export ${name} must be a live SQLite Durable Object`);
-            sqliteClasses.add(name);
+            invariant(value.type === "durable-object" && (value.state === undefined || value.state === "created") && (value.storage === "sqlite" || value.storage === "legacy-kv"), `Worker export ${name} must be a live SQLite or legacy-kv Durable Object`);
+            invariant(value.storage === "sqlite" || process.env.DISPATCH_NAMESPACE === "", `Worker export ${name} legacy-kv storage is only supported for service Workers`);
+            exportedClasses.set(name, value.storage);
           }
           const durableObjects = (config.durable_objects?.bindings ?? []).map((binding) => {
             invariant(isRecord(binding), "Durable Object binding must be an object");
-            invariant(Object.keys(binding).every((key) => key === "name" || key === "class_name"), `Durable Object binding ${binding.name ?? "<unknown>"} uses unsupported external or environment options`);
+            invariant(Object.keys(binding).every((key) => ["name", "class_name", "script_name"].includes(key)), `Durable Object binding ${binding.name ?? "<unknown>"} uses unsupported environment or unknown options`);
             invariant(bindingName.test(binding.name), "invalid Durable Object binding name");
             invariant(typeof binding.class_name === "string" && className.test(binding.class_name), `Durable Object binding ${binding.name} has an invalid class`);
-            invariant(sqliteClasses.has(binding.class_name), `Durable Object binding ${binding.name} must reference an explicit live SQLite class in Wrangler exports`);
+            if (binding.script_name !== undefined) {
+              // Another Worker's class: an exact reference only an explicit
+              // policy authorizes. It is never exported or created here.
+              invariant(process.env.DISPATCH_NAMESPACE === "", `Durable Object binding ${binding.name} script_name is only supported for service Workers`);
+              invariant(typeof binding.script_name === "string" && workerName.test(binding.script_name) && binding.script_name !== config.name, `Durable Object binding ${binding.name} script_name must name another Worker; bind this Worker's own classes without script_name`);
+              return { binding: binding.name, className: binding.class_name, scriptName: binding.script_name };
+            }
+            invariant(exportedClasses.has(binding.class_name), `Durable Object binding ${binding.name} must reference an explicit live class in Wrangler exports`);
             return {
               binding: binding.name,
               className: binding.class_name,
-              storage: "sqlite",
+              storage: exportedClasses.get(binding.class_name),
             };
           }).sort((left, right) => left.binding.localeCompare(right.binding));
-          const boundClasses = new Set(durableObjects.map((binding) => binding.className));
-          invariant(process.env.DISPATCH_NAMESPACE === "" || boundClasses.size === durableObjects.length, "dispatch namespace Durable Object classes must be uniquely bound");
-          invariant(sqliteClasses.size === boundClasses.size, "every Durable Object export class must have an exact binding");
+          const localDurableObjects = durableObjects.filter((binding) => binding.scriptName === undefined);
+          const boundClasses = new Set(localDurableObjects.map((binding) => binding.className));
+          invariant(process.env.DISPATCH_NAMESPACE === "" || boundClasses.size === localDurableObjects.length, "dispatch namespace Durable Object classes must be uniquely bound");
+          invariant(exportedClasses.size === boundClasses.size, "every Durable Object export class must have an exact binding");
 
           // Workflows implemented by this Worker. External script_name bindings,
           // limits, schedules and unknown options fail closed until supported.
@@ -909,7 +939,7 @@ jobs:
             invariant(isRecord(container), "Container configuration must be an object");
             invariant(typeof container.name === "string" && workerName.test(container.name), "Container configuration must have an explicit valid name");
             invariant(typeof container.class_name === "string" && className.test(container.class_name), `Container ${container.name} has an invalid class`);
-            invariant(sqliteClasses.has(container.class_name), `Container ${container.name} must reference an additive SQLite Durable Object class`);
+            invariant(exportedClasses.get(container.class_name) === "sqlite", `Container ${container.name} must reference an additive SQLite Durable Object class`);
             return { name: container.name, className: container.class_name };
           }).sort((left, right) => left.name.localeCompare(right.name));
           invariant(new Set(containers.map((container) => container.name)).size === containers.length, "Container application names must be unique");
@@ -1062,6 +1092,7 @@ jobs:
                   }),
               ...(placement === undefined ? {} : { placement }),
               ...(limits === undefined ? {} : { limits }),
+              ...(cache === undefined ? {} : { cache }),
               bindings: {
                 plainText: { mode: "exact", values: sortedRecord(plainText) },
                 versionMetadata: config.version_metadata === undefined
@@ -1080,6 +1111,7 @@ jobs:
                 aiSearch,
                 ai,
                 ...(analyticsEngine.length === 0 ? {} : { analyticsEngine }),
+                ...(analyticsSql.length === 0 ? {} : { analyticsSql }),
                 ...(sendEmail.length === 0 ? {} : { sendEmail }),
                 ...(workflows.length === 0 ? {} : { workflows }),
                 browser,
@@ -1094,7 +1126,7 @@ jobs:
             ...Object.keys(plainText),
             ...(config.version_metadata === undefined ? [] : [config.version_metadata.binding]),
             ...(config.assets === undefined ? [] : [config.assets.binding]),
-            ...[kv, d1, r2, pipelines, queues, services, dispatchNamespaces, durableObjects, sendEmail, workflows, browser, hyperdrive, vectorize, aiSearch, ai, workerLoaders, analyticsEngine, rateLimits].flatMap((values) => values.map((binding) => binding.binding)),
+            ...[kv, d1, r2, pipelines, queues, services, dispatchNamespaces, durableObjects, sendEmail, workflows, browser, hyperdrive, vectorize, aiSearch, ai, workerLoaders, analyticsEngine, analyticsSql, rateLimits].flatMap((values) => values.map((binding) => binding.binding)),
           ];
           invariant(new Set(names).size === names.length, "Worker binding names must be unique across binding types");
           const serialized = `${JSON.stringify(manifest)}\n`;
