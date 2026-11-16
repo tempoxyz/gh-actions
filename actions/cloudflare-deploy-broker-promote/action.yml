@@ -1,0 +1,36 @@
+name: "Cloudflare Deploy Broker: promote"
+description: "Promote or roll back a staged Cloudflare Worker rollout through the OIDC-authenticated broker"
+
+inputs:
+  deployment-id:
+    description: "Logical deployment ID that staged the rollout"
+    required: true
+  operation-id:
+    description: "operation-id output of the cloudflare-deploy-broker step that staged the rollout"
+    required: true
+  action:
+    description: "promote sends every request to the candidate; rollback restores the version that served when it was staged"
+    required: true
+  host:
+    description: "Broker hostname without a scheme, port, or path"
+    required: false
+    default: "cf.tempoxyz.net"
+outputs:
+  operation-id:
+    description: "Operation that staged the rollout"
+  state:
+    description: "promoted or rolled_back"
+  version-id:
+    description: "Worker version now serving 100% of requests"
+  deployment-id:
+    description: "Cloudflare deployment UUID now active"
+  stable-version-id:
+    description: "Version that served when the rollout was staged"
+  candidate-version-id:
+    description: "Staged candidate version"
+  changed:
+    description: "false when a retry found the requested state already live"
+
+runs:
+  using: node24
+  main: main.cjs
