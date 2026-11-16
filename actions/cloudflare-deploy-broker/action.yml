@@ -18,6 +18,10 @@ inputs:
     description: "Broker hostname without a scheme, port, or path"
     required: false
     default: "cf.tempoxyz.net"
+  promotion:
+    description: "immediate promotes the version; staged keeps the serving version at 100% and the candidate at 0% until cloudflare-deploy-broker-promote ends the rollout"
+    required: false
+    default: "immediate"
 outputs:
   managed-resources:
     description: "JSON array of owned R2, stream, sink, Pipeline and Queue IDs (no credentials)"
@@ -28,9 +32,11 @@ outputs:
   operation-id:
     description: "Broker operation UUID"
   version-id:
-    description: "Uploaded Cloudflare Worker version UUID"
+    description: "Uploaded Cloudflare Worker version UUID; the 0% candidate when staged"
+  stable-version-id:
+    description: "Staged only: the version that keeps serving 100% until the rollout ends; empty otherwise"
   deployment-id:
-    description: "Cloudflare deployment UUID"
+    description: "Cloudflare deployment UUID; the staged split when staged"
   worker-name:
     description: "Deployed Worker name"
   worker-tag:

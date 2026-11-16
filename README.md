@@ -36,6 +36,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`codex-repair`](actions/codex-repair) | Repair Rust dependency migrations on the runner with bounded independent checks |
 | [`cloudflare-deploy-broker`](actions/cloudflare-deploy-broker) | Deploy an attested Cloudflare Worker through the deploy broker |
 | [`cloudflare-deploy-broker-delete-preview`](actions/cloudflare-deploy-broker-delete-preview) | Delete a closed pull request's Cloudflare Preview through the deploy broker |
+| [`cloudflare-deploy-broker-promote`](actions/cloudflare-deploy-broker-promote) | Promote or roll back a staged Worker rollout through the deploy broker |
 
 ### Installer verification
 

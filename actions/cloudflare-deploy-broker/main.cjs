@@ -2,7 +2,14 @@ const { databaseIds, namespaceIds } = require("./kv-output.cjs");
 const crypto = require("node:crypto");
 const { brokerAudience, brokerEndpoint } = require("./endpoint.cjs");
 const { brokerFailureMessage } = require("./error.cjs");
-const { input, oidc, output, required, requiredInput } = require("./github.cjs");
+const {
+  input,
+  oidc,
+  output,
+  required,
+  requiredInput,
+  valid,
+} = require("./github.cjs");
 const { request } = require("./request.cjs");
 const { requestDeployment } = require("./retry.cjs");
 
@@ -19,8 +26,13 @@ async function main() {
     /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/,
   );
   const host = input("host");
+  const promotion = input("promotion") || "immediate";
+  valid("promotion", promotion, /^(?:immediate|staged)$/);
+  const staged = promotion === "staged";
   const endpoint = brokerEndpoint(host);
   const audience = brokerAudience(host);
+  // Immediate requests keep their earlier key and body, so a broker without
+  // staged rollouts still accepts them.
   const idempotencyKey = crypto
     .createHash("sha256")
     .update(
@@ -33,6 +45,7 @@ async function main() {
         archiveSha256,
         moduleSha256,
         commitSha,
+        ...(staged ? { promotion } : {}),
       }),
     )
     .digest("hex");
@@ -47,6 +60,7 @@ async function main() {
     },
     commitSha,
     idempotencyKey,
+    ...(staged ? { promotion } : {}),
   });
 
   const { response, result } = await requestDeployment(async () => {
@@ -70,6 +84,18 @@ async function main() {
       brokerFailureMessage("deployment", response.status, result),
     );
   }
+  const stableVersionId = result.staged?.stableVersionId;
+  if (
+    staged !==
+    (typeof stableVersionId === "string" &&
+      /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(stableVersionId))
+  ) {
+    throw new Error(
+      staged
+        ? "Broker response did not stage the version; the broker may predate staged rollouts"
+        : "Broker response unexpectedly staged the version",
+    );
+  }
   const fields = {
     "managed-resources": JSON.stringify(result.managedResources ?? []),
     "kv-namespace-ids": namespaceIds(result.kvNamespaces),
@@ -88,7 +114,12 @@ async function main() {
     }
     output(name, value);
   }
-  console.log(`Deployed ${result.workerName} version ${result.versionId}`);
+  output("stable-version-id", staged ? stableVersionId : "");
+  console.log(
+    staged
+      ? `Staged ${result.workerName} version ${result.versionId} at 0% beside ${stableVersionId}; end the rollout with operation ${result.operationId}`
+      : `Deployed ${result.workerName} version ${result.versionId}`,
+  );
 }
 
 main().catch((error) => {
