@@ -82,6 +82,9 @@ on:
       static-assets-digest:
         description: "SHA-256 digest of the attested static asset manifest, or empty when disabled"
         value: ${{ jobs.build.outputs.static-assets-digest }}
+      modules-digest:
+        description: "SHA-256 digest of the attested additional-module manifest, or empty when the Worker is a single module"
+        value: ${{ jobs.build.outputs.modules-digest }}
       container-image-digest:
         description: "Digest of the pushed Container image, or empty when disabled"
         value: ${{ jobs.build.outputs.container-image-digest }}
@@ -105,6 +108,7 @@ jobs:
       d1-migrations-digest: ${{ steps.prepare-migrations.outputs.migration-digest }}
       worker-configuration-digest: ${{ steps.prepare-configuration.outputs.configuration-digest }}
       static-assets-digest: ${{ steps.prepare-assets.outputs.assets-digest }}
+      modules-digest: ${{ steps.prepare.outputs.modules-digest }}
       container-image-digest: ${{ steps.publish-container.outputs.image-digest }}
     steps:
       - name: Secure runner
@@ -383,23 +387,159 @@ jobs:
       - name: Stage and hash Worker module
         id: prepare
         shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
+          WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
         run: |
           set -euo pipefail
-          build="${RUNNER_TEMP}/cloudflare-worker-build"
-          mapfile -d '' modules < <(find "${build}" -maxdepth 1 -type f -name '*.js' -print0)
-          test "${#modules[@]}" -eq 1
-          test ! -L "${modules[0]}"
-          # The broker uploads only this module. Wrangler writes Text, Data and
-          # Wasm imports as separate files, which would be missing at startup.
-          mapfile -d '' additional < <(find "${build}" -mindepth 1 ! -type d ! -path "${modules[0]}" ! -path "${modules[0]}.map" ! -path "${build}/README.md" -print0)
-          if (( ${#additional[@]} > 0 )); then
-            echo "::error::Wrangler emitted additional modules that the broker cannot deploy: ${additional[*]#"${build}/"}. Inline them into the Worker bundle instead of importing them as separate modules."
-            exit 1
-          fi
-          install -d "${RUNNER_TEMP}/cloudflare-worker-artifact"
-          install -m 0644 "${modules[0]}" "${RUNNER_TEMP}/cloudflare-worker-artifact/index.js"
-          digest="$(sha256sum "${RUNNER_TEMP}/cloudflare-worker-artifact/index.js" | cut -d ' ' -f 1)"
-          echo "module-digest=${digest}" >> "${GITHUB_OUTPUT}"
+          cd "${WORKING_DIRECTORY:-.}"
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+          import { dirname, join, parse, posix, relative, resolve } from "node:path";
+
+          // The broker uploads index.js plus, when Wrangler emits them, the
+          // additional modules its bundle imports (ES module chunks, Text,
+          // Data and CompiledWasm). Every additional module is listed in an
+          // attested manifest; single-module builds emit no manifest.
+          const MAX_MODULES = 100;
+          const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+          const build = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-build");
+          const artifact = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-artifact");
+          const output = process.env.GITHUB_OUTPUT;
+          const codeUnit = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+          let config;
+          async function wranglerConfig() {
+            if (config === undefined) {
+              const { unstable_readConfig } = await import("wrangler");
+              const environment = process.env.WRANGLER_ENVIRONMENT ?? "";
+              config = unstable_readConfig(
+                { config: resolve(process.env.WRANGLER_CONFIG), ...(environment === "" ? {} : { env: environment }) },
+                { hideWarnings: true },
+              );
+            }
+            return config;
+          }
+
+          const files = [];
+          (function walk(directory) {
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+              const path = join(directory, entry.name);
+              const name = relative(build, path).split("\\").join("/");
+              const stat = lstatSync(path);
+              if (stat.isSymbolicLink()) throw new Error(`Wrangler output contains a symlink: ${name}`);
+              if (stat.isDirectory()) walk(path);
+              else if (stat.isFile()) files.push(name);
+              else throw new Error(`Wrangler output contains an unsupported file: ${name}`);
+            }
+          })(build);
+          // Wrangler writes its bundle as <main name>.js and, under no_bundle,
+          // copies the entry under its own file name. Only that file can be the
+          // main module; any other top-level script is an additional module.
+          const { main: entry, no_bundle: noBundle } = await wranglerConfig();
+          if (typeof entry !== "string" || entry === "") throw new Error("Wrangler configuration has no main module");
+          const main = noBundle === true ? parse(entry).base : `${parse(entry).name}.js`;
+          if (!/\.m?js$/.test(main)) throw new Error(`Worker main module ${main} is not JavaScript`);
+          if (!files.includes(main)) throw new Error(`Wrangler output does not contain the main module ${main}`);
+          const present = new Set(files);
+          // Source maps are never uploaded. README.md is Wrangler's own note.
+          const additional = files
+            .filter((name) => name !== main && name !== "README.md" && !(name.endsWith(".map") && present.has(name.slice(0, -4))))
+            .sort(codeUnit);
+
+          mkdirSync(artifact, { recursive: true });
+          const mainBytes = readFileSync(join(build, main));
+          writeFileSync(join(artifact, "index.js"), mainBytes, { mode: 0o644 });
+          if (mainBytes.byteLength === 0) throw new Error("Worker main module is empty");
+          let lines = `module-digest=${createHash("sha256").update(mainBytes).digest("hex")}\n`;
+
+          if (additional.length > 0) {
+            if (additional.length > MAX_MODULES) throw new Error(`Wrangler emitted ${additional.length} additional modules; at most ${MAX_MODULES} are supported`);
+            // Wrangler matches a rule glob against the import specifier or the
+            // source path, and neither survives into its output; only the file
+            // name does. A **/*<suffix> or **/<file name> glob depends on the
+            // file name alone, so only those can be classified exactly as
+            // Wrangler did. Any other configured glob fails the build.
+            const matcher = (glob) => {
+              const match = /^\*\*\/(\*?)([A-Za-z0-9._-]+)$/.exec(glob);
+              if (match === null) {
+                throw new Error(`Wrangler module rule glob ${JSON.stringify(glob)} is unsupported; use **/*<suffix> or **/<file name>`);
+              }
+              const [, star, tail] = match;
+              return star === "" ? (file) => file === tail : (file) => file.endsWith(tail);
+            };
+            const configured = (await wranglerConfig()).rules ?? [];
+            // Wrangler's default rules follow the configured ones. The builder
+            // also accepts ES module files, which Wrangler emits only through a
+            // configured rule, and names CommonJS so that it fails clearly.
+            // Wrangler strips the ?module query from module names, so **/*.wasm
+            // covers its **/*.wasm?module default.
+            const defaults = [
+              { type: "Text", globs: ["**/*.txt", "**/*.html", "**/*.sql"] },
+              { type: "Data", globs: ["**/*.bin"] },
+              { type: "CompiledWasm", globs: ["**/*.wasm"] },
+              { type: "ESModule", globs: ["**/*.js", "**/*.mjs"] },
+              { type: "CommonJS", globs: ["**/*.cjs"] },
+            ];
+            // As in Wrangler's parseRules, a rule without fallthrough: true
+            // removes every later rule of the same type.
+            const completed = new Set();
+            const rules = [];
+            for (const rule of [...configured, ...defaults]) {
+              if (completed.has(rule.type)) continue;
+              rules.push({ type: rule.type, matchers: (rule.globs ?? []).map(matcher) });
+              if (rule.fallthrough !== true) completed.add(rule.type);
+            }
+            const types = { ESModule: "esm", Text: "text", Data: "data", CompiledWasm: "compiled-wasm" };
+            const classify = (name) => {
+              // Wrangler prefixes copied non-JavaScript modules with a 40-hex content hash.
+              const file = posix.basename(name).replace(/^[0-9a-f]{40}-/, "");
+              for (const rule of rules) {
+                if (!rule.matchers.some((matches) => matches(file))) continue;
+                const type = types[rule.type];
+                if (type === undefined) throw new Error(`Wrangler module ${name} has type ${rule.type}, which the deploy broker does not upload`);
+                return type;
+              }
+              throw new Error(`Wrangler module ${name} matches no module rule`);
+            };
+            // The broker uploads the main module as index.js. An additional ES
+            // module that imports it by Wrangler's file name would reference a
+            // module that is never uploaded.
+            const mainReferences = main === "index.js" ? [] : ['"', "'", "`"].map((quote) => `/${main}${quote}`);
+            let totalBytes = mainBytes.byteLength;
+            const modules = [];
+            for (const name of additional) {
+              const segments = name.split("/");
+              if (
+                !/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(name) ||
+                name.length > 256 ||
+                name === "index.js" ||
+                segments.some((segment) => segment === "." || segment === ".." || segment.length > 128)
+              ) {
+                throw new Error(`Wrangler module has an unsafe name: ${name}`);
+              }
+              const type = classify(name);
+              const bytes = readFileSync(join(build, name));
+              if (type === "esm") {
+                const source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+                if (mainReferences.some((reference) => source.includes(reference))) {
+                  throw new Error(`Wrangler module ${name} references the main module as ${main}, which the deploy broker uploads as index.js`);
+                }
+              }
+              totalBytes += bytes.byteLength;
+              const staged = join(artifact, "modules", name);
+              mkdirSync(dirname(staged), { recursive: true });
+              writeFileSync(staged, bytes, { mode: 0o644 });
+              modules.push({ name, type, sha256: createHash("sha256").update(bytes).digest("hex"), size: bytes.byteLength });
+            }
+            if (totalBytes > MAX_TOTAL_BYTES) throw new Error(`Worker modules total ${totalBytes} bytes; at most ${MAX_TOTAL_BYTES} are supported`);
+            const manifest = `${JSON.stringify({ schemaVersion: 1, modules })}\n`;
+            writeFileSync(join(artifact, "worker-modules.json"), manifest, { mode: 0o644 });
+            lines += `modules-enabled=true\nmodules-digest=${createHash("sha256").update(manifest).digest("hex")}\n`;
+          }
+          writeFileSync(output, lines, { flag: "a" });
+          NODE
 
       - name: Attest Worker module
         id: attest
@@ -407,6 +547,15 @@ jobs:
         with:
           subject-name: index.js
           subject-digest: sha256:${{ steps.prepare.outputs.module-digest }}
+          show-summary: false
+
+      - name: Attest additional Worker modules
+        if: ${{ steps.prepare.outputs.modules-enabled == 'true' }}
+        id: attest-modules
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: worker-modules.json
+          subject-digest: sha256:${{ steps.prepare.outputs.modules-digest }}
           show-summary: false
 
       - name: Stage and hash static assets
@@ -496,7 +645,8 @@ jobs:
                 throw new Error(`static asset has an unsafe name: ${name}`);
               }
               const bytes = readFileSync(path);
-              if (bytes.byteLength > 4 * 1024 * 1024) {
+              // Cloudflare's per-file asset limit; each policy sets its own lower limit.
+              if (bytes.byteLength > 25 * 1024 * 1024) {
                 throw new Error(`static asset has an invalid size: ${name}`);
               }
               const staged = resolve(stagedRoot, name);
@@ -515,7 +665,8 @@ jobs:
           // collation, which orders "index-a.css" before "Pilat.woff2".
           files.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
           const totalBytes = files.reduce((total, file) => total + file.size, 0);
-          if (files.length === 0 || files.length > 1000 || totalBytes > 32 * 1024 * 1024) {
+          // The largest asset sets the broker accepts; each policy sets its own limits.
+          if (files.length === 0 || files.length > 20000 || totalBytes > 256 * 1024 * 1024) {
             throw new Error("static asset directory exceeds broker limits");
           }
           function optionalUtf8(name) {
@@ -531,8 +682,8 @@ jobs:
             headers: optionalUtf8("_headers"),
             redirects: optionalUtf8("_redirects"),
           })}\n`;
-          if (Buffer.byteLength(manifest) > 256 * 1024) {
-            throw new Error("static asset manifest exceeds 256 KiB");
+          if (Buffer.byteLength(manifest) > 4 * 1024 * 1024) {
+            throw new Error("static asset manifest exceeds 4 MiB");
           }
           writeFileSync(resolve(artifactRoot, "static-assets.json"), manifest, { mode: 0o644 });
           const digest = createHash("sha256").update(manifest).digest("hex");
@@ -1252,6 +1403,9 @@ jobs:
           ASSET_ATTESTATION_ID: ${{ steps.attest-assets.outputs.attestation-id }}
           ASSET_ATTESTATION_URL: ${{ steps.attest-assets.outputs.attestation-url }}
           ASSET_DIGEST: ${{ steps.prepare-assets.outputs.assets-digest }}
+          MODULES_ATTESTATION_ID: ${{ steps.attest-modules.outputs.attestation-id }}
+          MODULES_ATTESTATION_URL: ${{ steps.attest-modules.outputs.attestation-url }}
+          MODULES_DIGEST: ${{ steps.prepare.outputs.modules-digest }}
         run: |
           set -euo pipefail
           append_attestation() {
@@ -1294,6 +1448,13 @@ jobs:
                 "static-assets.json" \
                 "${ASSET_DIGEST}"
             fi
+            if [[ -n "${MODULES_DIGEST:-}" ]]; then
+              append_attestation \
+                "${MODULES_ATTESTATION_ID}" \
+                "${MODULES_ATTESTATION_URL}" \
+                "worker-modules.json" \
+                "${MODULES_DIGEST}"
+            fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Stage Sigstore bundle
@@ -1327,6 +1488,17 @@ jobs:
           test ! -L "${BUNDLE_PATH}"
           install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/worker-configuration.sigstore.json"
 
+      - name: Stage additional module Sigstore bundle
+        if: ${{ steps.prepare.outputs.modules-enabled == 'true' }}
+        shell: bash
+        env:
+          BUNDLE_PATH: ${{ steps.attest-modules.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -f "${BUNDLE_PATH}"
+          test ! -L "${BUNDLE_PATH}"
+          install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/worker-modules.sigstore.json"
+
       - name: Stage static asset Sigstore bundle
         if: ${{ steps.prepare-assets.outputs.assets-enabled == 'true' }}
         shell: bash
@@ -1353,6 +1525,9 @@ jobs:
             ${{ runner.temp }}/cloudflare-worker-artifact/static-assets.json
             ${{ runner.temp }}/cloudflare-worker-artifact/static-assets.sigstore.json
             ${{ runner.temp }}/cloudflare-worker-artifact/static-assets
+            ${{ runner.temp }}/cloudflare-worker-artifact/worker-modules.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/worker-modules.sigstore.json
+            ${{ runner.temp }}/cloudflare-worker-artifact/modules
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
