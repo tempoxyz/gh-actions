@@ -61,10 +61,13 @@ jobs:
 ```
 
 The build installs dependencies with the lockfile in `install-directory`
-(default `working-directory`): `pnpm-lock.yaml` with pnpm, or `bun.lock` with
-Bun. A Bun install directory's `package.json` must pin the exact version, as in
-`"packageManager": "bun@1.4.4"`. Either way the install is frozen and Wrangler
-runs from the installed dependencies.
+(default `working-directory`): `pnpm-lock.yaml` with pnpm, `bun.lock` with
+Bun, or `package-lock.json` with npm. A Bun install directory's `package.json`
+must pin the exact version, as in `"packageManager": "bun@1.4.4"`. Either way
+the install is frozen and Wrangler runs from the installed dependencies. npm
+installs with `npm ci --ignore-scripts`, which also skips the root package's
+own lifecycle scripts; run any the build needs, such as `postinstall`, from
+`build-command`.
 
 An email binding may restrict its senders with `allowed_sender_addresses`; the
 build attests the sorted list as `allowedSenderAddresses`, which the deployment

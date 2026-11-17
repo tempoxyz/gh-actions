@@ -9,7 +9,7 @@ on:
         type: string
         default: "."
       install-directory:
-        description: "Repository-relative package and lockfile directory (pnpm-lock.yaml, or bun.lock with an exact packageManager bun@x.y.z); defaults to working-directory"
+        description: "Repository-relative package and lockfile directory (pnpm-lock.yaml, bun.lock with an exact packageManager bun@x.y.z, or package-lock.json); defaults to working-directory"
         required: false
         type: string
         default: ""
@@ -155,12 +155,18 @@ jobs:
           test -f "${INSTALL_DIRECTORY}/package.json"
           # Exactly one supported lockfile selects the package manager. Bun has no
           # pnpm-style version enforcement, so its version must be pinned exactly.
+          lockfiles=0
+          for lockfile in pnpm-lock.yaml bun.lock package-lock.json; do
+            if [[ -e "${INSTALL_DIRECTORY}/${lockfile}" ]]; then lockfiles=$((lockfiles + 1)); fi
+          done
+          if (( lockfiles > 1 )); then
+            echo "::error::install-directory has more than one of pnpm-lock.yaml, bun.lock and package-lock.json" >&2
+            exit 1
+          fi
           if [[ -f "${INSTALL_DIRECTORY}/pnpm-lock.yaml" ]]; then
-            if [[ -e "${INSTALL_DIRECTORY}/bun.lock" ]]; then
-              echo "::error::install-directory has both pnpm-lock.yaml and bun.lock" >&2
-              exit 1
-            fi
             package_manager=pnpm
+          elif [[ -f "${INSTALL_DIRECTORY}/package-lock.json" ]]; then
+            package_manager=npm
           elif [[ -f "${INSTALL_DIRECTORY}/bun.lock" ]]; then
             bun_version="$(jq -r '.packageManager // ""' "${INSTALL_DIRECTORY}/package.json")"
             if [[ ! "${bun_version}" =~ ^bun@[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -169,7 +175,7 @@ jobs:
             fi
             package_manager=bun
           else
-            echo "::error::install-directory needs pnpm-lock.yaml or bun.lock" >&2
+            echo "::error::install-directory needs pnpm-lock.yaml, bun.lock or package-lock.json" >&2
             exit 1
           fi
           echo "package-manager=${package_manager}" >> "${GITHUB_OUTPUT}"
@@ -201,7 +207,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: ${{ inputs.install-directory || inputs.working-directory }}/pnpm-lock.yaml
 
-      - if: ${{ steps.validate.outputs.package-manager == 'bun' }}
+      - if: ${{ steps.validate.outputs.package-manager != 'pnpm' }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
@@ -239,6 +245,7 @@ jobs:
           # Validation already required exactly one of these lockfiles.
           lockfile=pnpm-lock.yaml
           if [[ -f "${INSTALL_DIRECTORY}/bun.lock" ]]; then lockfile=bun.lock; fi
+          if [[ -f "${INSTALL_DIRECTORY}/package-lock.json" ]]; then lockfile=package-lock.json; fi
           cd "${WORKING_DIRECTORY}"
 
           paths=()
@@ -313,7 +320,17 @@ jobs:
         env:
           INSTALL_DIRECTORY: ${{ inputs.install-directory || inputs.working-directory }}
           PACKAGE_MANAGER: ${{ steps.validate.outputs.package-manager }}
-        run: cd "${INSTALL_DIRECTORY}" && "${PACKAGE_MANAGER}" install --frozen-lockfile
+        run: |
+          set -euo pipefail
+          cd "${INSTALL_DIRECTORY}"
+          if [[ "${PACKAGE_MANAGER}" == "npm" ]]; then
+            # npm ci installs exactly the lockfile. No dependency install script
+            # runs, and npm cannot exempt the root package, so a project runs
+            # its own lifecycle scripts from build-command.
+            npm ci --ignore-scripts --no-audit --no-fund
+          else
+            "${PACKAGE_MANAGER}" install --frozen-lockfile
+          fi
 
       - name: Build application
         if: ${{ inputs.build-command != '' }}
@@ -426,6 +443,9 @@ jobs:
           if [[ "${PACKAGE_MANAGER}" == "bun" ]]; then
             # --no-install runs only the locked Wrangler, never one bunx downloads.
             bun x --no-install wrangler "${args[@]}"
+          elif [[ "${PACKAGE_MANAGER}" == "npm" ]]; then
+            # --no runs only the locked Wrangler, never one npx downloads.
+            npm exec --no -- wrangler "${args[@]}"
           else
             pnpm exec wrangler "${args[@]}"
           fi
