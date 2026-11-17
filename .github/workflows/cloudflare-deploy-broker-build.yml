@@ -9,7 +9,7 @@ on:
         type: string
         default: "."
       install-directory:
-        description: "Repository-relative package and lockfile directory; defaults to working-directory"
+        description: "Repository-relative package and lockfile directory (pnpm-lock.yaml, or bun.lock with an exact packageManager bun@x.y.z); defaults to working-directory"
         required: false
         type: string
         default: ""
@@ -59,7 +59,7 @@ on:
         type: string
         default: ""
       build-cache-key-files:
-        description: "Newline-separated tracked-file globs, relative to working-directory, that invalidate the build cache in addition to package.json and pnpm-lock.yaml"
+        description: "Newline-separated tracked-file globs, relative to working-directory, that invalidate the build cache in addition to package.json and the lockfile"
         required: false
         type: string
         default: ""
@@ -119,6 +119,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate build inputs
+        id: validate
         shell: bash
         env:
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
@@ -151,8 +152,27 @@ jobs:
           if [[ -z "${BUILD_COMMAND:-}" ]]; then
             test -f "${WORKING_DIRECTORY}/${WRANGLER_CONFIG}"
           fi
-          test -f "${INSTALL_DIRECTORY}/pnpm-lock.yaml"
           test -f "${INSTALL_DIRECTORY}/package.json"
+          # Exactly one supported lockfile selects the package manager. Bun has no
+          # pnpm-style version enforcement, so its version must be pinned exactly.
+          if [[ -f "${INSTALL_DIRECTORY}/pnpm-lock.yaml" ]]; then
+            if [[ -e "${INSTALL_DIRECTORY}/bun.lock" ]]; then
+              echo "::error::install-directory has both pnpm-lock.yaml and bun.lock" >&2
+              exit 1
+            fi
+            package_manager=pnpm
+          elif [[ -f "${INSTALL_DIRECTORY}/bun.lock" ]]; then
+            bun_version="$(jq -r '.packageManager // ""' "${INSTALL_DIRECTORY}/package.json")"
+            if [[ ! "${bun_version}" =~ ^bun@[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::a Bun install-directory's package.json must set packageManager to an exact bun@x.y.z" >&2
+              exit 1
+            fi
+            package_manager=bun
+          else
+            echo "::error::install-directory needs pnpm-lock.yaml or bun.lock" >&2
+            exit 1
+          fi
+          echo "package-manager=${package_manager}" >> "${GITHUB_OUTPUT}"
           if [[ "${PUBLISH_CONTAINER_IMAGE}" == "true" ]]; then
             test -n "${DOCKERHUB_OIDC_CONNECTION_ID}"
           fi
@@ -161,15 +181,31 @@ jobs:
             test -d "${WORKING_DIRECTORY}/${D1_MIGRATIONS_DIRECTORY}"
           fi
 
-      - uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
+      - if: ${{ steps.validate.outputs.package-manager == 'pnpm' }}
+        uses: tempoxyz/gh-actions/vendor/pnpm/action-setup@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
         with:
           package_json_file: ${{ inputs.install-directory || inputs.working-directory }}/package.json
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      # The version comes from packageManager, validated above. no-cache keeps
+      # the Bun executable out of the repository-writable Actions cache.
+      - if: ${{ steps.validate.outputs.package-manager == 'bun' }}
+        uses: tempoxyz/gh-actions/vendor/oven-sh/setup-bun@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
+        with:
+          bun-version-file: ${{ inputs.install-directory || inputs.working-directory }}/package.json
+          no-cache: true
+
+      - if: ${{ steps.validate.outputs.package-manager == 'pnpm' }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
           cache: pnpm
           cache-dependency-path: ${{ inputs.install-directory || inputs.working-directory }}/pnpm-lock.yaml
+
+      - if: ${{ steps.validate.outputs.package-manager == 'bun' }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+          package-manager-cache: false
 
       - name: Prepare build cache
         if: ${{ inputs.build-cache-paths != '' }}
@@ -200,6 +236,9 @@ jobs:
           INSTALL_DIRECTORY="${INSTALL_DIRECTORY:-${WORKING_DIRECTORY}}"
           [[ "${INSTALL_DIRECTORY}" =~ ${safe_path} ]] || invalid "install-directory is malformed"
           [[ ! "/${INSTALL_DIRECTORY}/" =~ /\.\./ ]] || invalid "install-directory must stay inside the repository"
+          # Validation already required exactly one of these lockfiles.
+          lockfile=pnpm-lock.yaml
+          if [[ -f "${INSTALL_DIRECTORY}/bun.lock" ]]; then lockfile=bun.lock; fi
           cd "${WORKING_DIRECTORY}"
 
           paths=()
@@ -222,7 +261,7 @@ jobs:
           # keep it in the cache key without allowing caller-supplied traversal.
           install_prefix="${INSTALL_DIRECTORY#./}"
           if [[ "${install_prefix}" == "." ]]; then install_prefix=""; else install_prefix="${install_prefix}/"; fi
-          pathspecs+=(":(top)${install_prefix}package.json" ":(top)${install_prefix}pnpm-lock.yaml")
+          pathspecs+=(":(top)${install_prefix}package.json" ":(top)${install_prefix}${lockfile}")
           while read -r pattern; do
             [[ -n "${pattern}" ]] || continue
             if [[ ! "${pattern}" =~ ${safe_glob} ]] ||
@@ -273,7 +312,8 @@ jobs:
         shell: bash
         env:
           INSTALL_DIRECTORY: ${{ inputs.install-directory || inputs.working-directory }}
-        run: cd "${INSTALL_DIRECTORY}" && pnpm install --frozen-lockfile
+          PACKAGE_MANAGER: ${{ steps.validate.outputs.package-manager }}
+        run: cd "${INSTALL_DIRECTORY}" && "${PACKAGE_MANAGER}" install --frozen-lockfile
 
       - name: Build application
         if: ${{ inputs.build-command != '' }}
@@ -370,6 +410,7 @@ jobs:
           WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
           WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
           DISPATCH_NAMESPACE: ${{ inputs.dispatch-namespace }}
+          PACKAGE_MANAGER: ${{ steps.validate.outputs.package-manager }}
         run: |
           set -euo pipefail
           outdir="${RUNNER_TEMP}/cloudflare-worker-build"
@@ -382,7 +423,12 @@ jobs:
             args+=(--dispatch-namespace "${DISPATCH_NAMESPACE}")
           fi
           cd "${WORKING_DIRECTORY}"
-          pnpm exec wrangler "${args[@]}"
+          if [[ "${PACKAGE_MANAGER}" == "bun" ]]; then
+            # --no-install runs only the locked Wrangler, never one bunx downloads.
+            bun x --no-install wrangler "${args[@]}"
+          else
+            pnpm exec wrangler "${args[@]}"
+          fi
 
       - name: Stage and hash Worker module
         id: prepare
@@ -1014,11 +1060,19 @@ jobs:
             return { binding: binding.binding, service: binding.service, ...(binding.entrypoint === undefined ? {} : { entrypoint: binding.entrypoint }) };
           }).sort((left, right) => left.binding.localeCompare(right.binding));
 
+          // A sender allowlist only narrows the binding, so it is attested exactly.
+          // Destination restrictions and unknown options still fail closed.
+          const emailAddress = /^[A-Za-z0-9._%+-]{1,64}@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
           const sendEmail = (config.send_email ?? []).map((binding) => {
             invariant(isRecord(binding), "email binding must be an object");
-            invariant(Object.keys(binding).every((key) => key === "name"), "email bindings accept only name; address restrictions and unknown options are not supported");
+            invariant(Object.keys(binding).every((key) => key === "name" || key === "allowed_sender_addresses"), "email bindings accept only name and allowed_sender_addresses; destination restrictions and unknown options are not supported");
             invariant(typeof binding.name === "string" && bindingName.test(binding.name), "invalid email binding name");
-            return { binding: binding.name };
+            if (binding.allowed_sender_addresses === undefined) return { binding: binding.name };
+            const senders = binding.allowed_sender_addresses;
+            invariant(Array.isArray(senders) && senders.length >= 1 && senders.length <= 10, `email binding ${binding.name} allowed_sender_addresses must list one to ten addresses`);
+            invariant(senders.every((address) => typeof address === "string" && address.length <= 254 && emailAddress.test(address)), `email binding ${binding.name} allowed_sender_addresses must be plain addresses with a lowercase domain`);
+            invariant(new Set(senders).size === senders.length, `email binding ${binding.name} allowed_sender_addresses must be unique`);
+            return { binding: binding.name, allowedSenderAddresses: [...senders].sort() };
           }).sort((left, right) => left.binding.localeCompare(right.binding));
           invariant(sendEmail.length <= 10, "at most ten email bindings are supported");
 

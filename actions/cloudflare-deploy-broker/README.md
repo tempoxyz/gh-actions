@@ -60,6 +60,16 @@ jobs:
           module-digest: ${{ needs.build.outputs.module-digest }}
 ```
 
+The build installs dependencies with the lockfile in `install-directory`
+(default `working-directory`): `pnpm-lock.yaml` with pnpm, or `bun.lock` with
+Bun. A Bun install directory's `package.json` must pin the exact version, as in
+`"packageManager": "bun@1.4.4"`. Either way the install is frozen and Wrangler
+runs from the installed dependencies.
+
+An email binding may restrict its senders with `allowed_sender_addresses`; the
+build attests the sorted list as `allowedSenderAddresses`, which the deployment
+policy must name exactly. Destination restrictions are rejected.
+
 Static assets are limited to 1,000 files, 4 MiB per file, and 32 MiB total
 unless the deployment policy raises them, up to 20,000 files, 25 MiB per file,
 and 256 MiB total.
