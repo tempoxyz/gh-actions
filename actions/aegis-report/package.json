@@ -13,5 +13,10 @@
   },
   "devDependencies": {
     "esbuild": "0.28.2"
+  },
+  "overrides": {
+    "archiver-utils": {
+      "glob": "^14.0.2"
+    }
   }
 }
