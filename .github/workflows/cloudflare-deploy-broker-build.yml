@@ -907,13 +907,40 @@ jobs:
               }),
             };
           }
+          // Wrangler uploads a string var as plain text and any other var as
+          // a JSON binding, which the Worker reads parsed. The manifest keeps
+          // each JSON value as canonical JSON text: object keys sorted by code
+          // unit at every depth, so equal values always attest the same bytes.
+          function canonicalJson(value, name, depth = 0) {
+            invariant(depth <= 32, `JSON binding ${name} is nested too deeply`);
+            if (value === null || typeof value === "boolean") return JSON.stringify(value);
+            if (typeof value === "string") return JSON.stringify(value);
+            if (typeof value === "number") {
+              invariant(Number.isFinite(value), `JSON binding ${name} must hold only finite numbers`);
+              return JSON.stringify(value);
+            }
+            if (Array.isArray(value)) {
+              return `[${value.map((item) => canonicalJson(item, name, depth + 1)).join(",")}]`;
+            }
+            invariant(isRecord(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)), `JSON binding ${name} must hold only JSON values`);
+            const entries = Object.entries(value).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+            return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item, name, depth + 1)}`).join(",")}}`;
+          }
           const plainText = {};
+          const json = {};
           for (const [name, value] of Object.entries(config.vars ?? {})) {
             if (name === "CLOUDFLARE_DEPLOY_BROKER_NEW_RESOURCES") continue;
-            invariant(bindingName.test(name), `invalid plaintext binding name: ${name}`);
-            invariant(typeof value === "string", `plaintext binding ${name} must be a string`);
-            invariant(value.length <= 4096, `plaintext binding ${name} exceeds 4096 characters`);
-            plainText[name] = value;
+            invariant(bindingName.test(name), `invalid variable binding name: ${name}`);
+            if (typeof value === "string") {
+              invariant(value.length <= 4096, `plaintext binding ${name} exceeds 4096 characters`);
+              plainText[name] = value;
+              continue;
+            }
+            // The broker reads its own settings only as plain text.
+            invariant(!name.startsWith("CLOUDFLARE_DEPLOY_BROKER_"), `${name} must be a string`);
+            const text = canonicalJson(value, name);
+            invariant(text.length <= 4096, `JSON binding ${name} exceeds 4096 characters`);
+            json[name] = text;
           }
 
           const sqliteIdentifier = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
@@ -1246,6 +1273,8 @@ jobs:
               ...(cache === undefined ? {} : { cache }),
               bindings: {
                 plainText: { mode: "exact", values: sortedRecord(plainText) },
+                // Emitted only when declared, so string-only configurations keep their attested bytes.
+                ...(Object.keys(json).length === 0 ? {} : { json: { mode: "exact", values: sortedRecord(json) } }),
                 versionMetadata: config.version_metadata === undefined
                   ? null
                   : { binding: config.version_metadata.binding },
@@ -1275,6 +1304,7 @@ jobs:
           };
           const names = [
             ...Object.keys(plainText),
+            ...Object.keys(json),
             ...(config.version_metadata === undefined ? [] : [config.version_metadata.binding]),
             ...(config.assets === undefined ? [] : [config.assets.binding]),
             ...[kv, d1, r2, pipelines, queues, services, dispatchNamespaces, durableObjects, sendEmail, workflows, browser, hyperdrive, vectorize, aiSearch, ai, workerLoaders, analyticsEngine, analyticsSql, rateLimits].flatMap((values) => values.map((binding) => binding.binding)),
