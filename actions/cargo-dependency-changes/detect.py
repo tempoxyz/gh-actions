@@ -4,6 +4,8 @@ import json
 import os
 import re
 import subprocess
+import sys
+import time
 import tomllib
 from urllib.parse import quote
 
@@ -36,8 +38,25 @@ def dependencies(text, prefix, lock=False):
     return sorted(found)
 
 
+# GitHub occasionally answers with an empty body or a 5xx; retry those briefly.
+# Persistent failures still fail the action rather than producing a false skip.
+RETRY_DELAYS = (2, 5, 10)
+
+
 def api(path):
-    return json.loads(subprocess.check_output(["gh", "api", path], text=True))
+    for delay in (*RETRY_DELAYS, None):
+        result = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+        if result.returncode == 0:
+            try:
+                return json.loads(result.stdout)
+            except json.JSONDecodeError as error:
+                failure = f"invalid JSON: {error}"
+        else:
+            failure = result.stderr.strip() or f"gh exited {result.returncode}"
+        if delay is None or re.search(r"HTTP 4(0[0-4]|22)\b", failure) and "rate limit" not in failure.lower():
+            raise RuntimeError(f"gh api {path} failed: {failure}")
+        print(f"::warning::gh api {path} failed ({failure}); retrying in {delay}s", file=sys.stderr)
+        time.sleep(delay)
 
 
 def detect(repo, base, head, prefix):

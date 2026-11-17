@@ -18,7 +18,8 @@ execution of the candidate repository is needed. Requires Python 3.11+ and `gh`
 possibly truncated comparisons (300 files). Reth matches `reth` and `reth-*`,
 including aliased packages, target-specific dependencies and patches. Comments,
 formatting, feature-only edits and unrelated dependencies do not trigger a run.
-API, decoding and TOML errors fail the action; they never produce a false skip.
+Empty responses, 5xx and rate-limit errors are retried three times (2, 5, 10s);
+persistent API, decoding and TOML errors fail the action, never producing a false skip.
 The comparison uses the merge base so it covers the full PR diff.
 
 Run tests with `python3 -m unittest discover -s actions/cargo-dependency-changes -v`.
