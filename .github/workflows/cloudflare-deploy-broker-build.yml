@@ -259,6 +259,11 @@ jobs:
             # Restored entries must never replace source the build compiles.
             [[ -z "$(git ls-files -- "${path}")" ]] ||
               invalid "build cache path ${path} contains tracked files"
+            # The cache is restored before the install, and npm ci deletes
+            # node_modules, so a cache there would never be used.
+            if [[ "${lockfile}" == "package-lock.json" && "/${path}/" == */node_modules/* ]]; then
+              invalid "build cache path ${path} is under node_modules, which npm ci deletes before it installs"
+            fi
             paths+=("${path}")
           done <<< "${BUILD_CACHE_PATHS}"
           (( ${#paths[@]} > 0 )) || invalid "build-cache-paths lists no directories"
