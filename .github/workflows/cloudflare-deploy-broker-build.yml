@@ -776,7 +776,7 @@ jobs:
             "account_id", "ai", "ai_search", "ai_search_namespaces", "analytics", "analytics_engine_datasets",
             "artifacts", "assets", "browser", "cache", "compatibility_date", "compatibility_flags", "connect",
             "containers", "d1_databases", "dispatch_namespaces", "durable_objects", "exports",
-            "hyperdrive", "keep_vars", "kv_namespaces", "limits", "logpush", "main", "migrations",
+            "hyperdrive", "images", "keep_vars", "kv_namespaces", "limits", "logpush", "main", "migrations",
             "mtls_certificates", "name", "observability", "pipelines", "placement", "preview_urls", "queues",
             "r2_buckets", "ratelimits", "route", "routes", "secrets_store_secrets", "send_email",
             "services", "site", "tail_consumers", "triggers", "unsafe", "vars", "vectorize",
@@ -872,6 +872,11 @@ jobs:
           const analyticsSql = isUnset(config.analytics)
             ? []
             : mapBindings([config.analytics], ["binding"], (value) => ({ binding: value.binding }));
+          // Images transforms with the account's Cloudflare Images. It names no
+          // resource and has no options; remote mode never becomes an input.
+          const images = isUnset(config.images)
+            ? []
+            : mapBindings([config.images], ["binding"], (value) => ({ binding: value.binding }));
 
           // Response caching grants no access. Only enabled is supported, as
           // Wrangler uploads it; omit an unset table so manifests stay stable.
@@ -1265,6 +1270,7 @@ jobs:
                 ...(analyticsSql.length === 0 ? {} : { analyticsSql }),
                 ...(sendEmail.length === 0 ? {} : { sendEmail }),
                 ...(workflows.length === 0 ? {} : { workflows }),
+                ...(images.length === 0 ? {} : { images }),
                 browser,
                 containers,
                 workerLoaders,
@@ -1277,7 +1283,7 @@ jobs:
             ...Object.keys(plainText),
             ...(config.version_metadata === undefined ? [] : [config.version_metadata.binding]),
             ...(config.assets === undefined ? [] : [config.assets.binding]),
-            ...[kv, d1, r2, pipelines, queues, services, dispatchNamespaces, durableObjects, sendEmail, workflows, browser, hyperdrive, vectorize, aiSearch, ai, workerLoaders, analyticsEngine, analyticsSql, rateLimits].flatMap((values) => values.map((binding) => binding.binding)),
+            ...[kv, d1, r2, pipelines, queues, services, dispatchNamespaces, durableObjects, sendEmail, workflows, browser, hyperdrive, vectorize, aiSearch, ai, workerLoaders, analyticsEngine, analyticsSql, images, rateLimits].flatMap((values) => values.map((binding) => binding.binding)),
           ];
           invariant(new Set(names).size === names.length, "Worker binding names must be unique across binding types");
           const serialized = `${JSON.stringify(manifest)}\n`;
