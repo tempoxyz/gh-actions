@@ -16,21 +16,33 @@ on:
         type: string
         required: true
       build-script:
-        description: "Executable accepting BUILD_BACKEND, NO_CACHE, SOURCE_DATE_EPOCH, GIT_SHA, EIF_BUILDER_IMAGE, BUILD_INPUT_FILE and OUT_DIR; writes OUT_DIR/enclave.eif."
+        description: "Executable accepting BUILD_BACKEND, NO_CACHE, SOURCE_DATE_EPOCH, GIT_SHA, EIF_BUILDER_IMAGE, BUILD_INPUT_FILE, BUILD_TARGET, GITHUB_STS_TOKEN and OUT_DIR; writes OUT_DIR/enclave.eif."
         type: string
         required: true
+      build-target:
+        description: "Opaque name passed to the build script as BUILD_TARGET, for callers that build one of several EIFs; empty for none."
+        type: string
+        default: ""
       eif-builder-image:
         description: "Digest-pinned linux/amd64 image with nitro-cli as its entrypoint and the kernel/bootstrap used by both builds."
         type: string
         required: true
       build-input-url:
-        description: "HTTPS URL of a required build input, such as an enclave genesis file."
+        description: "HTTPS URL of a build input, such as an enclave genesis file; empty when the build has none."
         type: string
-        required: true
+        default: ""
       build-input-sha256:
-        description: "Expected SHA-256 of the downloaded build input."
+        description: "Expected SHA-256 of the downloaded build input; empty without build-input-url."
         type: string
-        required: true
+        default: ""
+      github-sts-policy:
+        description: "github-sts trust policy that grants the builds read access to private dependencies; empty for none."
+        type: string
+        default: ""
+      github-sts-scope:
+        description: "Repository (org/repo) or organization holding github-sts-policy."
+        type: string
+        default: ""
       depot-project:
         description: "Depot project authorized for the caller's GitHub OIDC identity."
         type: string
@@ -101,8 +113,10 @@ jobs:
           set -euo pipefail
           [[ "$RECIPE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EIF_BUILDER_IMAGE" =~ ^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$ ]]
-          [[ "$BUILD_INPUT_URL" == https://* ]]
-          [[ "$BUILD_INPUT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          if [[ -n "$BUILD_INPUT_URL" || -n "$BUILD_INPUT_SHA256" ]]; then
+            [[ "$BUILD_INPUT_URL" == https://* ]]
+            [[ "$BUILD_INPUT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          fi
           for path in .dockerignore "$BUILD_SCRIPT"; do
             grep -Fxq -- "$path" <<< "$RECIPE_PATHS" || {
               echo "Missing trusted build definition: $path" >&2
@@ -187,6 +201,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download and verify build input
+        if: inputs.build-input-url != ''
         env:
           BUILD_INPUT_URL: ${{ inputs.build-input-url }}
           BUILD_INPUT_SHA256: ${{ inputs.build-input-sha256 }}
@@ -197,14 +212,25 @@ jobs:
             --output "$RUNNER_TEMP/build-input" "$BUILD_INPUT_URL"
           printf '%s  %s\n' "$BUILD_INPUT_SHA256" "$RUNNER_TEMP/build-input" | sha256sum --check --strict
 
+      - name: Authorize private dependency fetch
+        if: inputs.github-sts-policy != ''
+        id: sts
+        uses: tempoxyz/gh-actions/actions/github-sts@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        with:
+          scope: ${{ inputs.github-sts-scope }}
+          policy: ${{ inputs.github-sts-policy }}
+          ttl: 30m
+
       - name: Build EIF
         env:
+          GITHUB_STS_TOKEN: ${{ steps.sts.outputs.token }}
           BUILD_SCRIPT: ${{ inputs.build-script }}
           BUILD_BACKEND: ${{ matrix.backend }}
           NO_CACHE: ${{ matrix.backend == 'docker' && '1' || '0' }}
           DEPOT_PROJECT: ${{ inputs.depot-project }}
           EIF_BUILDER_IMAGE: ${{ inputs.eif-builder-image }}
-          BUILD_INPUT_FILE: ${{ runner.temp }}/build-input
+          BUILD_INPUT_FILE: ${{ inputs.build-input-url != '' && format('{0}/build-input', runner.temp) || '' }}
+          BUILD_TARGET: ${{ inputs.build-target }}
           OUT_DIR: ${{ runner.temp }}/eif-output
           SOURCE_DATE_EPOCH: ${{ needs.resolve.outputs.source_date_epoch }}
           GIT_SHA: ${{ needs.resolve.outputs.source_sha }}
@@ -273,6 +299,7 @@ jobs:
           RECIPE_SHA: ${{ inputs.build-definitions-sha }}
           RECIPE_PATHS: ${{ inputs.build-definition-paths }}
           BUILD_SCRIPT: ${{ inputs.build-script }}
+          BUILD_TARGET: ${{ inputs.build-target }}
           JOB_CONTEXT: ${{ toJSON(job) }}
           SOURCE_DATE_EPOCH: ${{ needs.resolve.outputs.source_date_epoch }}
           EIF_BUILDER_IMAGE: ${{ inputs.eif-builder-image }}
@@ -298,10 +325,11 @@ jobs:
               "build_definitions_sha": env["RECIPE_SHA"],
               "build_definition_paths": env["RECIPE_PATHS"].splitlines(),
               "build_script": env["BUILD_SCRIPT"],
+              "build_target": env["BUILD_TARGET"],
               "verification_workflow_sha": json.loads(env["JOB_CONTEXT"])["workflow_sha"],
               "source_date_epoch": int(env["SOURCE_DATE_EPOCH"]),
               "eif_builder_image": env["EIF_BUILDER_IMAGE"],
-              "build_input": {"url": env["BUILD_INPUT_URL"], "sha256": env["BUILD_INPUT_SHA256"]},
+              "build_input": {"url": env["BUILD_INPUT_URL"], "sha256": env["BUILD_INPUT_SHA256"]} if env["BUILD_INPUT_URL"] else None,
               "verification_scope": "unsigned EIF PCR0/PCR1/PCR2",
               "build_result": env["BUILD_RESULT"],
               "builds": {},
