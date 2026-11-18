@@ -17,7 +17,9 @@ lockfile alone is baselined; an added vulnerable occurrence is reported.
 and provenance files. The verifier is bootstrapped from its pinned digest, then
 verifies its own SLSA provenance. The scanner must pass both its pinned checksum
 and SLSA verification for `github.com/google/osv-scanner` at the exact release tag
-before execution. Failed verification stops the action. Cached downloads under
+before execution. Verification contacts Sigstore, so each attempt gets two
+minutes and failed attempts are retried up to three times with backoff before
+the action stops; an invalid provenance still fails every attempt. Cached downloads under
 `runner.temp` are rechecked on every scan invocation.
 
 Runner policy must allow GitHub release downloads, Sigstore verification, OSV API

@@ -91,7 +91,39 @@ export function childEnvironment(env) {
   return Object.fromEntries(Object.entries(env).filter(([key]) => allowed.has(key.toLowerCase())));
 }
 
-export async function install(env = process.env, execute = spawnSync) {
+// slsa-verifier fetches Sigstore's TUF root and checks the Rekor transparency log,
+// so a slow or briefly unavailable Sigstore fails verification. Retry it with
+// backoff, and give each attempt its own time limit so a hung request cannot
+// consume the job. A genuinely invalid provenance fails every attempt.
+export const VERIFY_ATTEMPTS = 3;
+export const VERIFY_TIMEOUT_MS = 120_000;
+
+export function verifyDelay(attempt) {
+  return 15_000 * 3 ** attempt;
+}
+
+export async function verifyProvenance(
+  verifier,
+  args,
+  options,
+  { execute = spawnSync, sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay)), log = console.error } = {},
+) {
+  let lastError;
+  for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt++) {
+    const result = execute(verifier, args, { ...options, timeout: VERIFY_TIMEOUT_MS, killSignal: 'SIGKILL' });
+    if (!result.error && result.status === 0) return;
+    lastError = result.error?.code === 'ETIMEDOUT'
+      ? new Error(`verification timed out after ${VERIFY_TIMEOUT_MS / 1_000}s`)
+      : result.error || new Error(`exit ${result.status ?? result.signal}`);
+    if (attempt === VERIFY_ATTEMPTS - 1) break;
+    const delay = verifyDelay(attempt);
+    log(`SLSA verification attempt ${attempt + 1}/${VERIFY_ATTEMPTS} failed (${lastError.message}); retrying in ${delay / 1_000}s`);
+    await sleep(delay);
+  }
+  throw lastError;
+}
+
+export async function install(env = process.env, execute = spawnSync, { sleep } = {}) {
   if (!env.RUNNER_TEMP) throw new Error('RUNNER_TEMP is required');
   const names = assetNames();
   const directory = join(env.RUNNER_TEMP, `tempo-osv-${releases.scanner.version}-${releases.verifier.version}-${process.platform}-${process.arch}`);
@@ -109,12 +141,13 @@ export async function install(env = process.env, execute = spawnSync) {
     [verifier, verifierProvenance, releases.verifier],
     [scanner, scannerProvenance, releases.scanner],
   ]) {
-    const result = execute(verifier, ['verify-artifact', binary, '--provenance-path', provenance,
-      '--source-uri', `github.com/${release.repository}`, '--source-tag', release.version],
-    { cwd: directory, env: childEnvironment(env), stdio: 'inherit' });
-    if (result.error || result.status !== 0) {
+    try {
+      await verifyProvenance(verifier, ['verify-artifact', binary, '--provenance-path', provenance,
+        '--source-uri', `github.com/${release.repository}`, '--source-tag', release.version],
+      { cwd: directory, env: childEnvironment(env), stdio: 'inherit' }, { execute, sleep });
+    } catch (error) {
       rmSync(scanner, { force: true });
-      throw result.error || new Error(`SLSA verification failed for ${release.repository} (exit ${result.status})`);
+      throw new Error(`SLSA verification failed for ${release.repository} after ${VERIFY_ATTEMPTS} attempts: ${error.message}`);
     }
   }
   return scanner;

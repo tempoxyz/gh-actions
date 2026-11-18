@@ -102,6 +102,42 @@ test('does not retry permanent release download failures', async t => {
   assert.equal(calls, 1);
 });
 
+test('retries transient SLSA verification failures with a per-attempt timeout', async () => {
+  const { verifyProvenance, VERIFY_TIMEOUT_MS } = await import('./install.mjs');
+  const delays = [];
+  const calls = [];
+  const results = [
+    { error: Object.assign(new Error('spawnSync verifier ETIMEDOUT'), { code: 'ETIMEDOUT' }), status: null },
+    { status: 1 },
+    { status: 0 },
+  ];
+  await verifyProvenance('verifier', ['verify-artifact'], { cwd: '/tmp' }, {
+    execute: (command, args, options) => { calls.push(options); return results.shift(); },
+    sleep: async delay => delays.push(delay),
+    log: () => {},
+  });
+  assert.equal(calls.length, 3);
+  for (const options of calls) {
+    assert.equal(options.timeout, VERIFY_TIMEOUT_MS);
+    assert.equal(options.cwd, '/tmp');
+  }
+  assert.deepEqual(delays, [15_000, 45_000]);
+});
+
+test('fails closed once every SLSA verification attempt fails', async () => {
+  const { verifyProvenance, VERIFY_ATTEMPTS } = await import('./install.mjs');
+  let calls = 0;
+  await assert.rejects(
+    verifyProvenance('verifier', [], {}, {
+      execute: () => { calls += 1; return { status: 1 }; },
+      sleep: async () => {},
+      log: () => {},
+    }),
+    /exit 1/,
+  );
+  assert.equal(calls, VERIFY_ATTEMPTS);
+});
+
 test('native children receive platform necessities without tokens or injection variables', async () => {
   const { childEnvironment } = await import('./install.mjs');
   assert.deepEqual(childEnvironment({ Path: 'C:\\tools', SystemRoot: 'C:\\Windows', TEMP: 'C:\\temp', HOME: '/home/user',
