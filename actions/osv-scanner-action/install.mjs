@@ -112,7 +112,9 @@ export async function verifyProvenance(
   for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt++) {
     const result = execute(verifier, args, { ...options, timeout: VERIFY_TIMEOUT_MS, killSignal: 'SIGKILL' });
     if (!result.error && result.status === 0) return;
-    lastError = result.error?.code === 'ETIMEDOUT'
+    // A verifier that cannot be started (ENOENT, EACCES, ENOEXEC) fails the same way every time.
+    if (result.error && result.error.code !== 'ETIMEDOUT') throw result.error;
+    lastError = result.error
       ? new Error(`verification timed out after ${VERIFY_TIMEOUT_MS / 1_000}s`)
       : result.error || new Error(`exit ${result.status ?? result.signal}`);
     if (attempt === VERIFY_ATTEMPTS - 1) break;

@@ -138,6 +138,20 @@ test('fails closed once every SLSA verification attempt fails', async () => {
   assert.equal(calls, VERIFY_ATTEMPTS);
 });
 
+test('does not retry a verifier that cannot be started', async () => {
+  const { verifyProvenance } = await import('./install.mjs');
+  let calls = 0;
+  await assert.rejects(
+    verifyProvenance('verifier', [], {}, {
+      execute: () => { calls += 1; return { error: Object.assign(new Error('spawnSync verifier EACCES'), { code: 'EACCES' }), status: null }; },
+      sleep: async () => assert.fail('permanent failure must not sleep'),
+      log: () => {},
+    }),
+    /EACCES/,
+  );
+  assert.equal(calls, 1);
+});
+
 test('native children receive platform necessities without tokens or injection variables', async () => {
   const { childEnvironment } = await import('./install.mjs');
   assert.deepEqual(childEnvironment({ Path: 'C:\\tools', SystemRoot: 'C:\\Windows', TEMP: 'C:\\temp', HOME: '/home/user',
