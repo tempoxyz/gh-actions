@@ -34,7 +34,8 @@ on:
       timeout-minutes:
         description: Scan job timeout
         type: number
-        default: 20
+        # Base/head each verify two binaries: 4 x 7 minutes, plus downloads and scans.
+        default: 40
       artifact-name:
         description: Report artifact name; use a unique name for each matrix invocation
         type: string

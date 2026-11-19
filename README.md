@@ -594,7 +594,7 @@ and no `security-events: write` or `pull-requests: write` permission is required
 | `base-ref`, `head-ref` | Event base/merge SHAs | Explicit revision overrides |
 | `checkout-submodules` | `false` | Recursively check out submodules |
 | `runs-on` | `ubuntu-latest` | Linux, macOS, or Windows runner with Node.js 20+ |
-| `timeout-minutes` | `20` | Job timeout |
+| `timeout-minutes` | `40` | Job timeout, including binary downloads and verification retries |
 | `artifact-name` | `dependency-scan` | Set a unique name for each matrix invocation |
 | `skip` | `false` | Skip the scan; see [Skipping a required scan](#skipping-a-required-scan) |
 

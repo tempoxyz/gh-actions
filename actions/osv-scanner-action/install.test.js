@@ -102,6 +102,78 @@ test('does not retry permanent release download failures', async t => {
   assert.equal(calls, 1);
 });
 
+test('retries transient SLSA verification failures with a per-attempt timeout', async () => {
+  const { verifyProvenance, VERIFY_TIMEOUT_MS } = await import('./install.mjs');
+  const delays = [];
+  const calls = [];
+  const results = [
+    { error: Object.assign(new Error('spawnSync verifier ETIMEDOUT'), { code: 'ETIMEDOUT' }), status: null },
+    { status: 1 },
+    { status: 0 },
+  ];
+  await verifyProvenance('verifier', ['verify-artifact'], { cwd: '/tmp' }, {
+    execute: (command, args, options) => { calls.push(options); return results.shift(); },
+    sleep: async delay => delays.push(delay),
+    log: () => {},
+  });
+  assert.equal(calls.length, 3);
+  for (const options of calls) {
+    assert.equal(options.timeout, VERIFY_TIMEOUT_MS);
+    assert.equal(options.cwd, '/tmp');
+  }
+  assert.deepEqual(delays, [15_000, 45_000]);
+});
+
+test('workflow timeout covers verification retries for both scans with time for downloads and scanning', async () => {
+  const { verifyProvenance, VERIFY_ATTEMPTS } = await import('./install.mjs');
+  const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/dependency-scan.yml'), 'utf8');
+  const timeoutMinutes = Number(workflow.match(/      timeout-minutes:\r?\n(?:        .*\r?\n)*?        default: (\d+)/)?.[1]);
+  let verificationBudget = 0;
+  // Each scan verifies the verifier and scanner, even when downloads are cached.
+  for (let verification = 0; verification < 4; verification++) {
+    let attempts = 0;
+    await verifyProvenance('verifier', [], {}, {
+      execute: (command, args, options) => {
+        verificationBudget += options.timeout;
+        return { status: ++attempts === VERIFY_ATTEMPTS ? 0 : 1 };
+      },
+      sleep: async delay => { verificationBudget += delay; },
+      log: () => {},
+    });
+  }
+  // Reserve ten minutes for downloads, scans, checkout, and reporting.
+  assert.ok(timeoutMinutes * 60_000 >= verificationBudget + 10 * 60_000,
+    `Workflow timeout ${timeoutMinutes}m must cover ${verificationBudget / 60_000}m of verification plus 10m`);
+});
+
+test('fails closed once every SLSA verification attempt fails', async () => {
+  const { verifyProvenance, VERIFY_ATTEMPTS } = await import('./install.mjs');
+  let calls = 0;
+  await assert.rejects(
+    verifyProvenance('verifier', [], {}, {
+      execute: () => { calls += 1; return { status: 1 }; },
+      sleep: async () => {},
+      log: () => {},
+    }),
+    /exit 1/,
+  );
+  assert.equal(calls, VERIFY_ATTEMPTS);
+});
+
+test('does not retry a verifier that cannot be started', async () => {
+  const { verifyProvenance } = await import('./install.mjs');
+  let calls = 0;
+  await assert.rejects(
+    verifyProvenance('verifier', [], {}, {
+      execute: () => { calls += 1; return { error: Object.assign(new Error('spawnSync verifier EACCES'), { code: 'EACCES' }), status: null }; },
+      sleep: async () => assert.fail('permanent failure must not sleep'),
+      log: () => {},
+    }),
+    /EACCES/,
+  );
+  assert.equal(calls, 1);
+});
+
 test('native children receive platform necessities without tokens or injection variables', async () => {
   const { childEnvironment } = await import('./install.mjs');
   assert.deepEqual(childEnvironment({ Path: 'C:\\tools', SystemRoot: 'C:\\Windows', TEMP: 'C:\\temp', HOME: '/home/user',
