@@ -43,3 +43,7 @@ rules:
   - min_age: 0
     conditions:
       - expr: ActionName matches "^tempoxyz/gh-actions/actions/(npm-publish|create-pull-request)$" && ActionVersion == "df5b18a2b274a1a4b57981cbf7749709434250b2"
+  # dependency-scan pins the osv-scanner-action commit that retries SLSA verification (#408), inside the cooldown.
+  - min_age: 0
+    conditions:
+      - expr: ActionName == "tempoxyz/gh-actions/actions/osv-scanner-action" && ActionVersion == "4579c1c4cf56ce39de511c6081ae7320bd0de3f8"
