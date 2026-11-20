@@ -764,7 +764,10 @@ itself is outside this comparison. An optional extra build input (for example,
 genesis JSON) is downloaded independently in each build and must match a supplied
 SHA-256. Builds that fetch a private dependency can get a read-only token from a
 github-sts policy (`github-sts-policy`, `github-sts-scope`); its `job_workflow_ref`
-claim names this workflow, so the policy must accept it.
+claim names this workflow, so the policy must accept it. The token is minted just
+before the build script runs with the longest lifetime the policy allows (at most
+GitHub's one hour), and with a token the build step's timeout is the token's
+remaining lifetime rather than the job's 90 minutes.
 
 ```yaml
 jobs:
@@ -810,9 +813,14 @@ The executable build script receives these environment variables:
 
 Optional inputs are `candidate-runner` (default `depot-ubuntu-latest-16`),
 `artifact-name` (default `reproducible-eif-verification`), and `retention-days`
-(default `7`). Use distinct artifact names for multiple calls in one run.
-Artifacts `<artifact-name>-depot` and `<artifact-name>-docker` contain the EIFs;
-`<artifact-name>` contains `manifest.json` and both raw Nitro descriptions.
+(default `7`). Artifact names are `<prefix>`, `<prefix>-depot` and `<prefix>-docker`,
+where `<prefix>` is `<artifact-name>-<build-target>`, or `<artifact-name>` without a
+build target: `<prefix>-depot` and `<prefix>-docker` contain `enclave.eif` and
+`call-id`, and `<prefix>` contains `manifest.json` and both raw Nitro descriptions.
+A matrix of calls over `build-target` can share one `artifact-name`; otherwise use
+distinct artifact names for multiple calls in one run. Each call writes a random
+`call-id` (also `call_id` in the manifest) beside its EIFs, and the comparison
+fails if an EIF artifact came from another call.
 
 Require `comparison_result == "success"` in the manifest. It records source,
 recipe and shared workflow revisions, the toolchain digest, input checksum, both
