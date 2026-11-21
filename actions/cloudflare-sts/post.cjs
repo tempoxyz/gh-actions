@@ -26,7 +26,7 @@ async function main() {
     throw new Error("stored Cloudflare token ID is invalid");
   }
   const account = process.env.STATE_account || "";
-  if (!/^(?:dev|prd|infra)$/.test(account)) {
+  if (!/^(?:dev|prd|infra|gtm)$/.test(account)) {
     throw new Error("stored Cloudflare account is invalid");
   }
   const identity = process.env.STATE_identity || "";

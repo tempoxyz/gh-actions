@@ -12,7 +12,7 @@ requires no dependency installation.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `account` | Cloudflare account alias (`dev`, `prd`, or `infra`) | Yes | |
+| `account` | Cloudflare account alias (`dev`, `prd`, `infra`, or `gtm`) | Yes | |
 | `policy` | STS trust policy name | Yes | |
 | `ttl` | Requested token lifetime, such as `45s`, `5m`, or `1h`; maximum one hour | No | `15m` |
 | `host` | STS hostname, without a scheme, port, or path | No | `cf-sts.tempoxyz.net` |

@@ -63,8 +63,18 @@ test("entrypoint rejects unknown accounts before requesting OIDC", () => {
   const result = run({ INPUT_ACCOUNT: "production" });
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 1);
-  assert.match(output, /account must be dev, prd, or infra/);
+  assert.match(output, /account must be dev, prd, infra, or gtm/);
   assert.doesNotMatch(output, /id-token: write permission is required/);
+});
+
+test("entrypoint accepts every account alias STS serves", () => {
+  for (const account of ["dev", "prd", "infra", "gtm"]) {
+    const result = run({ INPUT_ACCOUNT: account });
+    const output = `${result.stdout}${result.stderr}`;
+    assert.equal(result.status, 1);
+    assert.doesNotMatch(output, /account must be/);
+    assert.match(output, /id-token: write permission is required/);
+  }
 });
 
 test("rejects invalid hostnames before requesting OIDC", () => {
@@ -97,10 +107,28 @@ test("post entrypoint skips cleanup when no token was minted", () => {
 });
 
 test("post entrypoint requires id-token permission for cleanup", () => {
+  for (const account of ["dev", "prd", "infra", "gtm"]) {
+    const result = run(
+      {
+        STATE_token_id: "0123456789abcdef0123456789abcdef",
+        STATE_account: account,
+        STATE_identity: "e2e",
+        STATE_host: "cf-sts.tempoxyz.net",
+      },
+      "post.cjs",
+    );
+    const output = `${result.stdout}${result.stderr}`;
+    assert.equal(result.status, 1);
+    assert.match(output, /ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing/);
+    assert.doesNotMatch(output, /retrying/);
+  }
+});
+
+test("post entrypoint rejects an unknown stored account before cleanup", () => {
   const result = run(
     {
       STATE_token_id: "0123456789abcdef0123456789abcdef",
-      STATE_account: "prd",
+      STATE_account: "staging",
       STATE_identity: "e2e",
       STATE_host: "cf-sts.tempoxyz.net",
     },
@@ -108,8 +136,8 @@ test("post entrypoint requires id-token permission for cleanup", () => {
   );
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 1);
-  assert.match(output, /ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing/);
-  assert.doesNotMatch(output, /retrying/);
+  assert.match(output, /stored Cloudflare account is invalid/);
+  assert.doesNotMatch(output, /ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing/);
 });
 
 // Runs an entrypoint script inside a VM with a scripted HTTPS layer: the
