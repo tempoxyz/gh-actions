@@ -4,7 +4,7 @@ description: Exchange a GitHub OIDC token for a short-lived Cloudflare API token
 
 inputs:
   account:
-    description: Cloudflare account alias (dev, prd, or infra)
+    description: Cloudflare account alias (dev, prd, infra, or gtm)
     required: true
   policy:
     description: Trust policy name

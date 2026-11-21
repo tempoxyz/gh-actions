@@ -34,8 +34,8 @@ async function main() {
   const host = validateHost(input("host") || "cf-sts.tempoxyz.net");
 
   const account = input("account");
-  if (!/^(?:dev|prd|infra)$/.test(account)) {
-    throw new Error("account must be dev, prd, or infra");
+  if (!/^(?:dev|prd|infra|gtm)$/.test(account)) {
+    throw new Error("account must be dev, prd, infra, or gtm");
   }
 
   const policy = input("policy");
