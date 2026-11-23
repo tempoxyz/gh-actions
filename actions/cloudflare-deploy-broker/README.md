@@ -87,7 +87,7 @@ module types fail the build. Rule globs must have the form `**/*<suffix>` or
 `**/<file name>`, the only forms the build can classify exactly as Wrangler
 does. The main module is the file Wrangler names after `main`; the broker
 uploads it as `index.js`, so an additional module that imports it by its
-Wrangler name fails the build. The build allows 100 additional modules and 64 MiB
+Wrangler name fails the build. The build allows 1,000 additional modules and 64 MiB
 of modules in total. Deploying additional modules, a main module over 10 MiB, or
 assets over the default limits requires a policy that authorizes them and a
 broker release with staged artifact transfer.
