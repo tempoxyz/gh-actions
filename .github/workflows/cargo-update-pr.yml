@@ -102,7 +102,8 @@ jobs:
           cp Cargo.lock Cargo.lock.orig
           # Each attempt holds at least one more locked package, so the loop ends within one attempt
           # per package. A release of many crates (alloy, commonware) can need dozens of attempts.
-          max_attempts=$(( $(grep -c '^source = ' Cargo.lock) + 1 ))
+          sources="$(grep -c '^source = ' Cargo.lock || true)"
+          max_attempts=$(( sources + 1 ))
           for attempt in $(seq 1 "$max_attempts"); do
             cp Cargo.lock.orig Cargo.lock
             args=()
