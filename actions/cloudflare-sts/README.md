@@ -64,9 +64,15 @@ sequence has a 90-second budget, including HTTP requests and waits. Token exchan
 requests have a 60-second wall-clock timeout so the service can finish token
 verification and its 30-second D1 readiness check before returning credentials.
 Status, OIDC, and cleanup requests retain a 10-second timeout. All request timeouts
-are shortened to fit the remaining retry budget. A `429`
-response's `Retry-After` (seconds or HTTP date) is honored; if it cannot fit in the
-budget, the action fails without retrying early. Retries reuse the OIDC assertion.
+are shortened to fit the remaining retry budget. Retries reuse the OIDC assertion.
+
+A `429` means the Cloudflare API's rate limit (1,200 requests per user per five
+minutes), which a CI run minting tokens for many jobs at once can exceed. After
+one, the sequence gets a six-minute budget and up to 15 retries, so it outlasts
+the window, even if other failures follow. Its waits are jittered between half and
+all of the backoff, capped at 60 seconds, so many jobs don't retry in step. A
+`Retry-After` (seconds or HTTP date) is honored as the minimum wait; if it cannot
+fit in the budget, the action fails without retrying early.
 
 Before requesting OIDC, the action asks the STS whether it is serving exchanges
 with one empty `POST /status`. A paused STS answers
