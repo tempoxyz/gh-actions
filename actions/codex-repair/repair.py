@@ -163,7 +163,7 @@ def git(root, *args, env=None, check=True):
     clean = {k: v for k, v in os.environ.items()
              if not k.startswith("GIT_") and k not in ("GH_TOKEN", "GITHUB_TOKEN")}
     clean.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
-                 GIT_TERMINAL_PROMPT="0")
+                 GIT_TERMINAL_PROMPT="0", GIT_NO_REPLACE_OBJECTS="1")
     clean.update(env or {})
     return run(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
                 "-c", "credential.helper=", "-c", "core.autocrlf=false", *args],
@@ -243,7 +243,9 @@ def export_tree(repository, ref, destination, *, frozen_base=None):
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryFile() as blobs:
+        # Replacement refs must not change the content read for an object ID.
         result = subprocess.run(["git", "cat-file", "--batch"], cwd=repository,
+                                env=dict(os.environ, GIT_NO_REPLACE_OBJECTS="1"),
                                 input="".join(oid + "\n" for _, _, oid in entries).encode(),
                                 stdout=blobs, stderr=subprocess.PIPE)
         if result.returncode:

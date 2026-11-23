@@ -137,7 +137,7 @@ class PublicationTests(unittest.TestCase):
         self.config = {"sts-policy": "dep-update", "repair-budget-minutes": 10,
                        "local-checks": "cargo check", "required-workflows": ".github/workflows/ci.yml"}
         self.coordinator = update.Coordinator(self.repository, self.root, self.config, self.github)
-        self.coordinator.pin_git_config(self.repository)
+        self.coordinator.pin_publication(self.repository)
         self.tokens = []
         @contextlib.contextmanager
         def token():
@@ -264,6 +264,29 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(self.tokens, [])
         self.assertEqual(git(self.remote, "rev-parse", "bot/sdk").stdout.strip(), self.base)
 
+    def test_moved_clone_head_stops_before_token_mint(self):
+        worker = update.Worker(self.work, self.coordinator.deadline, self.root / "cache")
+        status, _ = worker.execute(["git", "-C", "../repository", "-c", "user.name=Test", "-c",
+                                    "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "moved"])
+        self.assertEqual(status, 0)
+        with self.assertRaisesRegex(ValueError, "HEAD moved"):
+            self.coordinator.publish(self.repository, self.work, self.policy, self.plan, self.existing,
+                                     self.base, self.base, self.root)
+        self.assertEqual(self.tokens, [])
+
+    def test_replacement_refs_do_not_change_exported_content(self):
+        git(self.repository, "checkout", "-q", "-b", "other")
+        (self.repository / "src/lib.rs").write_text("pub fn replaced() {}\n")
+        git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-qam", "other")
+        other = git(self.repository, "rev-parse", "HEAD").stdout.strip()
+        git(self.repository, "checkout", "-q", "main")
+        subprocess.run(["git", "replace", self.base, other], cwd=self.repository, check=True,
+                       capture_output=True)
+        exported = self.root / "exported"
+        export_tree(self.repository, self.base, exported)
+        self.assertEqual((exported / "src/lib.rs").read_text(), "pub fn original() {}\n")
+
     def test_askpass_answers_only_github_prompts(self):
         env = self.coordinator.git_env(self.root, "dummy-token")
         def ask(prompt):
@@ -379,6 +402,7 @@ class PublicationTests(unittest.TestCase):
         (self.work / ".gitattributes").write_text(".github export-ignore\n")
         self.policy.baseline = snapshot(baseline)
         self.github.api.return_value = {"object": {"sha": self.base}}
+        self.coordinator.pin_publication(self.repository)
 
     def test_archive_ignore_cannot_hide_forbidden_final_commit_tree(self):
         self.add_archive_ignore()
@@ -406,6 +430,7 @@ class PublicationTests(unittest.TestCase):
         baseline = self.root / "normalization-baseline"
         export_tree(self.repository, "HEAD", baseline)
         self.policy.baseline = snapshot(baseline)
+        self.coordinator.pin_publication(self.repository)
         (self.work / ".gitattributes").write_text("*.rs text eol=lf\n")
         (self.work / "src/lib.rs").write_bytes(b"pub fn migrated() {}\r\n")
         with self.assertRaisesRegex(ValueError, "differs from verified candidate"):

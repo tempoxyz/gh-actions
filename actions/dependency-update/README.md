@@ -143,8 +143,8 @@ To have the workflow take over a branch someone else pushed to, delete the branc
 (or close its PR under `new-pr`) so the next run starts from the base branch.
 The publisher rebuilds its index, validates the actual commit tree, and pushes
 with an explicit expected-head lease. It does not use candidate Git metadata,
-refuses to publish if the publication clone's effective Git configuration changed
-after setup, and its askpass helper answers only `https://github.com` prompts.
+refuses to publish if the publication clone's effective Git configuration or HEAD
+changed after setup, ignores replacement refs, and its askpass helper answers only `https://github.com` prompts.
 Existing submodule pointers and symlinks stay frozen to the base and are not
 exported to the repair directory; workspaces requiring submodule contents need a
 separate reviewed extension.

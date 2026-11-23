@@ -256,12 +256,18 @@ class Coordinator:
         # Effective configuration with origins, including includes and common-dir changes.
         return git(repository, "config", "--list", "--show-origin", "-z").stdout
 
-    def pin_git_config(self, repository):
-        self.pinned_config = self.git_config(repository)
+    def head(self, repository):
+        return git(repository, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip()
 
-    def require_git_config(self, repository):
+    def pin_publication(self, repository):
+        """Record the publication clone's state before any candidate code runs."""
+        self.pinned_config, self.pinned_head = self.git_config(repository), self.head(repository)
+
+    def require_publication(self, repository):
         if self.git_config(repository) != getattr(self, "pinned_config", None):
             raise ValueError("publication clone Git configuration changed; refusing publication")
+        if self.head(repository) != getattr(self, "pinned_head", None):
+            raise ValueError("publication clone HEAD moved; refusing publication")
 
     @progress("PR publication")
     def publish(self, repository, work, policy, plan, existing, expected, base, directory):
@@ -272,6 +278,7 @@ class Coordinator:
         policy.validate(work)
         if existing:
             self.github.require_head(existing["number"], expected)
+        self.require_publication(repository)
         # Rebuild the index from trusted Git state. Worker .git is never imported.
         git(repository, "reset", "--hard", "HEAD")
         with tempfile.TemporaryDirectory(prefix="dependency-before-") as before:
@@ -298,11 +305,13 @@ class Coordinator:
             if snapshot(Path(candidate)) != snapshot(work):
                 raise ValueError("commit tree differs from verified candidate")
         notes = review_notes(directory / "baseline", work)
-        self.require_git_config(repository)
+        if self.git_config(repository) != self.pinned_config:
+            raise ValueError("publication clone Git configuration changed; refusing publication")
         with self.sts.publishing_token() as token:
             env = self.git_env(directory, token)
             git(repository, "push", "--force-with-lease=refs/heads/" + plan["branch"] + ":" + expected,
                 "origin", "HEAD:refs/heads/" + plan["branch"], env=env)
+            self.pinned_head = head
             body = directory / "pr-body.md"
             body.write_text(plan.get("body", "") + "\n\nUpdate identity: " + plan["update_id"] +
                             "\nFrozen dependency revisions:\n" +
@@ -359,7 +368,6 @@ class Coordinator:
             git(repository, "remote", "set-url", "origin", "https://github.com/" + self.github.repository + ".git")
             git(repository, "config", "user.name", PUBLISHER)
             git(repository, "config", "user.email", "312736176+tempo-github-sts[bot]@users.noreply.github.com")
-            self.pin_git_config(repository)
             read_env = self.git_env(directory, os.environ["GH_TOKEN"])
             git(repository, "fetch", "origin", self.base, env=read_env)
             base = git(repository, "rev-parse", "FETCH_HEAD").stdout.strip()
@@ -400,6 +408,7 @@ class Coordinator:
             work.mkdir()
             cache.mkdir()
             export_tree(repository, "HEAD", work, frozen_base=base)
+            self.pin_publication(repository)
             self.adapter(script, "apply", plan_file, cwd=work)
             policy.freeze(work)
             worker = Worker(work, self.deadline, cache)
