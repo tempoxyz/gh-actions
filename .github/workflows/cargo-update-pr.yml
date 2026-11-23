@@ -14,8 +14,8 @@ on:
         required: false
         type: "string"
       min-publish-age:
-        description: "Cooldown: resolve only registry releases at least this old, e.g. `7 days` (Cargo's registry.global-min-publish-age); empty disables it"
-        default: "7 days"
+        description: "Cooldown: resolve only registry releases at least this old, e.g. `1 day` (Cargo's registry.global-min-publish-age); empty disables it"
+        default: "1 day"
         required: false
         type: "string"
 permissions:
