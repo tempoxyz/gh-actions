@@ -49,7 +49,7 @@ test("never retries early when the provider deadline exceeds the budget", async 
     retry(
       async () => {
         calls++;
-        return { status: 429, headers: { "retry-after": "300" } };
+        return { status: 429, headers: { "retry-after": "400" } };
       },
       {
         isTransient: (r) => isTransientStatus(r.status),
@@ -57,9 +57,153 @@ test("never retries early when the provider deadline exceeds the budget", async 
         sleep: async () => assert.fail("must not sleep"),
       },
     ),
-    /retry budget/,
+    /exceeds the 360 second retry budget/,
   );
   assert.equal(calls, 1);
+});
+
+// A clock that advances only when the retry loop sleeps.
+function rateLimitClock() {
+  const clock = { time: 0, sleeps: [] };
+  clock.now = () => clock.time;
+  clock.sleep = async (ms) => {
+    clock.sleeps.push(ms);
+    clock.time += ms;
+  };
+  return clock;
+}
+
+test("waits out a rate limit past the ninety-second budget", async () => {
+  // Cloudflare's window is five minutes, and the STS may pass on a 429 with
+  // no useful Retry-After.
+  const clock = rateLimitClock();
+  let calls = 0;
+  const response = await retry(
+    async () => ({
+      status: clock.time < 200_000 ? 429 : 200,
+      headers: { "retry-after": "1" },
+    }),
+    {
+      isTransient: (r) => isTransientStatus(r.status),
+      now: clock.now,
+      sleep: async (ms) => {
+        calls++;
+        await clock.sleep(ms);
+      },
+      random: () => 1,
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(clock.sleeps, [1000, 2000, 4000, 8000, 16_000, 32_000, 60_000, 60_000, 60_000]);
+  assert.equal(calls, 9);
+  assert.ok(clock.time > 90_000);
+});
+
+test("jitters rate-limited waits between half and all of the backoff", async () => {
+  for (const [random, expected] of [
+    [0, [500, 1000, 2000]],
+    [0.5, [750, 1500, 3000]],
+    [1, [1000, 2000, 4000]],
+  ]) {
+    const clock = rateLimitClock();
+    let calls = 0;
+    await retry(async () => ({ status: ++calls <= 3 ? 429 : 200 }), {
+      isTransient: (r) => isTransientStatus(r.status),
+      now: clock.now,
+      sleep: clock.sleep,
+      random: () => random,
+    });
+    assert.deepEqual(clock.sleeps, expected, `random ${random}`);
+  }
+});
+
+test("stops at the rate-limit budget, without sleeping past it", async () => {
+  const clock = rateLimitClock();
+  let calls = 0;
+  await assert.rejects(
+    retry(
+      async () => {
+        calls++;
+        return { status: 429 };
+      },
+      {
+        isTransient: (r) => isTransientStatus(r.status),
+        now: clock.now,
+        sleep: clock.sleep,
+        random: () => 1,
+      },
+    ),
+    /exceeds the 360 second retry budget/,
+  );
+  // 1+2+4+8+16+32+60*4 = 303 seconds; one more 60-second wait would end past 360.
+  assert.equal(calls, 11);
+  assert.equal(clock.time, 303_000);
+});
+
+test("returns the last 429 after the rate-limit retries run out", async () => {
+  const clock = rateLimitClock();
+  let calls = 0;
+  const response = await retry(
+    async () => {
+      calls++;
+      return { status: 429 };
+    },
+    {
+      isTransient: (r) => isTransientStatus(r.status),
+      now: clock.now,
+      sleep: clock.sleep,
+      random: () => 0,
+    },
+  );
+  assert.equal(response.status, 429);
+  assert.equal(calls, 16);
+  assert.ok(clock.time <= 360_000);
+});
+
+test("a 5xx or network error while rate limited keeps the rate-limit budget", async () => {
+  const clock = rateLimitClock();
+  const answers = [429, 503, "network", 429, 200];
+  let calls = 0;
+  const response = await retry(
+    async () => {
+      const answer = answers[calls++];
+      if (answer === "network") throw new Error("network");
+      // Each request takes 25 seconds, so the sequence outlasts 90 seconds.
+      clock.time += 25_000;
+      return { status: answer };
+    },
+    {
+      isTransient: (r) => isTransientStatus(r.status),
+      now: clock.now,
+      sleep: clock.sleep,
+      random: () => 1,
+      requestTimeoutMs: 60_000,
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 5);
+  assert.deepEqual(clock.sleeps, [1000, 2000, 4000, 8000]);
+  assert.ok(clock.time > 90_000);
+});
+
+test("other transient failures keep the ninety-second budget and five retries", async () => {
+  const clock = rateLimitClock();
+  let calls = 0;
+  const response = await retry(
+    async () => {
+      calls++;
+      return { status: 503 };
+    },
+    {
+      isTransient: (r) => isTransientStatus(r.status),
+      now: clock.now,
+      sleep: clock.sleep,
+      random: () => assert.fail("only rate-limited waits are jittered"),
+    },
+  );
+  assert.equal(response.status, 503);
+  assert.equal(calls, 6);
+  assert.deepEqual(clock.sleeps, [1000, 2000, 4000, 8000, 16_000]);
 });
 
 test("clips HTTP timeouts to the remaining budget and detects overslept deadlines", async () => {
