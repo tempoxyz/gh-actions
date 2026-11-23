@@ -137,6 +137,7 @@ class PublicationTests(unittest.TestCase):
         self.config = {"sts-policy": "dep-update", "repair-budget-minutes": 10,
                        "local-checks": "cargo check", "required-workflows": ".github/workflows/ci.yml"}
         self.coordinator = update.Coordinator(self.repository, self.root, self.config, self.github)
+        self.coordinator.pin_git_config(self.repository)
         self.tokens = []
         @contextlib.contextmanager
         def token():
@@ -251,6 +252,85 @@ class PublicationTests(unittest.TestCase):
         self.assertNotEqual(polls[0], polls[1])
         self.assertIn("migration_2", git(self.remote, "show", "bot/sdk:src/lib.rs").stdout)
         self.assertEqual(self.tokens, ["mint", "revoke", "mint", "revoke"])
+
+    def test_changed_clone_configuration_stops_before_token_mint(self):
+        worker = update.Worker(self.work, self.coordinator.deadline, self.root / "cache")
+        status, _ = worker.execute(["git", "-C", "../repository", "config", "remote.origin.pushurl",
+                                    "https://example.invalid/redirected.git"])
+        self.assertEqual(status, 0)
+        with self.assertRaisesRegex(ValueError, "Git configuration changed"):
+            self.coordinator.publish(self.repository, self.work, self.policy, self.plan, self.existing,
+                                     self.base, self.base, self.root)
+        self.assertEqual(self.tokens, [])
+        self.assertEqual(git(self.remote, "rev-parse", "bot/sdk").stdout.strip(), self.base)
+
+    def test_askpass_answers_only_github_prompts(self):
+        env = self.coordinator.git_env(self.root, "dummy-token")
+        def ask(prompt):
+            return subprocess.run([env["GIT_ASKPASS"], prompt], env=dict(os.environ, **env),
+                                  capture_output=True, text=True)
+        self.assertEqual(ask("Username for 'https://github.com': ").stdout, "x-access-token\n")
+        self.assertEqual(ask("Password for 'https://x-access-token@github.com': ").stdout, "dummy-token\n")
+        for prompt in ("Username for 'https://example.invalid': ",
+                       "Password for 'https://x-access-token@example.invalid': ",
+                       "Password for 'http://x-access-token@github.com': ",
+                       "Password for 'https://x-access-token@github.com/owner/repo.git': "):
+            answer = ask(prompt)
+            self.assertNotEqual(answer.returncode, 0)
+            self.assertNotIn("dummy-token", answer.stdout)
+
+    def test_branch_last_pushed_by_another_actor_is_not_resumed(self):
+        scripts = self.repository / "scripts"
+        scripts.mkdir()
+        (scripts / "prepare.py").write_text('import json,sys\nif sys.argv[1] == "resolve": print(' +
+                                            repr(json.dumps(self.plan)) + ')\n')
+        git(self.repository, "add", "scripts")
+        git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-m", "trusted adapter")
+        self.base = git(self.repository, "rev-parse", "HEAD").stdout.strip()
+        git(self.repository, "push", "origin", "main")
+        git(self.repository, "checkout", "-q", "-b", "contributor")
+        (self.repository / "build.rs").write_text("fn main() {}\n")
+        git(self.repository, "add", "build.rs")
+        git(self.repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-m", "contributor change")
+        head = git(self.repository, "rev-parse", "HEAD").stdout.strip()
+        git(self.repository, "push", "-f", "origin", "HEAD:refs/heads/bot/sdk")
+        git(self.repository, "checkout", "-q", "main")
+        config = self.config | {"adapter-script": "scripts/prepare.py", "allowed-paths": "Cargo.toml\nCargo.lock\nsrc/**/*.rs",
+                                "max-local-repairs": 0, "max-ci-repairs": 0, "repair-instructions": "migrate"}
+        github = update.GitHub("example/service")
+        github.pulls = Mock(return_value=[self.existing | {"state": "OPEN", "headRefOid": head}])
+        github.api = Mock(return_value=[{"activity_type": "push", "after": head, "actor": {"login": "contributor"}}])
+        original_git = update.git
+        def local_git(root, *args, **kwargs):
+            if args[:3] == ("remote", "set-url", "origin"):
+                args = ("remote", "set-url", "origin", str(self.remote))
+            return original_git(root, *args, **kwargs)
+        coordinator = update.Coordinator(self.repository, self.root, config, github)
+        coordinator.sts = self.coordinator.sts
+        outputs = {}
+        with patch.object(update, "git", side_effect=local_git),              patch.object(update, "Worker", side_effect=AssertionError("branch code must not run")),              patch.object(update, "set_output", side_effect=outputs.__setitem__),              patch.dict(os.environ, {"GH_TOKEN": "dummy-read-token"}):
+            coordinator.execute()
+        self.assertEqual(outputs, {"status": "skipped"})
+        self.assertEqual(self.tokens, [])
+        self.assertIn("activity?ref=refs/heads/bot/sdk", github.api.call_args.args[0])
+
+    def test_publisher_provenance_requires_matching_bot_push(self):
+        github = update.GitHub("example/service")
+        head = "2" * 40
+        cases = [
+            ([{"activity_type": "force_push", "after": head, "actor": {"login": update.PUBLISHER}}], True),
+            ([{"activity_type": "branch_creation", "after": head, "actor": {"login": update.PUBLISHER}}], True),
+            ([{"activity_type": "push", "after": head, "actor": {"login": "maintainer"}}], False),
+            ([{"activity_type": "push", "after": "3" * 40, "actor": {"login": update.PUBLISHER}}], False),
+            ([{"activity_type": "branch_deletion", "after": head, "actor": {"login": update.PUBLISHER}}], False),
+            ([{"activity_type": "push", "after": head, "actor": None}], False),
+            ([], False),
+        ]
+        for activity, trusted in cases:
+            github.api = Mock(return_value=activity)
+            self.assertIs(github.pushed_by_publisher("bot/sdk", head), trusted, activity)
 
     def test_resume_inherits_main_readme_change_without_scope_failure(self):
         git(self.repository, "config", "user.name", "Test")
