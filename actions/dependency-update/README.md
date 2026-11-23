@@ -131,14 +131,20 @@ then rejects source/revision changes, removal, aliases, or new Cargo overrides.
 
 Use `closed_pr_policy: skip` for one PR per release; use `new-pr` for a rolling
 update branch after a previous PR closes/merges. Existing open PRs and orphan
-branches are resumed; rebases fail on conflicts. A PR changed by another actor
+branches are resumed only when GitHub's repository activity shows the publishing
+App made the latest push to the branch's current head; after anyone else pushes,
+the run reports `skipped` and leaves the branch and PR for people to finish,
+without checking out, building or republishing it. Rebases fail on conflicts. A PR changed by another actor
 while the workflow runs requires a retry; a newer base branch does not, because
 each commit's parent is the base it was validated against and GitHub tests the
 PR against the current base. On resume, everything the rebased branch already
-contains is kept, including maintainer fixes outside `allowed-paths` (for
-example `deny.toml`); repairs cannot modify those files further.
+contains is kept; repairs cannot modify files outside `allowed-paths` further.
+To have the workflow take over a branch someone else pushed to, delete the branch
+(or close its PR under `new-pr`) so the next run starts from the base branch.
 The publisher rebuilds its index, validates the actual commit tree, and pushes
-with an explicit expected-head lease. It does not use candidate Git metadata.
+with an explicit expected-head lease. It does not use candidate Git metadata,
+refuses to publish if the publication clone's effective Git configuration or HEAD
+changed after setup, ignores replacement refs, and its askpass helper answers only `https://github.com` prompts.
 Existing submodule pointers and symlinks stay frozen to the base and are not
 exported to the repair directory; workspaces requiring submodule contents need a
 separate reviewed extension.

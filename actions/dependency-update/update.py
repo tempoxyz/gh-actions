@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import tomllib
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "codex-repair"))
 from repair import (Policy, SHA, Worker, export_tree, frozen_links, git, lines,
@@ -22,6 +23,8 @@ JOB_MINUTES = 180  # dependency-update.yml timeout-minutes
 BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,199}")
 PULL_REQUEST_EVENTS = ("pull_request", "pull_request_target")
 PASSING = ("success", "skipped", "neutral")  # Matches GitHub required-check semantics.
+PUBLISHER = "tempo-github-sts[bot]"  # GitHub App identity that STS publishing tokens act as.
+PUBLISHER_PUSHES = ("push", "force_push", "branch_creation")
 
 
 def valid_branch(branch):
@@ -49,6 +52,16 @@ class GitHub:
         return json.loads(self.command("pr", "list", "--repo", self.repository,
                                        "--head", branch, "--base", self.base, "--state", "all",
                                        "--limit", "100", "--json", "number,state,url,headRefOid").stdout)
+
+    def pushed_by_publisher(self, branch, head):
+        """Whether GitHub records the publisher as the last actor to move the branch to head."""
+        ref = quote("refs/heads/" + branch, safe="/")
+        activity = self.api(f"repos/{self.repository}/activity?ref={ref}&direction=desc&per_page=1")
+        if not activity:
+            return False
+        latest = activity[0]
+        return (latest.get("activity_type") in PUBLISHER_PUSHES and latest.get("after") == head and
+                (latest.get("actor") or {}).get("login") == PUBLISHER)
 
     def runs(self, head):
         return self.api(f"repos/{self.repository}/actions/runs?head_sha={head}&per_page=100")["workflow_runs"]
@@ -230,10 +243,31 @@ class Coordinator:
 
     def git_env(self, directory, token):
         askpass = directory / "askpass"
-        askpass.write_text('#!/bin/sh\ncase "$1" in *Username*) printf "%s\\n" x-access-token;; '
-                           '*) printf "%s\\n" "$DEPENDENCY_GIT_TOKEN";; esac\n')
+        # Answer only GitHub's own prompts, so no other host can request the token.
+        askpass.write_text('#!/bin/sh\ncase "$1" in\n'
+                           '"Username for \'https://github.com\': ") printf "%s\\n" x-access-token;;\n'
+                           '"Password for \'https://x-access-token@github.com\': ") '
+                           'printf "%s\\n" "$DEPENDENCY_GIT_TOKEN";;\n'
+                           '*) exit 1;;\nesac\n')
         askpass.chmod(0o700)
         return {"GIT_ASKPASS": str(askpass), "DEPENDENCY_GIT_TOKEN": token}
+
+    def git_config(self, repository):
+        # Effective configuration with origins, including includes and common-dir changes.
+        return git(repository, "config", "--list", "--show-origin", "-z").stdout
+
+    def head(self, repository):
+        return git(repository, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip()
+
+    def pin_publication(self, repository):
+        """Record the publication clone's state before any candidate code runs."""
+        self.pinned_config, self.pinned_head = self.git_config(repository), self.head(repository)
+
+    def require_publication(self, repository):
+        if self.git_config(repository) != getattr(self, "pinned_config", None):
+            raise ValueError("publication clone Git configuration changed; refusing publication")
+        if self.head(repository) != getattr(self, "pinned_head", None):
+            raise ValueError("publication clone HEAD moved; refusing publication")
 
     @progress("PR publication")
     def publish(self, repository, work, policy, plan, existing, expected, base, directory):
@@ -244,6 +278,7 @@ class Coordinator:
         policy.validate(work)
         if existing:
             self.github.require_head(existing["number"], expected)
+        self.require_publication(repository)
         # Rebuild the index from trusted Git state. Worker .git is never imported.
         git(repository, "reset", "--hard", "HEAD")
         with tempfile.TemporaryDirectory(prefix="dependency-before-") as before:
@@ -260,7 +295,7 @@ class Coordinator:
                     target.unlink()
         git(repository, "add", "--all")
         if git(repository, "diff", "--cached", "--quiet", check=False).returncode:
-            git(repository, "-c", "user.name=tempo-github-sts[bot]", "-c",
+            git(repository, "-c", "user.name=" + PUBLISHER, "-c",
                 "user.email=312736176+tempo-github-sts[bot]@users.noreply.github.com",
                 "commit", "-m", plan["title"])
         head = git(repository, "rev-parse", "HEAD").stdout.strip()
@@ -270,10 +305,13 @@ class Coordinator:
             if snapshot(Path(candidate)) != snapshot(work):
                 raise ValueError("commit tree differs from verified candidate")
         notes = review_notes(directory / "baseline", work)
+        if self.git_config(repository) != self.pinned_config:
+            raise ValueError("publication clone Git configuration changed; refusing publication")
         with self.sts.publishing_token() as token:
             env = self.git_env(directory, token)
             git(repository, "push", "--force-with-lease=refs/heads/" + plan["branch"] + ":" + expected,
                 "origin", "HEAD:refs/heads/" + plan["branch"], env=env)
+            self.pinned_head = head
             body = directory / "pr-body.md"
             body.write_text(plan.get("body", "") + "\n\nUpdate identity: " + plan["update_id"] +
                             "\nFrozen dependency revisions:\n" +
@@ -328,7 +366,7 @@ class Coordinator:
             repository = directory / "repository"
             git(directory, "clone", "--no-hardlinks", str(self.source), str(repository))
             git(repository, "remote", "set-url", "origin", "https://github.com/" + self.github.repository + ".git")
-            git(repository, "config", "user.name", "tempo-github-sts[bot]")
+            git(repository, "config", "user.name", PUBLISHER)
             git(repository, "config", "user.email", "312736176+tempo-github-sts[bot]@users.noreply.github.com")
             read_env = self.git_env(directory, os.environ["GH_TOKEN"])
             git(repository, "fetch", "origin", self.base, env=read_env)
@@ -354,6 +392,13 @@ class Coordinator:
             if expected and (existing or not pulls):
                 if not SHA.fullmatch(expected) or (existing and expected != existing["headRefOid"]):
                     raise RuntimeError("update branch changed while preparing plan")
+                # Resume only content this workflow published. Anyone else's push hands the
+                # branch to people: its code is never checked out, built or republished here.
+                if not self.github.pushed_by_publisher(plan["branch"], expected):
+                    print(f"::notice title=Dependency update handed off::{plan['branch']} was last "
+                          "updated by another actor; leaving it for manual review", flush=True)
+                    set_output("status", "skipped")
+                    return
                 git(repository, "fetch", "origin", plan["branch"], env=read_env)
                 if git(repository, "rev-parse", "FETCH_HEAD").stdout.strip() != expected:
                     raise RuntimeError("update branch advanced during fetch; retry required")
@@ -363,6 +408,7 @@ class Coordinator:
             work.mkdir()
             cache.mkdir()
             export_tree(repository, "HEAD", work, frozen_base=base)
+            self.pin_publication(repository)
             self.adapter(script, "apply", plan_file, cwd=work)
             policy.freeze(work)
             worker = Worker(work, self.deadline, cache)
