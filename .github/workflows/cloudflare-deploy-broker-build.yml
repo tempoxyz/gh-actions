@@ -474,7 +474,7 @@ jobs:
           // additional modules its bundle imports (ES module chunks, Text,
           // Data and CompiledWasm). Every additional module is listed in an
           // attested manifest; single-module builds emit no manifest.
-          const MAX_MODULES = 100;
+          const MAX_MODULES = 1000;
           const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
           const build = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-build");
           const artifact = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-artifact");
