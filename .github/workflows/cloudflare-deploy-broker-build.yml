@@ -93,6 +93,10 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      build-environment:
+        description: "Optional NAME=value lines exported only to build-command, such as a client key the build compiles in. Names are upper case and can't be runner, shell or Node settings. Values end up wherever the build puts them, including the attested artifact"
+        required: false
     outputs:
       artifact-id:
         description: "Immutable GitHub Actions artifact ID"
@@ -550,14 +554,44 @@ jobs:
             "${PACKAGE_MANAGER}" "${args[@]}"
           fi
 
+      # build-environment reaches only this step, and only the build command's
+      # process: it is exported in this shell, never passed as arguments, and the
+      # raw secret is unset first. The build command is the caller's own code,
+      # which its other jobs can already run with the same secrets.
       - name: Build application
         if: ${{ inputs.build-command != '' }}
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         env:
           BUILD_COMMAND: ${{ inputs.build-command }}
+          BUILD_ENVIRONMENT: ${{ secrets.build-environment }}
         run: |
           set -euo pipefail
+          names=()
+          while IFS= read -r line || [[ -n "${line}" ]]; do
+            [[ -n "${line}" ]] || continue
+            name="${line%%=*}"
+            if [[ "${line}" != *=* || ! "${name}" =~ ^[A-Z][A-Z0-9_]{0,63}$ ]]; then
+              echo "::error::build-environment lines must be NAME=value with an upper-case NAME" >&2
+              exit 1
+            fi
+            case "${name}" in
+              GITHUB_* | RUNNER_* | ACTIONS_* | INPUT_* | STATE_* | BASH_* | LD_* | DYLD_* | \
+                CI | HOME | PATH | SHELL | PWD | OLDPWD | TMPDIR | ENV | IFS | PS4 | SHELLOPTS | \
+                NODE_OPTIONS | NODE_PATH | NODE_EXTRA_CA_CERTS | BUILD_COMMAND | BUILD_ENVIRONMENT)
+                echo "::error::build-environment cannot set ${name}" >&2
+                exit 1
+                ;;
+            esac
+            [[ ! " ${names[*]} " == *" ${name} "* ]] || {
+              echo "::error::build-environment sets ${name} twice" >&2
+              exit 1
+            }
+            names+=("${name}")
+            export "${name}=${line#*=}"
+          done <<< "${BUILD_ENVIRONMENT}"
+          unset BUILD_ENVIRONMENT line
+          if (( ${#names[@]} > 0 )); then echo "build-environment sets ${names[*]}"; fi
           bash --noprofile --norc -eo pipefail -c "${BUILD_COMMAND}"
 
       - name: Log in to Docker Hub via OIDC
