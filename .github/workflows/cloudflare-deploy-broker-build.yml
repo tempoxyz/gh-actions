@@ -18,6 +18,16 @@ on:
         required: false
         type: string
         default: ""
+      private-submodule:
+        description: "Repository-relative path of one private submodule to check out, at the commit the repository records, with a read token from GitHub STS. It must be declared in .gitmodules with an https://github.com/ URL in the caller's organization"
+        required: false
+        type: string
+        default: ""
+      private-submodule-sts-policy:
+        description: "GitHub STS trust policy, .github/sts/<policy>.sts.yaml in the private submodule's repository, that admits this job; required with private-submodule"
+        required: false
+        type: string
+        default: ""
       pre-install-command:
         description: "Optional command run in install-directory after the package manager is set up and before the dependency install (no provider credentials), such as building a workspace package from a submodule"
         required: false
@@ -68,6 +78,11 @@ on:
         required: false
         type: string
         default: "cloudflare-worker"
+      unattested-artifact-directory:
+        description: "Optional directory, relative to working-directory, uploaded after the attested artifact as <artifact-name>-unattested-<run>-<attempt>. It is never attested, verified or deployed: use it for build by-products, such as source maps, that a later job uploads elsewhere"
+        required: false
+        type: string
+        default: ""
       build-cache-paths:
         description: "Newline-separated directories, relative to working-directory, restored before the build and saved after a successful one"
         required: false
@@ -103,6 +118,9 @@ on:
       container-image-digest:
         description: "Digest of the pushed Container image, or empty when disabled"
         value: ${{ jobs.build.outputs.container-image-digest }}
+      unattested-artifact-id:
+        description: "GitHub Actions artifact ID of the unattested-artifact-directory upload, or empty when disabled"
+        value: ${{ jobs.build.outputs.unattested-artifact-id }}
 
 permissions: {}
 
@@ -125,6 +143,7 @@ jobs:
       static-assets-digest: ${{ steps.prepare-assets.outputs.assets-digest }}
       modules-digest: ${{ steps.prepare.outputs.modules-digest }}
       container-image-digest: ${{ steps.publish-container.outputs.image-digest }}
+      unattested-artifact-id: ${{ steps.upload-unattested.outputs.artifact-id }}
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
@@ -180,6 +199,92 @@ jobs:
             submodule update --init --checkout -- "${paths[@]}"
           git submodule status -- "${paths[@]}"
 
+      # A private submodule is fetched like the public ones, at the recorded commit
+      # and over HTTPS only. Its read token comes from GitHub STS under a policy in
+      # the submodule's own repository, so that repository decides which callers
+      # may read it. The token reaches only the one git process below, never a
+      # config file, and the action revokes it when the job ends. Code this job
+      # runs later can request the same token itself, as it could from any other
+      # job of the caller the policy admits.
+      - name: Resolve the private submodule
+        id: private-submodule
+        if: ${{ inputs.private-submodule != '' || inputs.private-submodule-sts-policy != '' }}
+        shell: bash
+        env:
+          PRIVATE_SUBMODULE: ${{ inputs.private-submodule }}
+          STS_POLICY: ${{ inputs.private-submodule-sts-policy }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
+          relative_segment='/(\.|\.\.)/'
+          invalid() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+          [[ -n "${PRIVATE_SUBMODULE}" && -n "${STS_POLICY}" ]] ||
+            invalid "private-submodule and private-submodule-sts-policy must be set together"
+          [[ "${STS_POLICY}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] ||
+            invalid "private-submodule-sts-policy is malformed"
+          path="${PRIVATE_SUBMODULE}"
+          if [[ ! "${path}" =~ ${safe_path} ]] || [[ "/${path}/" =~ ${relative_segment} ]]; then
+            invalid "private-submodule ${path} must be a path inside the repository"
+          fi
+          test -f .gitmodules || invalid "private-submodule is set, but the repository has no .gitmodules"
+          name=""
+          while IFS= read -r -d '' entry; do
+            key="${entry%%$'\n'*}"
+            if [[ "${entry#*$'\n'}" == "${path}" ]]; then
+              name="${key#submodule.}"
+              name="${name%.path}"
+            fi
+          done < <(git config --null --file .gitmodules --get-regexp '^submodule\..+\.path$')
+          [[ -n "${name}" ]] || invalid "${path} is not a submodule path in .gitmodules"
+          url="$(git config --file .gitmodules --get "submodule.${name}.url")" ||
+            invalid "submodule ${path} has no URL in .gitmodules"
+          [[ "${url}" =~ ^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$ ]] ||
+            invalid "private submodule ${path} must use an https://github.com/ URL, not ${url}"
+          owner="${BASH_REMATCH[1]}"
+          repository="${BASH_REMATCH[2]%.git}"
+          [[ "${owner,,}" == "${OWNER,,}" ]] ||
+            invalid "private submodule ${path} must be in ${OWNER}, not ${owner}"
+          [[ -n "${repository}" && "${repository}" != "." && "${repository}" != ".." ]] ||
+            invalid "private submodule ${path} has a malformed repository name"
+          [[ "$(git ls-files --stage -- "${path}" | cut -d ' ' -f 1)" == "160000" ]] ||
+            invalid "${path} is not a submodule in this commit"
+          {
+            echo "scope=${owner}/${repository}"
+            echo "url=${url}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Fetch a read token for the private submodule
+        id: private-submodule-token
+        if: ${{ inputs.private-submodule != '' }}
+        uses: tempoxyz/gh-actions/actions/github-sts@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
+        with:
+          scope: ${{ steps.private-submodule.outputs.scope }}
+          policy: ${{ inputs.private-submodule-sts-policy }}
+          ttl: 5m
+
+      - name: Check out the private submodule
+        if: ${{ inputs.private-submodule != '' }}
+        shell: bash
+        env:
+          PRIVATE_SUBMODULE: ${{ inputs.private-submodule }}
+          SUBMODULE_URL: ${{ steps.private-submodule.outputs.url }}
+          TOKEN: ${{ steps.private-submodule-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          test -n "${TOKEN}"
+          auth="$(printf 'x-access-token:%s' "${TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          GIT_CONFIG_COUNT=1 \
+          GIT_CONFIG_KEY_0="http.${SUBMODULE_URL}.extraheader" \
+          GIT_CONFIG_VALUE_0="Authorization: Basic ${auth}" \
+            git -c protocol.allow=never -c protocol.https.allow=always \
+              submodule update --init --checkout -- "${PRIVATE_SUBMODULE}"
+          git submodule status -- "${PRIVATE_SUBMODULE}"
+
       - name: Validate build inputs
         id: validate
         shell: bash
@@ -195,10 +300,13 @@ jobs:
           DOCKERHUB_OIDC_CONNECTION_ID: ${{ inputs.dockerhub-oidc-connection-id }}
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
           INSTALL_FILTER: ${{ inputs.install-filter }}
+          UNATTESTED_ARTIFACT_DIRECTORY: ${{ inputs.unattested-artifact-directory }}
         run: |
           set -euo pipefail
           safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
           [[ "${WORKING_DIRECTORY}" =~ ${safe_path} ]]
+          [[ "${UNATTESTED_ARTIFACT_DIRECTORY}" =~ ^$|${safe_path} ]]
+          [[ ! "/${UNATTESTED_ARTIFACT_DIRECTORY}/" =~ /\.\.?/ ]]
           INSTALL_DIRECTORY="${INSTALL_DIRECTORY:-${WORKING_DIRECTORY}}"
           [[ "${INSTALL_DIRECTORY}" =~ ${safe_path} ]]
           [[ ! "/${INSTALL_DIRECTORY}/" =~ /\.\./ ]]
@@ -1754,3 +1862,16 @@ jobs:
           # Asset paths were already validated before staging. Preserve hidden
           # assets such as .well-known files and an attested .gitkeep exactly.
           include-hidden-files: true
+
+      # Build by-products the broker never sees, uploaded only once the attested
+      # artifact is. Nothing attests or verifies them, so a consumer must not
+      # deploy or execute them.
+      - name: Upload unattested build by-products
+        id: upload-unattested
+        if: ${{ inputs.unattested-artifact-directory != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact-name }}-unattested-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ inputs.working-directory }}/${{ inputs.unattested-artifact-directory }}
+          if-no-files-found: error
+          retention-days: 1
