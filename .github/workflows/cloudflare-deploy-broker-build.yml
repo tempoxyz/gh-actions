@@ -152,11 +152,14 @@ jobs:
             exit 1
           }
           test -f .gitmodules || invalid "submodules is set, but the repository has no .gitmodules"
+          # --null ends each entry with NUL and splits its key from its value with a
+          # newline, so a submodule name may contain spaces.
           declare -A names=()
-          while read -r key path; do
+          while IFS= read -r -d '' entry; do
+            key="${entry%%$'\n'*}"
             name="${key#submodule.}"
-            names["${path}"]="${name%.path}"
-          done < <(git config --file .gitmodules --get-regexp '^submodule\..+\.path$')
+            names["${entry#*$'\n'}"]="${name%.path}"
+          done < <(git config --null --file .gitmodules --get-regexp '^submodule\..+\.path$')
           paths=()
           while read -r path; do
             [[ -n "${path}" ]] || continue
@@ -273,12 +276,21 @@ jobs:
           bun-version-file: ${{ inputs.install-directory || inputs.working-directory }}/package.json
           no-cache: true
 
-      - if: ${{ steps.validate.outputs.package-manager == 'pnpm' }}
+      # setup-node keys the pnpm store by the lockfile alone. A filtered install
+      # fetches only part of the store, so it would save that part under the key a
+      # full install restores; it runs without the cache instead.
+      - if: ${{ steps.validate.outputs.package-manager == 'pnpm' && inputs.install-filter == '' }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
           cache: pnpm
           cache-dependency-path: ${{ inputs.install-directory || inputs.working-directory }}/pnpm-lock.yaml
+
+      - if: ${{ steps.validate.outputs.package-manager == 'pnpm' && inputs.install-filter != '' }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+          package-manager-cache: false
 
       - if: ${{ steps.validate.outputs.package-manager != 'pnpm' }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -329,8 +341,9 @@ jobs:
               [[ "/${path}/" =~ ${git_segment} ]]; then
               invalid "build cache path ${path} must be a directory below working-directory"
             fi
-            # Restored entries must never replace source the build compiles.
-            [[ -z "$(git ls-files -- "${path}")" ]] ||
+            # Restored entries must never replace source the build compiles, including
+            # the files of submodules checked out above.
+            [[ -z "$(git ls-files --recurse-submodules -- "${path}")" ]] ||
               invalid "build cache path ${path} contains tracked files"
             # The cache is restored before the install, and npm ci deletes
             # node_modules, so a cache there would never be used.
