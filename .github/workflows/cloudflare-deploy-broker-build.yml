@@ -13,6 +13,21 @@ on:
         required: false
         type: string
         default: ""
+      submodules:
+        description: "Newline-separated repository-relative paths of submodules to check out, at the commits the repository records. Each must be declared in .gitmodules with a public https://github.com/ URL; nested submodules are not checked out"
+        required: false
+        type: string
+        default: ""
+      pre-install-command:
+        description: "Optional command run in install-directory after the package manager is set up and before the dependency install (no provider credentials), such as building a workspace package from a submodule"
+        required: false
+        type: string
+        default: ""
+      install-filter:
+        description: "Optional newline-separated pnpm --filter selectors for the dependency install, such as web..., so a workspace installs only the Worker's packages (pnpm only)"
+        required: false
+        type: string
+        default: ""
       build-command:
         description: "Optional application build command, run in working-directory before Wrangler packaging (no provider credentials)"
         required: false
@@ -118,6 +133,50 @@ jobs:
         with:
           persist-credentials: false
 
+      # The checked-out commit records each submodule's commit, so the provenance's
+      # source commit still pins the submodule's source. Checkout persisted no
+      # credentials, so the fetch is anonymous, and only HTTPS is allowed, which
+      # keeps it to the public GitHub URLs checked below.
+      - name: Check out submodules
+        if: ${{ inputs.submodules != '' }}
+        shell: bash
+        env:
+          SUBMODULES: ${{ inputs.submodules }}
+        run: |
+          set -euo pipefail
+          safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
+          relative_segment='/(\.|\.\.)/'
+          github_url='^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+          invalid() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+          test -f .gitmodules || invalid "submodules is set, but the repository has no .gitmodules"
+          declare -A names=()
+          while read -r key path; do
+            name="${key#submodule.}"
+            names["${path}"]="${name%.path}"
+          done < <(git config --file .gitmodules --get-regexp '^submodule\..+\.path$')
+          paths=()
+          while read -r path; do
+            [[ -n "${path}" ]] || continue
+            if [[ ! "${path}" =~ ${safe_path} ]] || [[ "/${path}/" =~ ${relative_segment} ]]; then
+              invalid "submodule path ${path} must be a path inside the repository"
+            fi
+            [[ -n "${names[${path}]:-}" ]] || invalid "${path} is not a submodule path in .gitmodules"
+            url="$(git config --file .gitmodules --get "submodule.${names[${path}]}.url")" ||
+              invalid "submodule ${path} has no URL in .gitmodules"
+            [[ "${url}" =~ ${github_url} ]] ||
+              invalid "submodule ${path} must use a public https://github.com/ URL, not ${url}"
+            [[ "$(git ls-files --stage -- "${path}" | cut -d ' ' -f 1)" == "160000" ]] ||
+              invalid "${path} is not a submodule in this commit"
+            paths+=("${path}")
+          done <<< "${SUBMODULES}"
+          (( ${#paths[@]} > 0 )) || invalid "submodules lists no paths"
+          git -c protocol.allow=never -c protocol.https.allow=always \
+            submodule update --init --checkout -- "${paths[@]}"
+          git submodule status -- "${paths[@]}"
+
       - name: Validate build inputs
         id: validate
         shell: bash
@@ -132,6 +191,7 @@ jobs:
           PUBLISH_CONTAINER_IMAGE: ${{ inputs.publish-container-image }}
           DOCKERHUB_OIDC_CONNECTION_ID: ${{ inputs.dockerhub-oidc-connection-id }}
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          INSTALL_FILTER: ${{ inputs.install-filter }}
         run: |
           set -euo pipefail
           safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
@@ -178,6 +238,19 @@ jobs:
             echo "::error::install-directory needs pnpm-lock.yaml, bun.lock or package-lock.json" >&2
             exit 1
           fi
+          # Selectors are passed to pnpm as separate arguments, never through a
+          # shell, and can't start with "-", so none can be read as another option.
+          while read -r selector; do
+            [[ -n "${selector}" ]] || continue
+            if [[ "${package_manager}" != "pnpm" ]]; then
+              echo "::error::install-filter needs a pnpm install-directory" >&2
+              exit 1
+            fi
+            if [[ ! "${selector}" =~ ^[A-Za-z0-9@./_{}!^*][A-Za-z0-9@./_{}!^*-]*$ ]]; then
+              echo "::error::install-filter selector ${selector} is malformed" >&2
+              exit 1
+            fi
+          done <<< "${INSTALL_FILTER}"
           echo "package-manager=${package_manager}" >> "${GITHUB_OUTPUT}"
           if [[ "${PUBLISH_CONTAINER_IMAGE}" == "true" ]]; then
             test -n "${DOCKERHUB_OIDC_CONNECTION_ID}"
@@ -320,11 +393,24 @@ jobs:
           key: ${{ steps.build-cache.outputs.key }}
           restore-keys: ${{ steps.build-cache.outputs.restore-key }}
 
+      # Like build-command, this runs the repository's own code in this job with
+      # no provider credentials. It can do nothing build-command can't already.
+      - name: Prepare dependencies
+        if: ${{ inputs.pre-install-command != '' }}
+        shell: bash
+        working-directory: ${{ inputs.install-directory || inputs.working-directory }}
+        env:
+          PRE_INSTALL_COMMAND: ${{ inputs.pre-install-command }}
+        run: |
+          set -euo pipefail
+          bash --noprofile --norc -eo pipefail -c "${PRE_INSTALL_COMMAND}"
+
       - name: Install dependencies
         shell: bash
         env:
           INSTALL_DIRECTORY: ${{ inputs.install-directory || inputs.working-directory }}
           PACKAGE_MANAGER: ${{ steps.validate.outputs.package-manager }}
+          INSTALL_FILTER: ${{ inputs.install-filter }}
         run: |
           set -euo pipefail
           cd "${INSTALL_DIRECTORY}"
@@ -334,7 +420,13 @@ jobs:
             # its own lifecycle scripts from build-command.
             npm ci --ignore-scripts --no-audit --no-fund
           else
-            "${PACKAGE_MANAGER}" install --frozen-lockfile
+            # Validation allowed install-filter only for pnpm.
+            args=(install --frozen-lockfile)
+            while read -r selector; do
+              [[ -n "${selector}" ]] || continue
+              args+=(--filter "${selector}")
+            done <<< "${INSTALL_FILTER}"
+            "${PACKAGE_MANAGER}" "${args[@]}"
           fi
 
       - name: Build application
