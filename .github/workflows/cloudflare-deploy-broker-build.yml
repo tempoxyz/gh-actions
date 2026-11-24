@@ -1160,9 +1160,12 @@ jobs:
           // Restrict every provider option before mapping it into the attested
           // manifest. Local connection strings and remote/raw overrides never
           // become deployment inputs.
-          function mapBindings(values, keys, map) {
+          // Rate limits name only a namespace ID and a limit, and a Worker may
+          // need more of them than of any resource binding. Brokers whose
+          // MAX_RATE_LIMIT_BINDINGS is 20 accept them; older ones fail closed.
+          function mapBindings(values, keys, map, max = 10) {
             invariant(Array.isArray(values), "bindings must be an array");
-            invariant(values.length <= 10, "at most ten bindings of each type are supported");
+            invariant(values.length <= max, max === 10 ? "at most ten bindings of each type are supported" : `at most ${max} bindings of this type are supported`);
             return values.map((value) => {
               invariant(isRecord(value) && Object.keys(value).every((key) => keys.includes(key)), `binding uses unsupported options; accepts only ${keys.join(", ")}`);
               const result = map(value);
@@ -1201,7 +1204,7 @@ jobs:
             invariant(isRecord(value.simple) && Object.keys(value.simple).every((key) => ["limit", "period"].includes(key)), "rate limit requires simple limit and period");
             invariant(Number.isInteger(value.simple.limit) && value.simple.limit > 0 && value.simple.limit <= 2147483647 && [10, 60].includes(value.simple.period), "invalid rate limit limit or period");
             return { binding: value.name, namespaceId: value.namespace_id, simple: { limit: value.simple.limit, period: value.simple.period } };
-          });
+          }, 20);
           // Analytics SQL queries the account's Analytics Engine datasets; it
           // has no options, and remote mode never becomes a deployment input.
           const analyticsSql = isUnset(config.analytics)
