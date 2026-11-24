@@ -305,8 +305,17 @@ jobs:
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
           INSTALL_FILTER: ${{ inputs.install-filter }}
           UNATTESTED_ARTIFACT_DIRECTORY: ${{ inputs.unattested-artifact-directory }}
+          # Whether the secret is set, never its value.
+          HAS_BUILD_ENVIRONMENT: ${{ secrets.build-environment != '' }}
         run: |
           set -euo pipefail
+          # Only the build command receives build-environment, so without one the
+          # values would be dropped silently, for example when Wrangler's own
+          # build command builds the app.
+          if [[ "${HAS_BUILD_ENVIRONMENT}" == "true" && -z "${BUILD_COMMAND}" ]]; then
+            echo "::error::build-environment is set, but no build-command would receive it" >&2
+            exit 1
+          fi
           safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
           [[ "${WORKING_DIRECTORY}" =~ ${safe_path} ]]
           [[ "${UNATTESTED_ARTIFACT_DIRECTORY}" =~ ^$|${safe_path} ]]
@@ -557,7 +566,9 @@ jobs:
       # build-environment reaches only this step, and only the build command's
       # process: it is exported in this shell, never passed as arguments, and the
       # raw secret is unset first. The build command is the caller's own code,
-      # which its other jobs can already run with the same secrets.
+      # which its other jobs can already run with the same secrets. GitHub masks
+      # a multi-line secret line by line, so `NAME=value` but not a bare `value`;
+      # each value is masked on its own before the build command can print it.
       - name: Build application
         if: ${{ inputs.build-command != '' }}
         shell: bash
@@ -569,6 +580,9 @@ jobs:
           set -euo pipefail
           names=()
           while IFS= read -r line || [[ -n "${line}" ]]; do
+            # A secret saved with CRLF line endings would otherwise export each
+            # value with a trailing carriage return.
+            line="${line%$'\r'}"
             [[ -n "${line}" ]] || continue
             name="${line%%=*}"
             if [[ "${line}" != *=* || ! "${name}" =~ ^[A-Z][A-Z0-9_]{0,63}$ ]]; then
@@ -588,9 +602,12 @@ jobs:
               exit 1
             }
             names+=("${name}")
-            export "${name}=${line#*=}"
+            value="${line#*=}"
+            # Workflow commands unescape %25, so escape a literal % first.
+            if [[ -n "${value}" ]]; then echo "::add-mask::${value//%/%25}"; fi
+            export "${name}=${value}"
           done <<< "${BUILD_ENVIRONMENT}"
-          unset BUILD_ENVIRONMENT line
+          unset BUILD_ENVIRONMENT line value
           if (( ${#names[@]} > 0 )); then echo "build-environment sets ${names[*]}"; fi
           bash --noprofile --norc -eo pipefail -c "${BUILD_COMMAND}"
 
