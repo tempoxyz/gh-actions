@@ -57,7 +57,7 @@ syntax rejects inline comments, duplicate rules, and every other cargo-cooldown 
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `cooldown-days` | Minimum whole days since a registry release was published | No | `7` |
+| `cooldown-days` | Minimum whole days since a registry release was published | No | `1` |
 | `working-directory` | Cargo workspace to check | No | `.` |
 | `mode` | Validation mode: `verify` or `check` | No | `verify` |
 | `verbose` | Enable verbose `cargo-cooldown` output | No | `false` |

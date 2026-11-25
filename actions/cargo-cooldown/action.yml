@@ -5,7 +5,7 @@ inputs:
   cooldown-days:
     description: "Minimum whole days a registry release must have been published"
     required: false
-    default: "7"
+    default: "1"
   working-directory:
     description: "Cargo workspace directory to check"
     required: false
