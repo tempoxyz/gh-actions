@@ -1063,7 +1063,7 @@ Publishing needs a `cloudflare-sts-policy` and one secret, `RELEASE_SIGNING_KEY`
 ### `cargo-update-pr`
 
 Runs `cargo update` and opens or updates a pull request for `Cargo.lock`. By
-default it applies a one-day cooldown: Cargo resolves only crates.io releases
+default it applies a seven-day cooldown: Cargo resolves only crates.io releases
 published at least `min-publish-age` ago, so the update does not pick versions
 that the package firewall would still block. Two kinds of packages are held at
 their locked version while everything else (including git dependencies) is
@@ -1102,7 +1102,7 @@ Optional inputs:
 
 - `rust-toolchain` (default: `nightly`)
 - `title` (default: `chore(deps): weekly cargo update`)
-- `min-publish-age` (default: `1 day`; empty disables the cooldown)
+- `min-publish-age` (default: `7 days`; empty disables the cooldown)
 
 ### `auto-assign-pr`
 
