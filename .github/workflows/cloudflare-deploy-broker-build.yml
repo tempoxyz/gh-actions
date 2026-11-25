@@ -13,6 +13,31 @@ on:
         required: false
         type: string
         default: ""
+      submodules:
+        description: "Newline-separated repository-relative paths of submodules to check out, at the commits the repository records. Each must be declared in .gitmodules with a public https://github.com/ URL; nested submodules are not checked out"
+        required: false
+        type: string
+        default: ""
+      private-submodule:
+        description: "Repository-relative path of one private submodule to check out, at the commit the repository records, with a read token from GitHub STS. It must be declared in .gitmodules with an https://github.com/ URL in the caller's organization"
+        required: false
+        type: string
+        default: ""
+      private-submodule-sts-policy:
+        description: "GitHub STS trust policy, .github/sts/<policy>.sts.yaml in the private submodule's repository, that admits this job; required with private-submodule"
+        required: false
+        type: string
+        default: ""
+      pre-install-command:
+        description: "Optional command run in install-directory after the package manager is set up and before the dependency install (no provider credentials), such as building a workspace package from a submodule"
+        required: false
+        type: string
+        default: ""
+      install-filter:
+        description: "Optional newline-separated pnpm --filter selectors for the dependency install, such as web..., so a workspace installs only the Worker's packages (pnpm only)"
+        required: false
+        type: string
+        default: ""
       build-command:
         description: "Optional application build command, run in working-directory before Wrangler packaging (no provider credentials)"
         required: false
@@ -53,6 +78,11 @@ on:
         required: false
         type: string
         default: "cloudflare-worker"
+      unattested-artifact-directory:
+        description: "Optional directory, relative to working-directory, uploaded after the attested artifact as <artifact-name>-unattested-<run>-<attempt>. It is never attested, verified or deployed: use it for build by-products, such as source maps, that a later job uploads elsewhere"
+        required: false
+        type: string
+        default: ""
       build-cache-paths:
         description: "Newline-separated directories, relative to working-directory, restored before the build and saved after a successful one"
         required: false
@@ -63,6 +93,10 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      build-environment:
+        description: "Optional NAME=value lines exported only to build-command, such as a client key the build compiles in. Names are upper case and can't be runner, shell or Node settings. Values end up wherever the build puts them, including the attested artifact"
+        required: false
     outputs:
       artifact-id:
         description: "Immutable GitHub Actions artifact ID"
@@ -88,6 +122,9 @@ on:
       container-image-digest:
         description: "Digest of the pushed Container image, or empty when disabled"
         value: ${{ jobs.build.outputs.container-image-digest }}
+      unattested-artifact-id:
+        description: "GitHub Actions artifact ID of the unattested-artifact-directory upload, or empty when disabled"
+        value: ${{ jobs.build.outputs.unattested-artifact-id }}
 
 permissions: {}
 
@@ -110,6 +147,7 @@ jobs:
       static-assets-digest: ${{ steps.prepare-assets.outputs.assets-digest }}
       modules-digest: ${{ steps.prepare.outputs.modules-digest }}
       container-image-digest: ${{ steps.publish-container.outputs.image-digest }}
+      unattested-artifact-id: ${{ steps.upload-unattested.outputs.artifact-id }}
     steps:
       - name: Secure runner
         uses: tempoxyz/gh-actions/actions/secure-runner@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
@@ -117,6 +155,139 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+
+      # The checked-out commit records each submodule's commit, so the provenance's
+      # source commit still pins the submodule's source. Checkout persisted no
+      # credentials, so the fetch is anonymous, and only HTTPS is allowed, which
+      # keeps it to the public GitHub URLs checked below.
+      - name: Check out submodules
+        if: ${{ inputs.submodules != '' }}
+        shell: bash
+        env:
+          SUBMODULES: ${{ inputs.submodules }}
+        run: |
+          set -euo pipefail
+          safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
+          relative_segment='/(\.|\.\.)/'
+          github_url='^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+          invalid() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+          test -f .gitmodules || invalid "submodules is set, but the repository has no .gitmodules"
+          # --null ends each entry with NUL and splits its key from its value with a
+          # newline, so a submodule name may contain spaces.
+          declare -A names=()
+          while IFS= read -r -d '' entry; do
+            key="${entry%%$'\n'*}"
+            name="${key#submodule.}"
+            names["${entry#*$'\n'}"]="${name%.path}"
+          done < <(git config --null --file .gitmodules --get-regexp '^submodule\..+\.path$')
+          paths=()
+          while read -r path; do
+            [[ -n "${path}" ]] || continue
+            if [[ ! "${path}" =~ ${safe_path} ]] || [[ "/${path}/" =~ ${relative_segment} ]]; then
+              invalid "submodule path ${path} must be a path inside the repository"
+            fi
+            [[ -n "${names[${path}]:-}" ]] || invalid "${path} is not a submodule path in .gitmodules"
+            url="$(git config --file .gitmodules --get "submodule.${names[${path}]}.url")" ||
+              invalid "submodule ${path} has no URL in .gitmodules"
+            [[ "${url}" =~ ${github_url} ]] ||
+              invalid "submodule ${path} must use a public https://github.com/ URL, not ${url}"
+            [[ "$(git ls-files --stage -- "${path}" | cut -d ' ' -f 1)" == "160000" ]] ||
+              invalid "${path} is not a submodule in this commit"
+            paths+=("${path}")
+          done <<< "${SUBMODULES}"
+          (( ${#paths[@]} > 0 )) || invalid "submodules lists no paths"
+          git -c protocol.allow=never -c protocol.https.allow=always \
+            submodule update --init --checkout -- "${paths[@]}"
+          git submodule status -- "${paths[@]}"
+
+      # A private submodule is fetched like the public ones, at the recorded commit
+      # and over HTTPS only. Its read token comes from GitHub STS under a policy in
+      # the submodule's own repository, so that repository decides which callers
+      # may read it. The token reaches only the one git process below, never a
+      # config file, and the action revokes it when the job ends. Code this job
+      # runs later can request the same token itself, as it could from any other
+      # job of the caller the policy admits.
+      - name: Resolve the private submodule
+        id: private-submodule
+        if: ${{ inputs.private-submodule != '' || inputs.private-submodule-sts-policy != '' }}
+        shell: bash
+        env:
+          PRIVATE_SUBMODULE: ${{ inputs.private-submodule }}
+          STS_POLICY: ${{ inputs.private-submodule-sts-policy }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
+          relative_segment='/(\.|\.\.)/'
+          invalid() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+          [[ -n "${PRIVATE_SUBMODULE}" && -n "${STS_POLICY}" ]] ||
+            invalid "private-submodule and private-submodule-sts-policy must be set together"
+          [[ "${STS_POLICY}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] ||
+            invalid "private-submodule-sts-policy is malformed"
+          path="${PRIVATE_SUBMODULE}"
+          if [[ ! "${path}" =~ ${safe_path} ]] || [[ "/${path}/" =~ ${relative_segment} ]]; then
+            invalid "private-submodule ${path} must be a path inside the repository"
+          fi
+          test -f .gitmodules || invalid "private-submodule is set, but the repository has no .gitmodules"
+          name=""
+          while IFS= read -r -d '' entry; do
+            key="${entry%%$'\n'*}"
+            if [[ "${entry#*$'\n'}" == "${path}" ]]; then
+              name="${key#submodule.}"
+              name="${name%.path}"
+            fi
+          done < <(git config --null --file .gitmodules --get-regexp '^submodule\..+\.path$')
+          [[ -n "${name}" ]] || invalid "${path} is not a submodule path in .gitmodules"
+          url="$(git config --file .gitmodules --get "submodule.${name}.url")" ||
+            invalid "submodule ${path} has no URL in .gitmodules"
+          [[ "${url}" =~ ^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$ ]] ||
+            invalid "private submodule ${path} must use an https://github.com/ URL, not ${url}"
+          owner="${BASH_REMATCH[1]}"
+          repository="${BASH_REMATCH[2]%.git}"
+          [[ "${owner,,}" == "${OWNER,,}" ]] ||
+            invalid "private submodule ${path} must be in ${OWNER}, not ${owner}"
+          [[ -n "${repository}" && "${repository}" != "." && "${repository}" != ".." ]] ||
+            invalid "private submodule ${path} has a malformed repository name"
+          [[ "$(git ls-files --stage -- "${path}" | cut -d ' ' -f 1)" == "160000" ]] ||
+            invalid "${path} is not a submodule in this commit"
+          {
+            echo "scope=${owner}/${repository}"
+            echo "url=${url}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Fetch a read token for the private submodule
+        id: private-submodule-token
+        if: ${{ inputs.private-submodule != '' }}
+        uses: tempoxyz/gh-actions/actions/github-sts@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
+        with:
+          scope: ${{ steps.private-submodule.outputs.scope }}
+          policy: ${{ inputs.private-submodule-sts-policy }}
+          ttl: 5m
+
+      - name: Check out the private submodule
+        if: ${{ inputs.private-submodule != '' }}
+        shell: bash
+        env:
+          PRIVATE_SUBMODULE: ${{ inputs.private-submodule }}
+          SUBMODULE_URL: ${{ steps.private-submodule.outputs.url }}
+          TOKEN: ${{ steps.private-submodule-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          test -n "${TOKEN}"
+          auth="$(printf 'x-access-token:%s' "${TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          GIT_CONFIG_COUNT=1 \
+          GIT_CONFIG_KEY_0="http.${SUBMODULE_URL}.extraheader" \
+          GIT_CONFIG_VALUE_0="Authorization: Basic ${auth}" \
+            git -c protocol.allow=never -c protocol.https.allow=always \
+              submodule update --init --checkout -- "${PRIVATE_SUBMODULE}"
+          git submodule status -- "${PRIVATE_SUBMODULE}"
 
       - name: Validate build inputs
         id: validate
@@ -132,10 +303,23 @@ jobs:
           PUBLISH_CONTAINER_IMAGE: ${{ inputs.publish-container-image }}
           DOCKERHUB_OIDC_CONNECTION_ID: ${{ inputs.dockerhub-oidc-connection-id }}
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          INSTALL_FILTER: ${{ inputs.install-filter }}
+          UNATTESTED_ARTIFACT_DIRECTORY: ${{ inputs.unattested-artifact-directory }}
+          # Whether the secret is set, never its value.
+          HAS_BUILD_ENVIRONMENT: ${{ secrets.build-environment != '' }}
         run: |
           set -euo pipefail
+          # Only the build command receives build-environment, so without one the
+          # values would be dropped silently, for example when Wrangler's own
+          # build command builds the app.
+          if [[ "${HAS_BUILD_ENVIRONMENT}" == "true" && -z "${BUILD_COMMAND}" ]]; then
+            echo "::error::build-environment is set, but no build-command would receive it" >&2
+            exit 1
+          fi
           safe_path='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
           [[ "${WORKING_DIRECTORY}" =~ ${safe_path} ]]
+          [[ "${UNATTESTED_ARTIFACT_DIRECTORY}" =~ ^$|${safe_path} ]]
+          [[ ! "/${UNATTESTED_ARTIFACT_DIRECTORY}/" =~ /\.\.?/ ]]
           INSTALL_DIRECTORY="${INSTALL_DIRECTORY:-${WORKING_DIRECTORY}}"
           [[ "${INSTALL_DIRECTORY}" =~ ${safe_path} ]]
           [[ ! "/${INSTALL_DIRECTORY}/" =~ /\.\./ ]]
@@ -178,6 +362,19 @@ jobs:
             echo "::error::install-directory needs pnpm-lock.yaml, bun.lock or package-lock.json" >&2
             exit 1
           fi
+          # Selectors are passed to pnpm as separate arguments, never through a
+          # shell, and can't start with "-", so none can be read as another option.
+          while read -r selector; do
+            [[ -n "${selector}" ]] || continue
+            if [[ "${package_manager}" != "pnpm" ]]; then
+              echo "::error::install-filter needs a pnpm install-directory" >&2
+              exit 1
+            fi
+            if [[ ! "${selector}" =~ ^[A-Za-z0-9@./_{}!^*][A-Za-z0-9@./_{}!^*-]*$ ]]; then
+              echo "::error::install-filter selector ${selector} is malformed" >&2
+              exit 1
+            fi
+          done <<< "${INSTALL_FILTER}"
           echo "package-manager=${package_manager}" >> "${GITHUB_OUTPUT}"
           if [[ "${PUBLISH_CONTAINER_IMAGE}" == "true" ]]; then
             test -n "${DOCKERHUB_OIDC_CONNECTION_ID}"
@@ -200,12 +397,21 @@ jobs:
           bun-version-file: ${{ inputs.install-directory || inputs.working-directory }}/package.json
           no-cache: true
 
-      - if: ${{ steps.validate.outputs.package-manager == 'pnpm' }}
+      # setup-node keys the pnpm store by the lockfile alone. A filtered install
+      # fetches only part of the store, so it would save that part under the key a
+      # full install restores; it runs without the cache instead.
+      - if: ${{ steps.validate.outputs.package-manager == 'pnpm' && inputs.install-filter == '' }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
           cache: pnpm
           cache-dependency-path: ${{ inputs.install-directory || inputs.working-directory }}/pnpm-lock.yaml
+
+      - if: ${{ steps.validate.outputs.package-manager == 'pnpm' && inputs.install-filter != '' }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+          package-manager-cache: false
 
       - if: ${{ steps.validate.outputs.package-manager != 'pnpm' }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -256,8 +462,9 @@ jobs:
               [[ "/${path}/" =~ ${git_segment} ]]; then
               invalid "build cache path ${path} must be a directory below working-directory"
             fi
-            # Restored entries must never replace source the build compiles.
-            [[ -z "$(git ls-files -- "${path}")" ]] ||
+            # Restored entries must never replace source the build compiles, including
+            # the files of submodules checked out above.
+            [[ -z "$(git ls-files --recurse-submodules -- "${path}")" ]] ||
               invalid "build cache path ${path} contains tracked files"
             # The cache is restored before the install, and npm ci deletes
             # node_modules, so a cache there would never be used.
@@ -320,11 +527,24 @@ jobs:
           key: ${{ steps.build-cache.outputs.key }}
           restore-keys: ${{ steps.build-cache.outputs.restore-key }}
 
+      # Like build-command, this runs the repository's own code in this job with
+      # no provider credentials. It can do nothing build-command can't already.
+      - name: Prepare dependencies
+        if: ${{ inputs.pre-install-command != '' }}
+        shell: bash
+        working-directory: ${{ inputs.install-directory || inputs.working-directory }}
+        env:
+          PRE_INSTALL_COMMAND: ${{ inputs.pre-install-command }}
+        run: |
+          set -euo pipefail
+          bash --noprofile --norc -eo pipefail -c "${PRE_INSTALL_COMMAND}"
+
       - name: Install dependencies
         shell: bash
         env:
           INSTALL_DIRECTORY: ${{ inputs.install-directory || inputs.working-directory }}
           PACKAGE_MANAGER: ${{ steps.validate.outputs.package-manager }}
+          INSTALL_FILTER: ${{ inputs.install-filter }}
         run: |
           set -euo pipefail
           cd "${INSTALL_DIRECTORY}"
@@ -334,17 +554,61 @@ jobs:
             # its own lifecycle scripts from build-command.
             npm ci --ignore-scripts --no-audit --no-fund
           else
-            "${PACKAGE_MANAGER}" install --frozen-lockfile
+            # Validation allowed install-filter only for pnpm.
+            args=(install --frozen-lockfile)
+            while read -r selector; do
+              [[ -n "${selector}" ]] || continue
+              args+=(--filter "${selector}")
+            done <<< "${INSTALL_FILTER}"
+            "${PACKAGE_MANAGER}" "${args[@]}"
           fi
 
+      # build-environment reaches only this step, and only the build command's
+      # process: it is exported in this shell, never passed as arguments, and the
+      # raw secret is unset first. The build command is the caller's own code,
+      # which its other jobs can already run with the same secrets. GitHub masks
+      # a multi-line secret line by line, so `NAME=value` but not a bare `value`;
+      # each value is masked on its own before the build command can print it.
       - name: Build application
         if: ${{ inputs.build-command != '' }}
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         env:
           BUILD_COMMAND: ${{ inputs.build-command }}
+          BUILD_ENVIRONMENT: ${{ secrets.build-environment }}
         run: |
           set -euo pipefail
+          names=()
+          while IFS= read -r line || [[ -n "${line}" ]]; do
+            # A secret saved with CRLF line endings would otherwise export each
+            # value with a trailing carriage return.
+            line="${line%$'\r'}"
+            [[ -n "${line}" ]] || continue
+            name="${line%%=*}"
+            if [[ "${line}" != *=* || ! "${name}" =~ ^[A-Z][A-Z0-9_]{0,63}$ ]]; then
+              echo "::error::build-environment lines must be NAME=value with an upper-case NAME" >&2
+              exit 1
+            fi
+            case "${name}" in
+              GITHUB_* | RUNNER_* | ACTIONS_* | INPUT_* | STATE_* | BASH_* | LD_* | DYLD_* | \
+                CI | HOME | PATH | SHELL | PWD | OLDPWD | TMPDIR | ENV | IFS | PS4 | SHELLOPTS | \
+                NODE_OPTIONS | NODE_PATH | NODE_EXTRA_CA_CERTS | BUILD_COMMAND | BUILD_ENVIRONMENT)
+                echo "::error::build-environment cannot set ${name}" >&2
+                exit 1
+                ;;
+            esac
+            [[ ! " ${names[*]} " == *" ${name} "* ]] || {
+              echo "::error::build-environment sets ${name} twice" >&2
+              exit 1
+            }
+            names+=("${name}")
+            value="${line#*=}"
+            # Workflow commands unescape %25, so escape a literal % first.
+            if [[ -n "${value}" ]]; then echo "::add-mask::${value//%/%25}"; fi
+            export "${name}=${value}"
+          done <<< "${BUILD_ENVIRONMENT}"
+          unset BUILD_ENVIRONMENT line value
+          if (( ${#names[@]} > 0 )); then echo "build-environment sets ${names[*]}"; fi
           bash --noprofile --norc -eo pipefail -c "${BUILD_COMMAND}"
 
       - name: Log in to Docker Hub via OIDC
@@ -474,7 +738,7 @@ jobs:
           // additional modules its bundle imports (ES module chunks, Text,
           // Data and CompiledWasm). Every additional module is listed in an
           // attested manifest; single-module builds emit no manifest.
-          const MAX_MODULES = 100;
+          const MAX_MODULES = 1000;
           const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
           const build = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-build");
           const artifact = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-artifact");
@@ -896,9 +1160,12 @@ jobs:
           // Restrict every provider option before mapping it into the attested
           // manifest. Local connection strings and remote/raw overrides never
           // become deployment inputs.
-          function mapBindings(values, keys, map) {
+          // Rate limits name only a namespace ID and a limit, and a Worker may
+          // need more of them than of any resource binding. Brokers whose
+          // MAX_RATE_LIMIT_BINDINGS is 20 accept them; older ones fail closed.
+          function mapBindings(values, keys, map, max = 10) {
             invariant(Array.isArray(values), "bindings must be an array");
-            invariant(values.length <= 10, "at most ten bindings of each type are supported");
+            invariant(values.length <= max, max === 10 ? "at most ten bindings of each type are supported" : `at most ${max} bindings of this type are supported`);
             return values.map((value) => {
               invariant(isRecord(value) && Object.keys(value).every((key) => keys.includes(key)), `binding uses unsupported options; accepts only ${keys.join(", ")}`);
               const result = map(value);
@@ -937,7 +1204,7 @@ jobs:
             invariant(isRecord(value.simple) && Object.keys(value.simple).every((key) => ["limit", "period"].includes(key)), "rate limit requires simple limit and period");
             invariant(Number.isInteger(value.simple.limit) && value.simple.limit > 0 && value.simple.limit <= 2147483647 && [10, 60].includes(value.simple.period), "invalid rate limit limit or period");
             return { binding: value.name, namespaceId: value.namespace_id, simple: { limit: value.simple.limit, period: value.simple.period } };
-          });
+          }, 20);
           // Analytics SQL queries the account's Analytics Engine datasets; it
           // has no options, and remote mode never becomes a deployment input.
           const analyticsSql = isUnset(config.analytics)
@@ -1649,3 +1916,16 @@ jobs:
           # Asset paths were already validated before staging. Preserve hidden
           # assets such as .well-known files and an attested .gitkeep exactly.
           include-hidden-files: true
+
+      # Build by-products the broker never sees, uploaded only once the attested
+      # artifact is. Nothing attests or verifies them, so a consumer must not
+      # deploy or execute them.
+      - name: Upload unattested build by-products
+        id: upload-unattested
+        if: ${{ inputs.unattested-artifact-directory != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact-name }}-unattested-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ inputs.working-directory }}/${{ inputs.unattested-artifact-directory }}
+          if-no-files-found: error
+          retention-days: 1
