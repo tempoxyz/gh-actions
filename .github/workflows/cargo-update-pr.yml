@@ -100,7 +100,11 @@ jobs:
           # Packages kept at their locked version, by name, with the reason.
           declare -A held=()
           cp Cargo.lock Cargo.lock.orig
-          for attempt in $(seq 1 10); do
+          # Each attempt holds at least one more locked package, so the loop ends within one attempt
+          # per package. A release of many crates (alloy, commonware) can need dozens of attempts.
+          sources="$(grep -c '^source = ' Cargo.lock || true)"
+          max_attempts=$(( sources + 1 ))
+          for attempt in $(seq 1 "$max_attempts"); do
             cp Cargo.lock.orig Cargo.lock
             args=()
             if [ "${#held[@]}" -gt 0 ]; then
@@ -125,10 +129,11 @@ jobs:
             fi
           fi
             if ! cargo update --color never --verbose "${args[@]}" > update.out 2>&1; then
-              # A requirement only releases newer than the cooldown can meet (for example, every older
-              # compatible version was yanked) fails the whole update: hold that package instead.
+              # A requirement only releases newer than the cooldown can meet (for example, a manifest
+              # that requires a fresh release, or every older compatible version was yanked) fails the
+              # whole update: hold that package instead.
               pkg="$(sed -nE 's/^error: failed to select a version for the requirement .([^ ]+) = .*/\1/p' update.out | head -n1)"
-              if [ -z "$pkg" ] || [ -n "${held[$pkg]:-}" ] || [ "$attempt" = 10 ]; then
+              if [ -z "$pkg" ] || [ -n "${held[$pkg]:-}" ] || [ "$attempt" = "$max_attempts" ]; then
                 cat update.out
                 exit 1
               fi
@@ -148,7 +153,7 @@ jobs:
               esac
             done < <(sed -nE 's/^ *Downgrading ([^ ]+) v([^ ]+) -> .*/\1 \2/p' update.out)
             if [ "$added" = 0 ]; then break; fi
-            if [ "$attempt" = 10 ]; then
+            if [ "$attempt" = "$max_attempts" ]; then
               echo "::error::cargo update did not settle after $attempt attempts"
               exit 1
             fi
@@ -205,7 +210,7 @@ jobs:
       # in the PR body.
       - name: Create Pull Request
         if: steps.changes.outputs.changed == 'true'
-        uses: tempoxyz/gh-actions/actions/create-pull-request@68a1e4645c9596fee5398dd1e2ba07f0a4aa6a71 # 2026-10-20T04-40-18Z-68a1e464
+        uses: tempoxyz/gh-actions/actions/create-pull-request@df5b18a2b274a1a4b57981cbf7749709434250b2 # 2026-11-02T08-25-40Z-df5b18a2
         with:
           token: ${{ steps.sts.outputs.token }}
           branch: ${{ env.BRANCH }}
