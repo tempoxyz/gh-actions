@@ -76,7 +76,30 @@ policy must name exactly. Destination restrictions are rejected.
 
 Static assets are limited to 1,000 files, 4 MiB per file, and 32 MiB total
 unless the deployment policy raises them, up to 20,000 files, 25 MiB per file,
-and 256 MiB total.
+and 1 GiB total; a policy that allows more than 256 MiB needs a broker release
+whose staged archives may reach 1.25 GiB. Each asset's Content-Type comes from
+its extension, such as `video/mp4`, `application/pdf` or `model/gltf-binary`;
+an asset with an extension the build does not list is served without one.
+
+With `lfs: true`, the build fetches the commit's Git LFS objects right after
+checkout with the job's read-only `github.token`. git-lfs checks each object
+against the SHA-256 recorded in the commit, so the provenance still pins the
+content. `lfs-exclude` lists repository-relative paths or globs whose objects
+are not fetched, such as videos a separate job uploads to R2:
+
+```yaml
+    with:
+      lfs: true
+      lfs-exclude: |
+        public/videos/**
+        *.mp4
+```
+
+Every other LFS file must be fetched, or the build fails; `.lfsconfig` cannot
+narrow the fetch. Excluded files stay LFS pointers, and a static asset that is
+a pointer fails the build whether or not `lfs` is set, so keep excluded files
+out of the asset directory, for example by deleting them in `build-command`.
+LFS files in submodules are not fetched.
 
 The build packages every module Wrangler emits. Additional ES module chunks and
 `Text`, `Data` and `CompiledWasm` modules are staged under `modules/` and listed
