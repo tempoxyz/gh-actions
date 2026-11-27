@@ -1439,12 +1439,21 @@ jobs:
           invariant(d1.length <= 10, "D1 bindings are limited to ten");
 
           // Explicit R2 bindings reference existing account buckets, so every entry
-          // must match an authorized deployment policy exactly.
+          // must match an authorized deployment policy exactly. Each jurisdiction
+          // holds its own bucket names, so a jurisdiction is part of the bucket's
+          // identity. It is emitted only when set: the default jurisdiction has
+          // one spelling, and bindings without one keep their attested bytes.
+          const r2Jurisdictions = ["eu", "fedramp", "fedramp-high", "us"];
+          const managedBucketBindings = new Set((resources?.buckets ?? []).map((bucket) => bucket.binding));
           const r2 = (config.r2_buckets ?? []).map((binding) => {
             invariant(isRecord(binding) && bindingName.test(binding.binding), "invalid R2 binding name");
-            invariant(Object.keys(binding).every((key) => ["binding", "bucket_name"].includes(key)), `R2 binding ${binding.binding} accepts only binding and bucket_name; preview buckets, jurisdiction, remote, and unknown options are not supported`);
+            invariant(Object.keys(binding).every((key) => ["binding", "bucket_name", "jurisdiction"].includes(key)), `R2 binding ${binding.binding} accepts only binding, bucket_name, and jurisdiction; preview buckets, remote, and unknown options are not supported`);
             invariant(typeof binding.bucket_name === "string" && bucketName.test(binding.bucket_name), `R2 binding ${binding.binding} must name an explicit existing bucket`);
-            return { binding: binding.binding, bucketName: binding.bucket_name };
+            if (binding.jurisdiction === undefined) return { binding: binding.binding, bucketName: binding.bucket_name };
+            invariant(r2Jurisdictions.includes(binding.jurisdiction), `R2 binding ${binding.binding} jurisdiction must be one of ${r2Jurisdictions.join(", ")}; omit it for the default jurisdiction`);
+            // The broker creates a declared new bucket in the default jurisdiction.
+            invariant(!managedBucketBindings.has(binding.binding), `R2 binding ${binding.binding} names a new broker-managed bucket, which is created without a jurisdiction; remove jurisdiction`);
+            return { binding: binding.binding, bucketName: binding.bucket_name, jurisdiction: binding.jurisdiction };
           }).sort((left, right) => left.binding.localeCompare(right.binding));
           invariant(r2.length <= 10, "R2 bindings are limited to ten");
 
