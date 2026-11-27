@@ -376,3 +376,149 @@ test("keeps the 25 MiB per-file limit", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /static asset has an invalid size: chunk-00\.bin/);
 });
+
+const VALIDATE_STEP = "Validate build inputs";
+const PUBLISH_STEP = "Build and publish Container image";
+const CONFIGURATION_STEP = "Stage and hash Worker configuration";
+
+test("timeout-minutes is an optional input that keeps the 15-minute default", () => {
+  assert.deepEqual(input("timeout-minutes").filter(line => !line.startsWith("description:")), [
+    "required: false", "type: number", "default: 15",
+  ]);
+  assert.ok(lines.includes("    timeout-minutes: ${{ inputs.timeout-minutes }}"));
+});
+
+// Runs the input validation step in a minimal pnpm project.
+function validateInputs({ TIMEOUT_MINUTES, PUBLISH_CONTAINER_IMAGE = "true" }) {
+  const dir = tempDir();
+  fs.mkdirSync(path.join(dir, "app"));
+  for (const file of ["wrangler.toml", "package.json", "pnpm-lock.yaml"]) {
+    fs.writeFileSync(path.join(dir, "app", file), "{}\n");
+  }
+  const output = path.join(dir, "github-output");
+  const result = spawnSync("bash", ["-c", script(VALIDATE_STEP)], {
+    cwd: dir,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      WORKING_DIRECTORY: "app",
+      INSTALL_DIRECTORY: "app",
+      BUILD_COMMAND: "",
+      WRANGLER_CONFIG: "wrangler.toml",
+      WRANGLER_ENVIRONMENT: "",
+      DISPATCH_NAMESPACE: "",
+      D1_MIGRATIONS_DIRECTORY: "",
+      PUBLISH_CONTAINER_IMAGE,
+      DOCKERHUB_OIDC_CONNECTION_ID: PUBLISH_CONTAINER_IMAGE === "true" ? "11111111-2222-3333-4444-555555555555" : "",
+      ARTIFACT_NAME: "example",
+      INSTALL_FILTER: "",
+      UNATTESTED_ARTIFACT_DIRECTORY: "",
+      TIMEOUT_MINUTES,
+      HAS_BUILD_ENVIRONMENT: "false",
+      GITHUB_OUTPUT: output,
+    },
+  });
+  return { ...result, output: fs.existsSync(output) ? fs.readFileSync(output, "utf8") : "" };
+}
+
+test("the Docker Hub token lasts as long as the job may, and at least five minutes", () => {
+  for (const [minutes, seconds] of [["1", 300], ["15", 900], ["120", 7200]]) {
+    const result = validateInputs({ TIMEOUT_MINUTES: minutes });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.output, `package-manager=pnpm\ndockerhub-token-lifetime=${seconds}\n`);
+  }
+  const noImage = validateInputs({ TIMEOUT_MINUTES: "60", PUBLISH_CONTAINER_IMAGE: "false" });
+  assert.equal(noImage.status, 0, noImage.stderr);
+  assert.equal(noImage.output, "package-manager=pnpm\n");
+  const login = step("Log in to Docker Hub via OIDC").map(line => line.trim());
+  assert.ok(login.includes("DOCKERHUB_OIDC_EXPIREIN: ${{ steps.validate.outputs.dockerhub-token-lifetime }}"));
+});
+
+test("refuses a timeout outside 1 to 120 whole minutes", () => {
+  for (const minutes of ["0", "121", "1.5", "", "15; true"]) {
+    const result = validateInputs({ TIMEOUT_MINUTES: minutes });
+    assert.notEqual(result.status, 0, minutes);
+    assert.match(result.stderr, /timeout-minutes must be a whole number of minutes from 1 to 120/);
+  }
+});
+
+// The Container sizing check, which both the image build and the attested
+// configuration run. The steps import Wrangler, so the broker's builder
+// contract tests run them whole; this runs the check alone.
+function sizingSource(name) {
+  const body = script(name).split("\n");
+  const start = body.findIndex(line => line.startsWith("// The broker deploys a published image"));
+  const fn = body.indexOf("function containerSizing(container) {");
+  assert.ok(start !== -1 && fn > start, `Container sizing check in ${name}`);
+  const end = body.indexOf("}", fn);
+  return body.slice(start, end + 1).join("\n");
+}
+
+test("the image build and the attested configuration check Container sizing alike", () => {
+  assert.equal(sizingSource(PUBLISH_STEP), sizingSource(CONFIGURATION_STEP));
+  // The image build checks before it builds anything.
+  const publish = script(PUBLISH_STEP);
+  assert.ok(publish.indexOf("containerSizing(container);") < publish.indexOf('"buildx", "build"'));
+});
+
+function containerSizing(value) {
+  return new Function(
+    "invariant",
+    "isRecord",
+    `${sizingSource(CONFIGURATION_STEP)}\nreturn containerSizing;`,
+  )(
+    (condition, message) => { if (!condition) throw new Error(message); },
+    candidate => candidate !== null && typeof candidate === "object" && !Array.isArray(candidate),
+  )(value);
+}
+
+// A Container as Wrangler's unstable_readConfig returns it.
+function container(sizing) {
+  return {
+    class_name: "ExampleContainer",
+    image: "/work/Dockerfile",
+    name: "example-container",
+    image_build_context: "/work",
+    ...sizing,
+  };
+}
+
+test("attests every named instance type with up to 100 instances", () => {
+  for (const [instanceType, maxInstances] of [
+    ["lite", 1], ["basic", 2], ["standard-1", 5], ["standard-2", 10], ["standard-3", 20], ["standard-4", 100],
+  ]) {
+    assert.deepEqual(
+      containerSizing(container({ instance_type: instanceType, max_instances: maxInstances, image_vars: { A: "b" } })),
+      { instanceType, maxInstances },
+    );
+  }
+});
+
+test("refuses sizes and settings the broker would not apply", () => {
+  // Wrangler parses TOML tables into objects without a prototype.
+  const custom = Object.assign(Object.create(null), { vcpu: 4, memory_mib: 12288, disk_mb: 20000 });
+  for (const [sizing, message] of [
+    [{ instance_type: "dev", max_instances: 1 }, /instance_type dev is deprecated; use lite/],
+    [{ instance_type: "standard", max_instances: 1 }, /instance_type standard is deprecated; use standard-1/],
+    [{ instance_type: custom, max_instances: 1 }, /uses a custom instance type, which the deploy broker does not support/],
+    [{ instance_type: "toString", max_instances: 1 }, /must set instance_type to one of lite, basic/],
+    [{ max_instances: 1 }, /must set instance_type to one of lite, basic, standard-1, standard-2, standard-3, standard-4/],
+    [{ instance_type: "lite" }, /must set max_instances to an integer from 1 to 100/],
+    [{ instance_type: "lite", max_instances: 0 }, /must set max_instances to an integer from 1 to 100/],
+    [{ instance_type: "standard-4", max_instances: 101 }, /must set max_instances to an integer from 1 to 100/],
+    [{ instance_type: "lite", max_instances: 1.5 }, /must set max_instances to an integer from 1 to 100/],
+    [{ instance_type: "lite", max_instances: "20" }, /must set max_instances to an integer from 1 to 100/],
+    [{ instance_type: "lite", max_instances: 1, instances: 1 }, /sets instances, which the deploy broker does not apply/],
+    [{ instance_type: "lite", max_instances: 1, scheduling_policy: "durable_object" }, /sets scheduling_policy/],
+    [{ instance_type: "lite", max_instances: 1, rollout_step_percentage: [10, 100] }, /sets rollout_step_percentage/],
+    [{ instance_type: "lite", max_instances: 1, ssh: { enabled: true } }, /sets ssh/],
+    [{ instance_type: "lite", max_instances: 1, constraints: { regions: ["WNAM"] } }, /sets constraints/],
+  ]) {
+    assert.throws(() => containerSizing(container(sizing)), message, JSON.stringify(sizing));
+  }
+  // An option Wrangler leaves undefined is unset.
+  assert.deepEqual(
+    containerSizing(container({ instance_type: "lite", max_instances: 1, ssh: undefined })),
+    { instanceType: "lite", maxInstances: 1 },
+  );
+});

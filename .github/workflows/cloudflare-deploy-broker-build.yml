@@ -74,7 +74,7 @@ on:
         type: string
         default: ""
       publish-container-image:
-        description: "Build the Wrangler Dockerfile and push an attested image to the private Tempo Docker Hub registry"
+        description: "Build the Wrangler Container's Dockerfile and push an attested image to the private Tempo Docker Hub registry. The Container must set an explicit named instance_type (lite, basic or standard-1 to standard-4) and an integer max_instances from 1 to 100, which the build attests and the deployment policy must name exactly"
         required: false
         type: boolean
         default: false
@@ -103,6 +103,11 @@ on:
         required: false
         type: string
         default: ""
+      timeout-minutes:
+        description: "Build job timeout in minutes, from 1 to 120. Raise it for slow builds, such as a Container image that compiles from source. A published Container image's Docker Hub token lasts this long too"
+        required: false
+        type: number
+        default: 15
     secrets:
       build-environment:
         description: "Optional NAME=value lines exported only to build-command, such as a client key the build compiles in. Names are upper case and can't be runner, shell or Node settings. Values end up wherever the build puts them, including the attested artifact"
@@ -141,7 +146,7 @@ permissions: {}
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       actions: write
       artifact-metadata: write
@@ -397,6 +402,7 @@ jobs:
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
           INSTALL_FILTER: ${{ inputs.install-filter }}
           UNATTESTED_ARTIFACT_DIRECTORY: ${{ inputs.unattested-artifact-directory }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
           # Whether the secret is set, never its value.
           HAS_BUILD_ENVIRONMENT: ${{ secrets.build-environment != '' }}
         run: |
@@ -468,8 +474,18 @@ jobs:
             fi
           done <<< "${INSTALL_FILTER}"
           echo "package-manager=${package_manager}" >> "${GITHUB_OUTPUT}"
+          if [[ ! "${TIMEOUT_MINUTES}" =~ ^[1-9][0-9]*$ ]] || (( TIMEOUT_MINUTES > 120 )); then
+            echo "::error::timeout-minutes must be a whole number of minutes from 1 to 120" >&2
+            exit 1
+          fi
           if [[ "${PUBLISH_CONTAINER_IMAGE}" == "true" ]]; then
             test -n "${DOCKERHUB_OIDC_CONNECTION_ID}"
+            # Docker Hub's OIDC token lasts five minutes by default, so the push
+            # at the end of a longer image build would fail. It lasts as long as
+            # the job may instead, and at least Docker Hub's five-minute minimum.
+            # The caller's build code already runs in this job with
+            # id-token: write, so it could exchange its own OIDC token for one.
+            echo "dockerhub-token-lifetime=$(( TIMEOUT_MINUTES * 60 > 300 ? TIMEOUT_MINUTES * 60 : 300 ))" >> "${GITHUB_OUTPUT}"
           fi
           if [[ -n "${D1_MIGRATIONS_DIRECTORY}" ]]; then
             test ! -L "${WORKING_DIRECTORY}/${D1_MIGRATIONS_DIRECTORY}"
@@ -708,6 +724,7 @@ jobs:
         uses: tempoxyz/gh-actions/vendor/docker/login-action@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ inputs.dockerhub-oidc-connection-id }}
+          DOCKERHUB_OIDC_EXPIREIN: ${{ steps.validate.outputs.dockerhub-token-lifetime }}
         with:
           username: tempoxyz
 
@@ -731,6 +748,28 @@ jobs:
           function invariant(condition, message) {
             if (!condition) throw new Error(message);
           }
+          function isRecord(value) {
+            return value !== null && typeof value === "object" && !Array.isArray(value);
+          }
+          // The broker deploys a published image with exactly the attested named
+          // instance type and instance cap, which the deployment policy must name,
+          // and applies no other Container setting. Custom instance shapes, the
+          // deprecated dev and standard aliases and every other Container option
+          // fail here rather than being dropped.
+          const instanceTypes = ["lite", "basic", "standard-1", "standard-2", "standard-3", "standard-4"];
+          const containerKeys = ["name", "class_name", "image", "image_build_context", "image_vars", "instance_type", "max_instances"];
+          function containerSizing(container) {
+            for (const [key, value] of Object.entries(container)) {
+              invariant(containerKeys.includes(key) || value === undefined, `Container ${container.name} sets ${key}, which the deploy broker does not apply; it accepts only ${containerKeys.join(", ")}`);
+            }
+            const configured = container.instance_type;
+            invariant(!isRecord(configured), `Container ${container.name} uses a custom instance type, which the deploy broker does not support; use a named instance_type: ${instanceTypes.join(", ")}`);
+            const aliases = new Map([["dev", "lite"], ["standard", "standard-1"]]);
+            invariant(!aliases.has(configured), `Container ${container.name} instance_type ${configured} is deprecated; use ${aliases.get(configured)}`);
+            invariant(instanceTypes.includes(configured), `Container ${container.name} must set instance_type to one of ${instanceTypes.join(", ")}`);
+            invariant(Number.isInteger(container.max_instances) && container.max_instances >= 1 && container.max_instances <= 100, `Container ${container.name} must set max_instances to an integer from 1 to 100`);
+            return { instanceType: configured, maxInstances: container.max_instances };
+          }
           const root = resolve(".");
           const configPath = resolve(process.env.WRANGLER_CONFIG);
           const environment = process.env.WRANGLER_ENVIRONMENT ?? "";
@@ -742,6 +781,9 @@ jobs:
           const container = config.containers[0];
           invariant(typeof config.account_id === "string" && /^[0-9a-f]{32}$/.test(config.account_id), "Wrangler account_id must be explicit");
           invariant(typeof container.name === "string" && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(container.name), "Container name is invalid");
+          // Checked again when the configuration is attested; failing here
+          // skips an image build the broker would refuse.
+          containerSizing(container);
           invariant(typeof container.image === "string", "Container image must name a Dockerfile");
           const dockerfile = resolve(dirname(configPath), container.image);
           const context = resolve(dirname(configPath), container.image_build_context ?? dirname(container.image));
@@ -1192,6 +1234,25 @@ jobs:
           function sortedRecord(value) {
             return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
           }
+          // The broker deploys a published image with exactly the attested named
+          // instance type and instance cap, which the deployment policy must name,
+          // and applies no other Container setting. Custom instance shapes, the
+          // deprecated dev and standard aliases and every other Container option
+          // fail here rather than being dropped.
+          const instanceTypes = ["lite", "basic", "standard-1", "standard-2", "standard-3", "standard-4"];
+          const containerKeys = ["name", "class_name", "image", "image_build_context", "image_vars", "instance_type", "max_instances"];
+          function containerSizing(container) {
+            for (const [key, value] of Object.entries(container)) {
+              invariant(containerKeys.includes(key) || value === undefined, `Container ${container.name} sets ${key}, which the deploy broker does not apply; it accepts only ${containerKeys.join(", ")}`);
+            }
+            const configured = container.instance_type;
+            invariant(!isRecord(configured), `Container ${container.name} uses a custom instance type, which the deploy broker does not support; use a named instance_type: ${instanceTypes.join(", ")}`);
+            const aliases = new Map([["dev", "lite"], ["standard", "standard-1"]]);
+            invariant(!aliases.has(configured), `Container ${container.name} instance_type ${configured} is deprecated; use ${aliases.get(configured)}`);
+            invariant(instanceTypes.includes(configured), `Container ${container.name} must set instance_type to one of ${instanceTypes.join(", ")}`);
+            invariant(Number.isInteger(container.max_instances) && container.max_instances >= 1 && container.max_instances <= 100, `Container ${container.name} must set max_instances to an integer from 1 to 100`);
+            return { instanceType: configured, maxInstances: container.max_instances };
+          }
 
           const configPath = resolve(process.env.WRANGLER_CONFIG);
           const environment = process.env.WRANGLER_ENVIRONMENT ?? "";
@@ -1606,17 +1667,15 @@ jobs:
             invariant(containers.length === 1, "Container image publishing requires exactly one Container application");
             const match = process.env.CONTAINER_IMAGE_REFERENCE.match(/^(docker\.io\/tempoxyz\/[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?)@(sha256:[0-9a-f]{64})$/);
             invariant(match !== null, "published Container image reference is invalid");
-            const configured = config.containers[0];
-            invariant(configured.instance_type === "lite", "brokered Container publishing currently requires instance_type=lite");
-            invariant(configured.max_instances === 1, "brokered Container publishing currently requires max_instances=1");
+            const { instanceType, maxInstances } = containerSizing(config.containers[0]);
             invariant(match[1] === `docker.io/tempoxyz/${containers[0].name}`, "published Container repository does not match the Tempo Docker Hub namespace and application");
             containerImage = {
               name: containers[0].name,
               className: containers[0].className,
               repository: match[1],
               digest: match[2],
-              instanceType: "lite",
-              maxInstances: 1,
+              instanceType,
+              maxInstances,
             };
           }
 
