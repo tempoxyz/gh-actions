@@ -28,6 +28,16 @@ on:
         required: false
         type: string
         default: ""
+      lfs:
+        description: "Fetch the checked-out commit's Git LFS objects with the job's read-only github.token, so the build reads file content instead of LFS pointers. Every LFS file that lfs-exclude does not match must be fetched; LFS files in submodules are not"
+        required: false
+        type: boolean
+        default: false
+      lfs-exclude:
+        description: "Newline-separated repository-relative paths or globs, such as public/videos/** or *.mp4, whose LFS objects are not fetched (git lfs pull --exclude); requires lfs. Excluded files stay LFS pointers, and a static asset that is a pointer fails the build, so the build must keep them out of the asset directory"
+        required: false
+        type: string
+        default: ""
       pre-install-command:
         description: "Optional command run in install-directory after the package manager is set up and before the dependency install (no provider credentials), such as building a workspace package from a submodule"
         required: false
@@ -155,6 +165,88 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+
+      # The checked-out commit records each LFS file's pointer, and git-lfs
+      # checks every object it downloads against the SHA-256 OID in that
+      # pointer, so the provenance's source commit still pins the content. The
+      # objects are read with the job's github.token (contents: read). As with
+      # the private submodule, the token reaches only the git lfs pull process,
+      # through its environment rather than its arguments or a config file, and
+      # only in requests to https://github.com/, where the LFS API is. Without
+      # the LFS filters configured, git lfs pull downloads objects but skips
+      # checking them out, so the filters reach it the same way, with a
+      # throwaway hooks directory for the hooks git-lfs would otherwise install.
+      # Only lfs-exclude decides what is skipped: every other LFS file must end
+      # up fetched, whatever .lfsconfig says.
+      - name: Fetch Git LFS objects
+        if: ${{ inputs.lfs || inputs.lfs-exclude != '' }}
+        shell: bash
+        env:
+          LFS: ${{ inputs.lfs }}
+          LFS_EXCLUDE: ${{ inputs.lfs-exclude }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          safe_glob='^[A-Za-z0-9._*-]+(/[A-Za-z0-9._*-]+)*$'
+          relative_segment='/(\.|\.\.)/'
+          listed_file='^[0-9a-f]+ ([*-]) (.+)$'
+          invalid() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+          [[ "${LFS}" == "true" ]] || invalid "lfs-exclude is set, but lfs is not true"
+          git lfs version > /dev/null 2>&1 ||
+            invalid "lfs is true, but git-lfs is not installed on this runner"
+          test -n "${TOKEN}"
+          # git lfs reads --exclude as one comma-separated list. The charset
+          # keeps out commas, braces and brackets, so each line stays one path
+          # or glob, and none can start with / or step outside the repository.
+          exclude=""
+          while read -r pattern; do
+            [[ -n "${pattern}" ]] || continue
+            if [[ ! "${pattern}" =~ ${safe_glob} ]] || [[ "/${pattern}/" =~ ${relative_segment} ]]; then
+              invalid "lfs-exclude pattern ${pattern} must be a path or glob inside the repository"
+            fi
+            exclude="${exclude:+${exclude},}${pattern}"
+          done <<< "${LFS_EXCLUDE}"
+          auth="$(printf 'x-access-token:%s' "${TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          hooks="$(mktemp -d "${RUNNER_TEMP}/git-lfs-hooks.XXXXXX")"
+          # An explicit --include and --exclude, even empty, override any
+          # lfs.fetchinclude and lfs.fetchexclude from .lfsconfig.
+          GIT_CONFIG_COUNT=6 \
+          GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+          GIT_CONFIG_VALUE_0="Authorization: Basic ${auth}" \
+          GIT_CONFIG_KEY_1="filter.lfs.process" \
+          GIT_CONFIG_VALUE_1="git-lfs filter-process" \
+          GIT_CONFIG_KEY_2="filter.lfs.smudge" \
+          GIT_CONFIG_VALUE_2="git-lfs smudge -- %f" \
+          GIT_CONFIG_KEY_3="filter.lfs.clean" \
+          GIT_CONFIG_VALUE_3="git-lfs clean -- %f" \
+          GIT_CONFIG_KEY_4="filter.lfs.required" \
+          GIT_CONFIG_VALUE_4="true" \
+          GIT_CONFIG_KEY_5="core.hooksPath" \
+          GIT_CONFIG_VALUE_5="${hooks}" \
+            git lfs pull --include= --exclude="${exclude}"
+          rm -rf "${hooks}"
+          # ls-files marks a file * when the working tree holds its object and
+          # - when it is still a pointer. A pointer git lfs pull left behind,
+          # for whatever reason, would otherwise reach the build as content.
+          listed="$(git lfs ls-files --include= --exclude="${exclude}")"
+          fetched=0
+          pointers=0
+          while IFS= read -r line; do
+            [[ -n "${line}" ]] || continue
+            [[ "${line}" =~ ${listed_file} ]] || invalid "git lfs ls-files printed an unexpected line: ${line}"
+            if [[ "${BASH_REMATCH[1]}" == "*" ]]; then
+              fetched=$((fetched + 1))
+            else
+              echo "::error::${BASH_REMATCH[2]} was not fetched and is still a Git LFS pointer" >&2
+              pointers=$((pointers + 1))
+            fi
+          done <<< "${listed}"
+          (( pointers == 0 )) || exit 1
+          echo "Fetched ${fetched} Git LFS files"
 
       # The checked-out commit records each submodule's commit, so the provenance's
       # source commit still pins the submodule's source. Checkout persisted no
@@ -938,10 +1030,18 @@ jobs:
           }
           const artifactRoot = resolve(process.env.RUNNER_TEMP, "cloudflare-worker-artifact");
           const stagedRoot = resolve(artifactRoot, "static-assets");
+          // The broker uploads an asset whose extension is not listed with no
+          // Content-Type. Listed types are IANA-registered, with charset=utf-8 on
+          // text types, except the de facto image/x-icon and video/webm, which
+          // IANA has not registered. Extensions with no registered type or more
+          // than one meaning, such as pdf.js .bcmap and .ts (TypeScript or an
+          // MPEG transport stream), stay unlisted.
           const mediaTypes = new Map(Object.entries({
+            ".avif": "image/avif",
             ".css": "text/css; charset=utf-8",
             ".csv": "text/csv; charset=utf-8",
             ".gif": "image/gif",
+            ".glb": "model/gltf-binary",
             ".htm": "text/html; charset=utf-8",
             ".html": "text/html; charset=utf-8",
             ".ico": "image/x-icon",
@@ -949,17 +1049,33 @@ jobs:
             ".jpg": "image/jpeg",
             ".js": "text/javascript; charset=utf-8",
             ".json": "application/json",
+            ".m3u8": "application/vnd.apple.mpegurl",
             ".map": "application/json",
+            ".md": "text/markdown; charset=utf-8",
             ".mjs": "text/javascript; charset=utf-8",
+            ".mp4": "video/mp4",
+            ".pdf": "application/pdf",
             ".png": "image/png",
             ".svg": "image/svg+xml",
+            ".ttf": "font/ttf",
             ".txt": "text/plain; charset=utf-8",
             ".wasm": "application/wasm",
+            ".webm": "video/webm",
+            ".webmanifest": "application/manifest+json",
             ".webp": "image/webp",
             ".woff": "font/woff",
             ".woff2": "font/woff2",
             ".xml": "application/xml",
+            ".yaml": "application/yaml",
+            ".yml": "application/yaml",
+            ".zip": "application/zip",
           }));
+          // An LFS file that lfs-exclude skipped, or that was never fetched, is
+          // still its pointer: a short text file that starts with this line.
+          // Deployed, it would replace the real file. git-lfs reads only files
+          // under 1 KiB as pointers.
+          const lfsPointer = Buffer.from("version https://git-lfs.github.com/spec/v1");
+          const lfsPointerMaxBytes = 1024;
           const files = [];
           function walk(directory) {
             for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -984,6 +1100,9 @@ jobs:
               if (bytes.byteLength > 25 * 1024 * 1024) {
                 throw new Error(`static asset has an invalid size: ${name}`);
               }
+              if (bytes.byteLength < lfsPointerMaxBytes && bytes.subarray(0, lfsPointer.byteLength).equals(lfsPointer)) {
+                throw new Error(`static asset is a Git LFS pointer, not the file it points to: ${name}; fetch it with lfs, or keep it out of the asset directory`);
+              }
               const staged = resolve(stagedRoot, name);
               mkdirSync(dirname(staged), { recursive: true });
               copyFileSync(path, staged);
@@ -1000,8 +1119,10 @@ jobs:
           // collation, which orders "index-a.css" before "Pilat.woff2".
           files.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
           const totalBytes = files.reduce((total, file) => total + file.size, 0);
-          // The largest asset sets the broker accepts; each policy sets its own limits.
-          if (files.length === 0 || files.length > 20000 || totalBytes > 256 * 1024 * 1024) {
+          // The largest asset sets the broker accepts; each policy sets its own
+          // limits. Brokers whose staged archives may reach 1.25 GiB accept 1 GiB
+          // of assets; older ones reject a policy that allows more than 256 MiB.
+          if (files.length === 0 || files.length > 20000 || totalBytes > 1024 * 1024 * 1024) {
             throw new Error("static asset directory exceeds broker limits");
           }
           function optionalUtf8(name) {

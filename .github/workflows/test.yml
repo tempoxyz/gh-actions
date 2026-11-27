@@ -379,6 +379,9 @@ jobs:
       - name: Test reproducible EIF verification scripts
         run: node --test testdata/reproducible-eif-verify.test.js
 
+      - name: Test Cloudflare Worker build LFS and static asset scripts
+        run: node --test testdata/cloudflare-deploy-broker-build.test.js
+
       # Guard: the reusable workflow and composite action must use the same
       # pinned vendored tool, since they duplicate the zizmor + actionlint steps.
       - name: Assert reusable/composite references match
