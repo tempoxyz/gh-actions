@@ -1452,6 +1452,10 @@ jobs:
               storage: exportedClasses.get(binding.class_name),
             };
           }).sort((left, right) => left.binding.localeCompare(right.binding));
+          // Brokers whose policy and attested configuration accept 20 Durable
+          // Object bindings take these; older ones, which accept ten, fail closed.
+          // Every live export needs a binding, so this bounds live exports too.
+          invariant(durableObjects.length <= 20, "at most 20 Durable Object bindings are supported");
           const localDurableObjects = durableObjects.filter((binding) => binding.scriptName === undefined);
           const boundClasses = new Set(localDurableObjects.map((binding) => binding.className));
           invariant(process.env.DISPATCH_NAMESPACE === "" || boundClasses.size === localDurableObjects.length, "dispatch namespace Durable Object classes must be uniquely bound");
