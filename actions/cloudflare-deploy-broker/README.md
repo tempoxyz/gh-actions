@@ -148,8 +148,9 @@ max_instances = 20
   every instance in one step.
 - The Dockerfile and build context must be inside `working-directory`. The
   image is built for `linux/amd64`, without build secrets.
-- Brokers released before policies could name other sizes accept only `lite`
-  and `max_instances = 1`.
+- Brokers older than
+  [tempoxyz/cloudflare-deploy-broker#292](https://github.com/tempoxyz/cloudflare-deploy-broker/pull/292)
+  accept only `lite` with `max_instances = 1`.
 
 The Docker Hub token lasts as long as the job may, at least five minutes, so a
 long image build can still push. Image builds have no layer cache: raise
