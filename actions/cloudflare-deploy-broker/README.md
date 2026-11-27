@@ -115,6 +115,47 @@ of modules in total. Deploying additional modules, a main module over 10 MiB, or
 assets over the default limits requires a policy that authorizes them and a
 broker release with staged artifact transfer.
 
+The build job times out after 15 minutes. Set `timeout-minutes`, up to 120,
+for a slower build.
+
+## Containers
+
+With `publish-container-image: true` and a `dockerhub-oidc-connection-id`, the
+build pushes the Wrangler configuration's one Container image to the private
+`docker.io/tempoxyz/<container name>` repository and attests its digest. The
+broker then creates or updates the Cloudflare Container application, which an
+explicit policy must authorize with the same name, class, repository, instance
+type and instance cap:
+
+```toml
+[[containers]]
+name = "example-container"
+class_name = "ExampleContainer"
+image = "./Dockerfile"
+instance_type = "standard-3"
+max_instances = 20
+```
+
+- `instance_type` must be explicit and one of `lite`, `basic`, `standard-1`,
+  `standard-2`, `standard-3` or `standard-4`. Custom instance shapes and the
+  deprecated `dev` and `standard` names fail the build.
+- `max_instances` must be an explicit integer from 1 to 100. The deprecated
+  `instances` fails the build.
+- The build applies `image_build_context` and `image_vars` (as build
+  arguments). Every other Container setting, such as `scheduling_policy`,
+  `constraints`, `ssh`, `observability` or the `rollout_*` settings, fails the
+  build: the broker would not apply it. The broker rolls out a new image to
+  every instance in one step.
+- The Dockerfile and build context must be inside `working-directory`. The
+  image is built for `linux/amd64`, without build secrets.
+- Brokers older than
+  [tempoxyz/cloudflare-deploy-broker#292](https://github.com/tempoxyz/cloudflare-deploy-broker/pull/292)
+  accept only `lite` with `max_instances = 1`.
+
+The Docker Hub token lasts as long as the job may, at least five minutes, so a
+long image build can still push. Image builds have no layer cache: raise
+`timeout-minutes` for an image that compiles from source.
+
 ## Stage a candidate before promoting it
 
 With `promotion: staged`, an explicit policy that sets
