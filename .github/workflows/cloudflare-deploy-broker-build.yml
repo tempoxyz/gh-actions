@@ -1115,7 +1115,7 @@ jobs:
             "mtls_certificates", "name", "observability", "pipelines", "placement", "preview_urls", "queues",
             "r2_buckets", "ratelimits", "route", "routes", "secrets_store_secrets", "send_email",
             "services", "site", "tail_consumers", "triggers", "unsafe", "vars", "vectorize",
-            "version_metadata", "worker_loaders", "workers_dev", "workflows",
+            "version_metadata", "vpc_services", "worker_loaders", "workers_dev", "workflows",
           ]);
           // Bundling, local development and Wrangler metadata. Their effect is in the
           // attested module; the broker never uploads source maps. secrets only lists
@@ -1215,6 +1215,13 @@ jobs:
           const images = isUnset(config.images)
             ? []
             : mapBindings([config.images], ["binding"], (value) => ({ binding: value.binding }));
+          // A Workers VPC Service reaches one private host through a Cloudflare
+          // Tunnel, named by the lowercase UUID the Connectivity Directory
+          // assigned (any version). Remote mode never becomes an input.
+          const vpcServices = mapBindings(config.vpc_services ?? [], ["binding", "service_id"], (value) => {
+            invariant(typeof value.service_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.service_id), "VPC Service requires an explicit lowercase service_id UUID");
+            return { binding: value.binding, serviceId: value.service_id };
+          });
 
           // Response caching grants no access. Only enabled is supported, as
           // Wrangler uploads it; omit an unset table so manifests stay stable.
@@ -1646,6 +1653,7 @@ jobs:
                 ...(sendEmail.length === 0 ? {} : { sendEmail }),
                 ...(workflows.length === 0 ? {} : { workflows }),
                 ...(images.length === 0 ? {} : { images }),
+                ...(vpcServices.length === 0 ? {} : { vpcServices }),
                 browser,
                 containers,
                 workerLoaders,
@@ -1659,7 +1667,7 @@ jobs:
             ...Object.keys(json),
             ...(config.version_metadata === undefined ? [] : [config.version_metadata.binding]),
             ...(config.assets === undefined ? [] : [config.assets.binding]),
-            ...[kv, d1, r2, pipelines, queues, services, dispatchNamespaces, durableObjects, sendEmail, workflows, browser, hyperdrive, vectorize, aiSearch, ai, workerLoaders, analyticsEngine, analyticsSql, images, rateLimits].flatMap((values) => values.map((binding) => binding.binding)),
+            ...[kv, d1, r2, pipelines, queues, services, dispatchNamespaces, durableObjects, sendEmail, workflows, browser, hyperdrive, vectorize, aiSearch, ai, workerLoaders, analyticsEngine, analyticsSql, images, vpcServices, rateLimits].flatMap((values) => values.map((binding) => binding.binding)),
           ];
           invariant(new Set(names).size === names.length, "Worker binding names must be unique across binding types");
           const serialized = `${JSON.stringify(manifest)}\n`;
