@@ -142,11 +142,18 @@ it to the same commit as the deploying build so both apply the same checks:
       check-only: true
 ```
 
+Pass the same inputs as the deploying build. With `publish-container-image`,
+a check runs every Container check, including the instance type, the instance
+cap and the Dockerfile and build context paths. It doesn't log in to Docker
+Hub, build the image or push it. With `unattested-artifact-directory`, a check
+fails if the directory has no file the deploying build would upload.
+
 The caller still grants the build job's permissions, because GitHub requires
 them before the job starts. The digest outputs, such as
-`worker-configuration-digest`, are set as in a deploying build. `artifact-id`,
-`archive-digest` and `unattested-artifact-id` are empty. A check can't publish
-a Container image.
+`worker-configuration-digest`, are set as in a deploying build, except that a
+Container Worker's configuration names no image. `artifact-id`,
+`archive-digest`, `container-image-digest` and `unattested-artifact-id` are
+empty.
 
 ## Containers
 

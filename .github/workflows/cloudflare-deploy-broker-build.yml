@@ -109,7 +109,7 @@ on:
         type: number
         default: 15
       check-only:
-        description: "Build and run every check, then stop without attesting anything or uploading a Worker artifact, for example to check a production Wrangler configuration on pull requests. module-digest, worker-configuration-digest and the other manifest digests are still set; artifact-id, archive-digest and unattested-artifact-id are empty. Cannot be combined with publish-container-image. The caller still grants the build job's permissions"
+        description: "Build and run every check, then stop without attesting anything or uploading a Worker artifact, for example to check a production Wrangler configuration on pull requests. module-digest, worker-configuration-digest and the other manifest digests are still set; artifact-id, archive-digest, container-image-digest and unattested-artifact-id are empty. With publish-container-image, it checks the Container settings and Dockerfile but neither builds nor pushes the image. The caller still grants the build job's permissions"
         required: false
         type: boolean
         default: false
@@ -408,16 +408,10 @@ jobs:
           INSTALL_FILTER: ${{ inputs.install-filter }}
           UNATTESTED_ARTIFACT_DIRECTORY: ${{ inputs.unattested-artifact-directory }}
           TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
-          CHECK_ONLY: ${{ inputs.check-only }}
           # Whether the secret is set, never its value.
           HAS_BUILD_ENVIRONMENT: ${{ secrets.build-environment != '' }}
         run: |
           set -euo pipefail
-          # Publishing pushes an image, which a check must not do.
-          if [[ "${CHECK_ONLY}" == "true" && "${PUBLISH_CONTAINER_IMAGE}" == "true" ]]; then
-            echo "::error::check-only cannot be combined with publish-container-image" >&2
-            exit 1
-          fi
           # Only the build command receives build-environment, so without one the
           # values would be dropped silently, for example when Wrangler's own
           # build command builds the app.
@@ -731,7 +725,7 @@ jobs:
           bash --noprofile --norc -eo pipefail -c "${BUILD_COMMAND}"
 
       - name: Log in to Docker Hub via OIDC
-        if: ${{ inputs.publish-container-image }}
+        if: ${{ !inputs.check-only && inputs.publish-container-image }}
         uses: tempoxyz/gh-actions/vendor/docker/login-action@35019557465e3c38ee3468be171771fd73577584 # 2026-10-20T06-22-38Z-35019557
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ inputs.dockerhub-oidc-connection-id }}
@@ -747,6 +741,7 @@ jobs:
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
           WRANGLER_CONFIG: ${{ inputs.wrangler-config }}
           WRANGLER_ENVIRONMENT: ${{ inputs.wrangler-environment }}
+          CHECK_ONLY: ${{ inputs.check-only }}
         run: |
           set -euo pipefail
           cd "${WORKING_DIRECTORY}"
@@ -811,6 +806,11 @@ jobs:
             invariant(/^[A-Z][A-Z0-9_]{0,63}$/.test(name) && typeof value === "string" && value.length <= 4096, "Container image build arguments are invalid");
             buildArgs.push("--build-arg", `${name}=${value}`);
           }
+          // A check stops here, after every Container check and before the
+          // image build: it has no Docker Hub credentials and publishes nothing,
+          // so it sets no image reference and the attested configuration names
+          // no image.
+          if (process.env.CHECK_ONLY === "true") process.exit(0);
           const repository = `docker.io/tempoxyz/${container.name}`;
           const tag = `${process.env.GITHUB_SHA}-${process.env.GITHUB_RUN_ATTEMPT}`;
           const metadata = resolve(process.env.RUNNER_TEMP, "container-build-metadata.json");
@@ -2167,6 +2167,23 @@ jobs:
           # Asset paths were already validated before staging. Preserve hidden
           # assets such as .well-known files and an attested .gitkeep exactly.
           include-hidden-files: true
+
+      # The deploying build's upload of these by-products fails when it finds no
+      # file to upload, and upload-artifact skips hidden files. A check skips
+      # the upload, so it fails the same way here.
+      - name: Check unattested build by-products
+        if: ${{ inputs.check-only && inputs.unattested-artifact-directory != '' }}
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          UNATTESTED_ARTIFACT_DIRECTORY: ${{ inputs.unattested-artifact-directory }}
+        run: |
+          set -euo pipefail
+          directory="${WORKING_DIRECTORY}/${UNATTESTED_ARTIFACT_DIRECTORY}"
+          if [[ ! -d "${directory}" ]] || [[ -z "$(cd "${directory}" && find -L . -type f ! -path '*/.*' -print -quit)" ]]; then
+            echo "::error::unattested-artifact-directory ${UNATTESTED_ARTIFACT_DIRECTORY} has no file to upload" >&2
+            exit 1
+          fi
 
       # Build by-products the broker never sees, uploaded only once the attested
       # artifact is. Nothing attests or verifies them, so a consumer must not
