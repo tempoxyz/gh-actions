@@ -522,3 +522,104 @@ test("refuses sizes and settings the broker would not apply", () => {
     { instanceType: "lite", maxInstances: 1 },
   );
 });
+
+// check-only runs every check and then stops without attesting, publishing or
+// uploading anything a deploy could use.
+const STEP_NAMES = lines.filter(line => /^      - name: /.test(line)).map(line => line.trim().slice("- name: ".length));
+function stepIf(name) {
+  const line = step(name).find(entry => /^\s+if: /.test(entry));
+  return line === undefined ? undefined : line.trim().slice("if: ".length);
+}
+
+test("check-only is an optional input that defaults off", () => {
+  assert.deepEqual(input("check-only").filter(line => !line.startsWith("description:")), [
+    "required: false", "type: boolean", "default: false",
+  ]);
+});
+
+test("check-only skips every step that attests, logs in to Docker Hub or uploads", () => {
+  const gated = STEP_NAMES.filter(name => {
+    const block = step(name).join("\n");
+    return /uses: actions\/(?:attest|upload-artifact)@/.test(block)
+      || /Sigstore bundle|Summarize attestations|Docker Hub/.test(name);
+  });
+  assert.ok(gated.length >= 14, gated.join(", "));
+  for (const name of gated) {
+    const condition = stepIf(name);
+    assert.ok(
+      condition === "${{ !inputs.check-only }}" || condition?.startsWith("${{ !inputs.check-only && "),
+      `${name} runs in check-only: ${condition}`,
+    );
+  }
+  // Every check before them still runs.
+  for (const name of [VALIDATE_STEP, "Build Worker module", "Stage and hash Worker module", ASSET_STEP, CONFIGURATION_STEP, "Stage and hash D1 migrations"]) {
+    assert.ok(!(stepIf(name) ?? "").includes("check-only"), name);
+  }
+});
+
+test("check-only runs every Container check and stops before the image build", () => {
+  assert.ok(step(PUBLISH_STEP).map(line => line.trim()).includes("CHECK_ONLY: ${{ inputs.check-only }}"));
+  const body = script(PUBLISH_STEP);
+  const stop = body.indexOf('if (process.env.CHECK_ONLY === "true") process.exit(0);');
+  assert.notEqual(stop, -1);
+  for (const check of ["containerSizing(container);", '"Container image must be a Dockerfile"', '"Container image build arguments are invalid"']) {
+    assert.ok(body.indexOf(check) !== -1 && body.indexOf(check) < stop, check);
+  }
+  assert.ok(stop < body.indexOf('"buildx", "build"'));
+  assert.ok(stop < body.indexOf("GITHUB_OUTPUT"));
+});
+
+function checkUnattested(files) {
+  const dir = tempDir();
+  if (files !== null) {
+    fs.mkdirSync(path.join(dir, "app", "dist"), { recursive: true });
+    for (const file of files) {
+      fs.mkdirSync(path.dirname(path.join(dir, "app", "dist", file)), { recursive: true });
+      fs.writeFileSync(path.join(dir, "app", "dist", file), "x");
+    }
+  }
+  return spawnSync("bash", ["-c", script("Check unattested build by-products")], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, WORKING_DIRECTORY: "app", UNATTESTED_ARTIFACT_DIRECTORY: "dist" },
+  });
+}
+
+test("check-only fails where the unattested upload would find no file", () => {
+  assert.equal(stepIf("Check unattested build by-products"), "${{ inputs.check-only && inputs.unattested-artifact-directory != '' }}");
+  for (const files of [null, [], [".hidden"], [".maps/index.js.map"]]) {
+    const result = checkUnattested(files);
+    assert.notEqual(result.status, 0, JSON.stringify(files));
+    assert.match(result.stderr, /unattested-artifact-directory dist has no file to upload/);
+  }
+  for (const files of [["index.js.map"], [".hidden", "maps/index.js.map"]]) {
+    const result = checkUnattested(files);
+    assert.equal(result.status, 0, `${JSON.stringify(files)}: ${result.stderr}`);
+  }
+});
+
+test("check-only summarizes the digests it computed", () => {
+  assert.equal(stepIf("Summarize check"), "${{ inputs.check-only }}");
+  const dir = tempDir();
+  const summary = path.join(dir, "summary.md");
+  const digest = character => character.repeat(64);
+  const result = spawnSync("bash", ["-c", script("Summarize check")], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MODULE_DIGEST: digest("a"),
+      CONFIGURATION_DIGEST: digest("b"),
+      MIGRATION_DIGEST: "",
+      ASSET_DIGEST: digest("c"),
+      MODULES_DIGEST: "",
+      GITHUB_STEP_SUMMARY: summary,
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const rows = fs.readFileSync(summary, "utf8").split("\n").filter(line => line.startsWith("| <code>"));
+  assert.deepEqual(rows, [
+    `| <code>index.js</code> | <code>sha256:${digest("a")}</code> |`,
+    `| <code>worker-configuration.json</code> | <code>sha256:${digest("b")}</code> |`,
+    `| <code>static-assets.json</code> | <code>sha256:${digest("c")}</code> |`,
+  ]);
+});
