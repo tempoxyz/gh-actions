@@ -1,0 +1,88 @@
+name: "Notify Slack"
+description: "Post a Slack message through slack-notifier, authenticated with the job's GitHub OIDC token; no Slack token needed"
+
+# Inputs are chat.postMessage's message arguments. The sender's name and icon
+# (username, icon_url, icon_emoji) are not inputs: slack-notifier's policy for
+# this workflow sets them.
+inputs:
+  channel:
+    description: "Conversation ID (C…, G…, D…), a user's member ID (U…, W…) to DM them, or #channel-name"
+    required: true
+  text:
+    description: "Message text (mrkdwn). Required unless `blocks` or `attachments` is set; with them it is the notification fallback."
+    required: false
+    default: ""
+  blocks:
+    description: "Block Kit blocks, as a JSON array"
+    required: false
+    default: ""
+  attachments:
+    description: "Legacy attachments, as a JSON array"
+    required: false
+    default: ""
+  thread_ts:
+    description: "Timestamp (`ts`) of the message to reply to in a thread"
+    required: false
+    default: ""
+  reply_broadcast:
+    description: "`true` to also post a thread reply to the channel"
+    required: false
+    default: ""
+  unfurl_links:
+    description: "`true` to unfurl text-based links"
+    required: false
+    default: ""
+  unfurl_media:
+    description: "`false` to stop unfurling media links"
+    required: false
+    default: ""
+  mrkdwn:
+    description: "`false` to post `text` without mrkdwn formatting"
+    required: false
+    default: ""
+  parse:
+    description: "`none` or `full`, how Slack treats `text`"
+    required: false
+    default: ""
+  link_names:
+    description: "`true` to link channel and user names in `text`"
+    required: false
+    default: ""
+  metadata:
+    description: "Message metadata, as a JSON object: {\"event_type\": \"...\", \"event_payload\": {...}}"
+    required: false
+    default: ""
+  policy:
+    description: "slack-notifier sender policy to post under. Needed only when more than one of this repository's policies admits the job."
+    required: false
+    default: ""
+
+outputs:
+  ts:
+    description: "Timestamp of the posted message, for `thread_ts` replies"
+    value: ${{ steps.send.outputs.ts }}
+  channel:
+    description: "Conversation the message was posted in (for a DM, its D… ID, which replies need)"
+    value: ${{ steps.send.outputs.channel }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Send
+      id: send
+      shell: bash
+      env:
+        NOTIFY_CHANNEL: ${{ inputs.channel }}
+        NOTIFY_TEXT: ${{ inputs.text }}
+        NOTIFY_BLOCKS: ${{ inputs.blocks }}
+        NOTIFY_ATTACHMENTS: ${{ inputs.attachments }}
+        NOTIFY_THREAD_TS: ${{ inputs.thread_ts }}
+        NOTIFY_REPLY_BROADCAST: ${{ inputs.reply_broadcast }}
+        NOTIFY_UNFURL_LINKS: ${{ inputs.unfurl_links }}
+        NOTIFY_UNFURL_MEDIA: ${{ inputs.unfurl_media }}
+        NOTIFY_MRKDWN: ${{ inputs.mrkdwn }}
+        NOTIFY_PARSE: ${{ inputs.parse }}
+        NOTIFY_LINK_NAMES: ${{ inputs.link_names }}
+        NOTIFY_METADATA: ${{ inputs.metadata }}
+        NOTIFY_POLICY: ${{ inputs.policy }}
+      run: bash "$GITHUB_ACTION_PATH/notify-slack.sh"
