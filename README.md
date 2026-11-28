@@ -9,6 +9,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`osv-scanner-action`](actions/osv-scanner-action) | Scan dependencies and compare vulnerabilities with OSV |
 | [`actionlint`](actions/actionlint) | Lint GitHub Actions workflows with the digest-pinned actionlint image
 | [`docker-login`](actions/docker-login) | Log in to GHCR and optionally Docker Hub
+| [`docker-sts`](actions/docker-sts) | Exchange GitHub OIDC tokens for short-lived Docker Hub tokens
 | [`docker-build-push`](actions/docker-build-push) | Build and push Docker images
 | [`docker-metadata-tags`](actions/docker-metadata-tags) | Standard Tempo Docker tagging strategy
 | [`cosign-sign`](actions/cosign-sign) | Sign container images with cosign

@@ -1,0 +1,27 @@
+name: "Docker STS"
+description: "Exchange a GitHub Actions OIDC token for a short-lived Docker Hub token"
+
+inputs:
+  policy:
+    description: "Docker STS policy name"
+    required: true
+  ttl:
+    description: "Requested token lifetime in minutes (5m to 60m)"
+    required: false
+    default: "15m"
+
+outputs:
+  token:
+    description: "Masked Docker Hub organization access token"
+    value: ${{ steps.exchange.outputs.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Exchange GitHub OIDC for a Docker Hub token
+      id: exchange
+      shell: bash
+      env:
+        DOCKER_STS_POLICY: ${{ inputs.policy }}
+        DOCKER_STS_TTL: ${{ inputs.ttl }}
+      run: node "$GITHUB_ACTION_PATH/main.cjs"
