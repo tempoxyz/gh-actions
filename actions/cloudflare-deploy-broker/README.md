@@ -118,6 +118,36 @@ broker release with staged artifact transfer.
 The build job times out after 15 minutes. Set `timeout-minutes`, up to 120,
 for a slower build.
 
+## Check a configuration without deploying it
+
+With `check-only: true`, the build installs, builds and runs every check a
+deploying build runs, then stops. It attests nothing and uploads no Worker
+artifact, so there is nothing to deploy. Use it on pull requests for a Wrangler
+configuration that deploys only from the default branch, such as production;
+otherwise an option the build rejects shows up only when that deploy fails. Pin
+it to the same commit as the deploying build so both apply the same checks:
+
+```yaml
+  check-production:
+    permissions:
+      actions: write
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    uses: tempoxyz/gh-actions/.github/workflows/cloudflare-deploy-broker-build.yml@<commit-sha> # <tag>
+    with:
+      working-directory: server
+      wrangler-config: wrangler.prd.toml
+      check-only: true
+```
+
+The caller still grants the build job's permissions, because GitHub requires
+them before the job starts. The digest outputs, such as
+`worker-configuration-digest`, are set as in a deploying build. `artifact-id`,
+`archive-digest` and `unattested-artifact-id` are empty. A check can't publish
+a Container image.
+
 ## Containers
 
 With `publish-container-image: true` and a `dockerhub-oidc-connection-id`, the

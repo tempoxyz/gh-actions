@@ -108,6 +108,11 @@ on:
         required: false
         type: number
         default: 15
+      check-only:
+        description: "Build and run every check, then stop without attesting anything or uploading a Worker artifact, for example to check a production Wrangler configuration on pull requests. module-digest, worker-configuration-digest and the other manifest digests are still set; artifact-id, archive-digest and unattested-artifact-id are empty. Cannot be combined with publish-container-image. The caller still grants the build job's permissions"
+        required: false
+        type: boolean
+        default: false
     secrets:
       build-environment:
         description: "Optional NAME=value lines exported only to build-command, such as a client key the build compiles in. Names are upper case and can't be runner, shell or Node settings. Values end up wherever the build puts them, including the attested artifact"
@@ -403,10 +408,16 @@ jobs:
           INSTALL_FILTER: ${{ inputs.install-filter }}
           UNATTESTED_ARTIFACT_DIRECTORY: ${{ inputs.unattested-artifact-directory }}
           TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+          CHECK_ONLY: ${{ inputs.check-only }}
           # Whether the secret is set, never its value.
           HAS_BUILD_ENVIRONMENT: ${{ secrets.build-environment != '' }}
         run: |
           set -euo pipefail
+          # Publishing pushes an image, which a check must not do.
+          if [[ "${CHECK_ONLY}" == "true" && "${PUBLISH_CONTAINER_IMAGE}" == "true" ]]; then
+            echo "::error::check-only cannot be combined with publish-container-image" >&2
+            exit 1
+          fi
           # Only the build command receives build-environment, so without one the
           # values would be dropped silently, for example when Wrangler's own
           # build command builds the app.
@@ -1011,6 +1022,7 @@ jobs:
           NODE
 
       - name: Attest Worker module
+        if: ${{ !inputs.check-only }}
         id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -1019,7 +1031,7 @@ jobs:
           show-summary: false
 
       - name: Attest additional Worker modules
-        if: ${{ steps.prepare.outputs.modules-enabled == 'true' }}
+        if: ${{ !inputs.check-only && steps.prepare.outputs.modules-enabled == 'true' }}
         id: attest-modules
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -1189,7 +1201,7 @@ jobs:
           NODE
 
       - name: Attest static asset manifest
-        if: ${{ steps.prepare-assets.outputs.assets-enabled == 'true' }}
+        if: ${{ !inputs.check-only && steps.prepare-assets.outputs.assets-enabled == 'true' }}
         id: attest-assets
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -1877,6 +1889,7 @@ jobs:
           NODE
 
       - name: Attest Worker configuration
+        if: ${{ !inputs.check-only }}
         id: attest-configuration
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -1968,7 +1981,7 @@ jobs:
           NODE
 
       - name: Attest D1 migration manifest
-        if: ${{ inputs.d1-migrations-directory != '' }}
+        if: ${{ !inputs.check-only && inputs.d1-migrations-directory != '' }}
         id: attest-migrations
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -1977,6 +1990,7 @@ jobs:
           show-summary: false
 
       - name: Summarize attestations
+        if: ${{ !inputs.check-only }}
         shell: bash
         env:
           MODULE_ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
@@ -2045,7 +2059,36 @@ jobs:
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
+      - name: Summarize check
+        if: ${{ inputs.check-only }}
+        shell: bash
+        env:
+          MODULE_DIGEST: ${{ steps.prepare.outputs.module-digest }}
+          CONFIGURATION_DIGEST: ${{ steps.prepare-configuration.outputs.configuration-digest }}
+          MIGRATION_DIGEST: ${{ steps.prepare-migrations.outputs.migration-digest }}
+          ASSET_DIGEST: ${{ steps.prepare-assets.outputs.assets-digest }}
+          MODULES_DIGEST: ${{ steps.prepare.outputs.modules-digest }}
+        run: |
+          set -euo pipefail
+          append_digest() {
+            [[ -z "$2" ]] || printf '| <code>%s</code> | <code>sha256:%s</code> |\n' "$1" "$2"
+          }
+          {
+            echo "## Checked, not attested"
+            echo
+            echo "check-only is set, so nothing was attested and no Worker artifact was uploaded."
+            echo
+            echo "| Subject | Digest |"
+            echo "| --- | --- |"
+            append_digest index.js "${MODULE_DIGEST}"
+            append_digest worker-configuration.json "${CONFIGURATION_DIGEST}"
+            append_digest d1-migrations.json "${MIGRATION_DIGEST}"
+            append_digest static-assets.json "${ASSET_DIGEST}"
+            append_digest worker-modules.json "${MODULES_DIGEST}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Stage Sigstore bundle
+        if: ${{ !inputs.check-only }}
         shell: bash
         env:
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
@@ -2056,7 +2099,7 @@ jobs:
           install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/provenance.sigstore.json"
 
       - name: Stage D1 migration Sigstore bundle
-        if: ${{ inputs.d1-migrations-directory != '' }}
+        if: ${{ !inputs.check-only && inputs.d1-migrations-directory != '' }}
         shell: bash
         env:
           BUNDLE_PATH: ${{ steps.attest-migrations.outputs.bundle-path }}
@@ -2067,6 +2110,7 @@ jobs:
           install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/d1-migrations.sigstore.json"
 
       - name: Stage Worker configuration Sigstore bundle
+        if: ${{ !inputs.check-only }}
         shell: bash
         env:
           BUNDLE_PATH: ${{ steps.attest-configuration.outputs.bundle-path }}
@@ -2077,7 +2121,7 @@ jobs:
           install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/worker-configuration.sigstore.json"
 
       - name: Stage additional module Sigstore bundle
-        if: ${{ steps.prepare.outputs.modules-enabled == 'true' }}
+        if: ${{ !inputs.check-only && steps.prepare.outputs.modules-enabled == 'true' }}
         shell: bash
         env:
           BUNDLE_PATH: ${{ steps.attest-modules.outputs.bundle-path }}
@@ -2088,7 +2132,7 @@ jobs:
           install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/worker-modules.sigstore.json"
 
       - name: Stage static asset Sigstore bundle
-        if: ${{ steps.prepare-assets.outputs.assets-enabled == 'true' }}
+        if: ${{ !inputs.check-only && steps.prepare-assets.outputs.assets-enabled == 'true' }}
         shell: bash
         env:
           BUNDLE_PATH: ${{ steps.attest-assets.outputs.bundle-path }}
@@ -2099,6 +2143,7 @@ jobs:
           install -m 0644 "${BUNDLE_PATH}" "${RUNNER_TEMP}/cloudflare-worker-artifact/static-assets.sigstore.json"
 
       - name: Upload attested Worker artifact
+        if: ${{ !inputs.check-only }}
         id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -2128,7 +2173,7 @@ jobs:
       # deploy or execute them.
       - name: Upload unattested build by-products
         id: upload-unattested
-        if: ${{ inputs.unattested-artifact-directory != '' }}
+        if: ${{ !inputs.check-only && inputs.unattested-artifact-directory != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact-name }}-unattested-${{ github.run_id }}-${{ github.run_attempt }}
