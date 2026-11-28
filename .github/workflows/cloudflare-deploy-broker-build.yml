@@ -1399,9 +1399,14 @@ jobs:
             : mapBindings([config.images], ["binding"], (value) => ({ binding: value.binding }));
           // A Workers VPC Service reaches one private host through a Cloudflare
           // Tunnel, named by the lowercase UUID the Connectivity Directory
-          // assigned (any version). Remote mode never becomes an input.
-          const vpcServices = mapBindings(config.vpc_services ?? [], ["binding", "service_id"], (value) => {
+          // assigned (any version). Remote mode never becomes an input, but
+          // `remote = true` is accepted: a VPC Service has no local simulator,
+          // so it only restates how local development already runs, and it
+          // silences Wrangler's warning when the binding is left unset. Wrangler
+          // rejects `remote = false` for a VPC Service, and so does this build.
+          const vpcServices = mapBindings(config.vpc_services ?? [], ["binding", "service_id", "remote"], (value) => {
             invariant(typeof value.service_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.service_id), "VPC Service requires an explicit lowercase service_id UUID");
+            invariant(value.remote === undefined || value.remote === true, "VPC Service remote may only be true");
             return { binding: value.binding, serviceId: value.service_id };
           });
 
