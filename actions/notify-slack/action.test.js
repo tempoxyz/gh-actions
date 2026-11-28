@@ -29,10 +29,15 @@ const responses = JSON.parse(fs.readFileSync(dir + "/responses.json", "utf8"));
 const next = responses.shift() ?? { status: 500, body: {} };
 fs.writeFileSync(dir + "/responses.json", JSON.stringify(responses));
 if (next.unreachable) process.exit(7);
-fs.writeFileSync(value("-o"), JSON.stringify(next.body));
+if (next.exit !== undefined && next.status === undefined) {
+  process.stdout.write("000");
+  process.exit(next.exit);
+}
+fs.writeFileSync(value("-o"), next.rawBody ?? JSON.stringify(next.body));
 const headers = Object.entries(next.headers ?? {}).map(([k, v]) => k + ": " + v + "\\r\\n").join("");
 fs.writeFileSync(value("-D"), "HTTP/2 " + next.status + "\\r\\n" + headers + "\\r\\n");
 process.stdout.write(String(next.status));
+if (next.exit !== undefined) process.exit(next.exit);
 `;
 const FAKE_SLEEP = `#!/usr/bin/env node
 require("node:fs").appendFileSync(process.env.FAKE_DIR + "/sleeps.txt", process.argv[2] + "\\n");
@@ -166,6 +171,36 @@ test("retries when nothing was posted, with a fresh token each time", () => {
   assert.equal(result.posts.length, 3);
   assert.equal(result.oidc.length, 3);
   assert.deepEqual(result.sleeps, ["2", "4"]);
+});
+
+test("never resends a message whose answer was lost", () => {
+  for (const [answer, message] of [
+    // Timed out or dropped after sending: slack-notifier may have posted it.
+    [{ exit: 28 }, /lost slack-notifier's answer \(curl exit 28\); the message may have been posted/],
+    [{ exit: 56 }, /lost slack-notifier's answer \(curl exit 56\)/],
+    // A 200 whose body was cut off: it was posted.
+    [{ status: 200, rawBody: '{"ok":true,"chan', exit: 18 }, /accepted the message, but its answer could not be read/],
+    // slack-notifier lost Slack's answer to a message it sent.
+    [
+      { status: 502, body: { ok: false, error: "Slack's answer was lost, so the message may have been posted" } },
+      /HTTP 502: Slack's answer was lost/,
+    ],
+  ]) {
+    const result = run({ channel: "C1234", text: "hi" }, [answer, ok()]);
+    assert.equal(result.status, 1, JSON.stringify(answer));
+    assert.equal(result.posts.length, 1, JSON.stringify(answer));
+    assert.match(result.stdout, message);
+    assert.equal(result.output, "");
+  }
+});
+
+test("retries when the request never reached slack-notifier", () => {
+  for (const exit of [6, 7, 35]) {
+    const result = run({ channel: "C1234", text: "hi" }, [{ exit }, ok()]);
+    assert.equal(result.status, 0, result.stdout);
+    assert.equal(result.posts.length, 2);
+    assert.match(result.stdout, new RegExp(`Could not reach slack-notifier\\.tempoxyz\\.net \\(curl exit ${exit}\\)`));
+  }
 });
 
 test("waits out Slack's rate limit", () => {

@@ -111,18 +111,33 @@ while :; do
   fetch_oidc_token
   : >"$work/response.json"
   : >"$work/headers.txt"
+  rc=0
   status="$(curl -sS --max-time 30 -o "$work/response.json" -D "$work/headers.txt" -w '%{http_code}' \
     -X POST "$url" \
     -H "Authorization: Bearer ${token}" \
     -H "Content-Type: application/json" \
     -H "User-Agent: tempoxyz-notify-slack-action" \
-    --data-binary "@$work/body.json")" || status="000"
+    --data-binary "@$work/body.json")" || rc=$?
+  [[ "$status" =~ ^[0-9]{3}$ ]] || status="000"
+
+  # A failed curl with an HTTP status got an answer and keeps it (such as a
+  # 200 whose body was cut off). Without one, only these exits prove the
+  # request never reached slack-notifier: resolving its name (6), connecting
+  # (7) or the TLS handshake (35). After a timeout (28) or a dropped
+  # connection (52, 55, 56) the message may have been posted, so it is not
+  # sent again.
+  if ((rc != 0)) && [[ "$status" == 000 ]]; then
+    case "$rc" in
+      6 | 7 | 35) status="unreachable" ;;
+      *) fail "lost slack-notifier's answer (curl exit ${rc}); the message may have been posted, so it was not sent again" ;;
+    esac
+  fi
 
   if [[ "$status" == 200 ]]; then
     posted_channel="$(field channel 32)"
     ts="$(field ts 32)"
     [[ "$posted_channel" =~ ^[CGD][A-Z0-9]{2,31}$ && "$ts" =~ ^[0-9]{1,12}\.[0-9]{1,9}$ ]] ||
-      fail "slack-notifier answered without a message"
+      fail "slack-notifier accepted the message, but its answer could not be read"
     {
       echo "channel=${posted_channel}"
       echo "ts=${ts}"
@@ -132,9 +147,11 @@ while :; do
   fi
 
   error="$(field error 500)"
-  # Retry only when nothing was posted: no answer, Slack's rate limit, or the
-  # service unavailable. Every other answer is final.
-  if [[ "$status" =~ ^(000|429|503)$ ]] && ((attempt < MAX_ATTEMPTS)); then
+  # Retry only when nothing was posted: slack-notifier unreachable, Slack's
+  # rate limit (429), or the service unavailable (503). Every other answer is
+  # final, including 502, which slack-notifier sends when Slack's answer to a
+  # sent message was lost.
+  if [[ "$status" =~ ^(unreachable|429|503)$ ]] && ((attempt < MAX_ATTEMPTS)); then
     wait=$((2 ** attempt))
     retry_after="$(tr -d '\r' <"$work/headers.txt" |
       awk -F': *' 'tolower($1) == "retry-after" { print $2 }' | tail -n 1)"
@@ -143,11 +160,15 @@ while :; do
         fail "Slack rate limited the message (retry after ${retry_after}s)"
       wait="$retry_after"
     fi
-    echo "slack-notifier answered HTTP ${status}${error:+: ${error}}; retrying in ${wait}s (attempt $((attempt + 1))/${MAX_ATTEMPTS})."
+    if [[ "$status" == unreachable ]]; then
+      echo "Could not reach ${HOST} (curl exit ${rc}); retrying in ${wait}s (attempt $((attempt + 1))/${MAX_ATTEMPTS})."
+    else
+      echo "slack-notifier answered HTTP ${status}${error:+: ${error}}; retrying in ${wait}s (attempt $((attempt + 1))/${MAX_ATTEMPTS})."
+    fi
     sleep "$wait"
     attempt=$((attempt + 1))
     continue
   fi
-  [[ "$status" == 000 ]] && fail "could not reach ${HOST}"
+  [[ "$status" == unreachable ]] && fail "could not reach ${HOST} (curl exit ${rc})"
   fail "slack-notifier answered HTTP ${status}${error:+: ${error}}"
 done

@@ -88,9 +88,19 @@ Block Kit:
 
 The step fails with slack-notifier's reason: an unknown channel, no policy
 admitting the job, a malformed message, and so on. It retries, with a new OIDC
-token each time, only when nothing was posted: no answer, HTTP 503, or HTTP
-429 (Slack's rate limit, waiting its `Retry-After` up to 60 seconds). It makes
-at most three attempts.
+token each time and at most three attempts, only when nothing can have been
+posted:
+
+- slack-notifier could not be reached: its name did not resolve, the
+  connection was refused, or the TLS handshake failed;
+- HTTP 503, the service unavailable;
+- HTTP 429, Slack's rate limit, after its `Retry-After` (up to 60 seconds).
+
+Once the request may have reached slack-notifier, the step never sends it
+again, so a channel never gets the message twice. A timeout or dropped
+connection, an unreadable answer, and HTTP 502 (slack-notifier lost Slack's
+answer to a message it sent) fail the step, saying the message may have been
+posted.
 
 ## Tests
 
