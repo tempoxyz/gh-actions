@@ -15,6 +15,7 @@ Reusable GitHub Actions for the Tempo organization.
 | [`publish-event`](actions/publish-event) | POST webhook events to downstream systems
 | [`cloudflare-sts`](actions/cloudflare-sts) | Exchange GitHub OIDC tokens for short-lived Cloudflare API tokens with automatic cleanup
 | [`github-sts`](actions/github-sts) | Exchange GitHub OIDC tokens for short-lived GitHub App tokens
+| [`notify-slack`](actions/notify-slack) | Post a Slack message through slack-notifier with the job's GitHub OIDC token; the sender comes from a reviewed policy, and no Slack token is needed
 | [`secure-runner`](actions/secure-runner) | Start Harden Runner and install Aegis with short-lived credentials
 | [`ensure-secure-runner`](actions/ensure-secure-runner) | Fail unless every workflow job starts with the `secure-runner` action
 | [`harden-runner`](actions/harden-runner) | Start Harden Runner with authenticated StepSecurity policy-store access, falling back to the inline policy on fork pull requests or when no StepSecurity credential can be obtained
